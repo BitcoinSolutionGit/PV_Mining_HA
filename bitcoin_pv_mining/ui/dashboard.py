@@ -1,5 +1,4 @@
 import os
-import json
 import yaml
 import dash
 from dash import html, dcc, Input, Output
@@ -23,8 +22,12 @@ def load_config():
     Input("save-button", "n_clicks")
 )
 def update_sankey(_):
-    config = load_config()
-    flags = config.get("feature_flags", {})
+    try:
+        config = load_config()
+        flags = config.get("feature_flags", {})
+    except Exception as e:
+        print("Fehler beim Laden der Konfiguration:", e)
+        return go.Figure()
 
     node_colors = [
         "gold",  # PV
