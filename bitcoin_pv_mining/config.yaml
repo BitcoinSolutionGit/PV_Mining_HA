@@ -4,10 +4,19 @@ slug: bitcoin_pv_mining
 description: "Dynamische Steuerung von Bitcoin-Mining und Energiekomponenten basierend auf PV-Überschuss"
 startup: application
 boot: auto
+ingress: true,
+ingress_port: 8050,
+panel_icon: mdi:chart-sankey,
+panel_title: PV-Mining,
+ports: {
+    8050/tcp: 8050
+  },
 homeassistant_api: true
 icon: "icon.png"
 arch:
   - amd64
+image: local/pv-steuerung
+
 category: automation
 options:
   miner_1_power_kw: 3.5
