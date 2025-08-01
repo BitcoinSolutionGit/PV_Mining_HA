@@ -1,5 +1,5 @@
 # Anforderungen für das PV-Mining Home Assistant Add-on
-dash
+dash==2.6.2
 plotly
 requests
 pyyaml
