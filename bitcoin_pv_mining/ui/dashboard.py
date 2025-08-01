@@ -4,7 +4,11 @@ import dash
 from dash import html, dcc, Input, Output
 import plotly.graph_objects as go
 
-CONFIG_PATH = "config.json"
+import os
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
+
 
 app = dash.Dash(__name__, requests_pathname_prefix="/")
 
@@ -44,7 +48,7 @@ def update_sankey(_):
     return fig
 
 app.layout = html.Div([
-    html.H1("PV Steuerung Dashboard"),
+    html.H1("PV Mining Dashboard"),
     dcc.Graph(id="sankey-diagram"),
     html.Button("Neu laden", id="save-button")
 ])
