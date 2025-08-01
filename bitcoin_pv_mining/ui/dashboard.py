@@ -59,4 +59,4 @@ app.layout = html.Div([
 
 # Dash-App starten – wichtig: host & port fix
 if __name__ == "__main__":
-    app.run_server(debug=False, host="0.0.0.0", port=8050)
+    app.run(debug=False, host="0.0.0.0", port=8050)

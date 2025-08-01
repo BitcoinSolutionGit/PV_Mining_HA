@@ -1,5 +1,5 @@
 name: "Bitcoin PV Mining"
-version: "1.0.7"
+version: "1.0.8"
 slug: bitcoin_pv_mining
 description: "Dynamische Steuerung von Bitcoin-Mining und Energiekomponenten basierend auf PV-Überschuss"
 startup: application
