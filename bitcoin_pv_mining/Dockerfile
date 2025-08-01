@@ -5,4 +5,6 @@ COPY . .
 
 RUN pip install dash plotly requests
 
-CMD ["python3", "ui/dashboard.py"]
+#CMD ["python3", "ui/dashboard.py"]
+
+CMD ["bash", "run.sh"]

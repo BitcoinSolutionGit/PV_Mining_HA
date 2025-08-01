@@ -1,2 +1,2 @@
 #!/bin/sh
-echo 'Starting...'
+python3 ui/dashboard.py
