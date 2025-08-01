@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="retry" />
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="Anführungszeichen rausgenommen">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -66,6 +68,7 @@
       <workItem from="1754049573612" duration="2704000" />
       <workItem from="1754052748713" duration="9000" />
       <workItem from="1754053051479" duration="33000" />
+      <workItem from="1754054203827" duration="2902000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <option name="closed" value="true" />
@@ -115,7 +118,15 @@
       <option name="project" value="LOCAL" />
       <updated>1754053072937</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="Anführungszeichen rausgenommen">
+      <option name="closed" value="true" />
+      <created>1754054250807</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1754054250807</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -127,6 +138,7 @@
     <MESSAGE value="Maintainer angepasst" />
     <MESSAGE value="category: automation" />
     <MESSAGE value="retry" />
-    <option name="LAST_COMMIT_MESSAGE" value="retry" />
+    <MESSAGE value="Anführungszeichen rausgenommen" />
+    <option name="LAST_COMMIT_MESSAGE" value="Anführungszeichen rausgenommen" />
   </component>
 </project>
