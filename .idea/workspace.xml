@@ -4,9 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="category: automation">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-    </list>
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="retry" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -67,6 +65,7 @@
       <updated>1754049572588</updated>
       <workItem from="1754049573612" duration="2704000" />
       <workItem from="1754052748713" duration="9000" />
+      <workItem from="1754053051479" duration="33000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <option name="closed" value="true" />
@@ -108,7 +107,15 @@
       <option name="project" value="LOCAL" />
       <updated>1754052452839</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="retry">
+      <option name="closed" value="true" />
+      <created>1754053072936</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1754053072937</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -119,6 +126,7 @@
     <MESSAGE value="code eingetragen" />
     <MESSAGE value="Maintainer angepasst" />
     <MESSAGE value="category: automation" />
-    <option name="LAST_COMMIT_MESSAGE" value="category: automation" />
+    <MESSAGE value="retry" />
+    <option name="LAST_COMMIT_MESSAGE" value="retry" />
   </component>
 </project>
