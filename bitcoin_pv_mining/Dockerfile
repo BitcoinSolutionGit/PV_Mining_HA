@@ -7,7 +7,7 @@ WORKDIR /app
 COPY . .
 
 # Installiere Python-Abhängigkeiten (verwende requirements.txt!)
-RUN pip install --no-cache-dir -r requirements.txt \
+RUN pip install --no-cache-dir -r requirements.txt
 # RUN pip install dash plotly requests pyyaml
 
 # Mach run.sh ausführbar
