@@ -1,16 +1,19 @@
-# Sankey-Diagramm Vorbereitung
+import os
 import json
 import dash
 from dash import html, dcc, Input, Output
 import plotly.graph_objects as go
 
-import os
-
+# Konfigurationspfad ermitteln
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
+# Ingress-Pfad aus Home Assistant holen (automatisch gesetzt)
+requests_prefix = os.getenv("INGRESS_ENTRY", "/")
 
-app = dash.Dash(__name__, requests_pathname_prefix="/")
+# Dash-App mit Ingress-Kompatibilität initialisieren
+app = dash.Dash(__name__, requests_pathname_prefix=requests_prefix)
+server = app.server  # Wichtig für HA-Ingress
 
 def load_config():
     with open(CONFIG_PATH) as f:
@@ -47,12 +50,13 @@ def update_sankey(_):
     )])
     return fig
 
+# UI-Layout
 app.layout = html.Div([
     html.H1("PV Mining Dashboard"),
     dcc.Graph(id="sankey-diagram"),
     html.Button("Neu laden", id="save-button")
 ])
 
+# Dash-App starten – wichtig: host & port fix
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8050)
-
+    app.run_server(debug=False, host="0.0.0.0", port=8050)
