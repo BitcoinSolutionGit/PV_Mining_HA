@@ -13,26 +13,26 @@ requests_prefix = os.getenv("BASE_PATH", "/")
 app = dash.Dash(__name__, requests_pathname_prefix=requests_prefix)
 server = app.server  # <- Home Assistant erwartet dieses Objekt!
 
-#  Wichtig für Ingress: Dash HTML korrekt rendern!
-app.index_string = """
-<!DOCTYPE html>
-<html>
-    <head>
-        {%metas%}
-        <title>{%title%}</title>
-        {%favicon%}
-        {%css%}
-    </head>
-    <body>
-        {%app_entry%}
-        <footer>
-            {%config%}
-            {%scripts%}
-            {%renderer%}
-        </footer>
-    </body>
-</html>
-"""
+# #  Wichtig für Ingress: Dash HTML korrekt rendern!
+# app.index_string = """
+# <!DOCTYPE html>
+# <html>
+#     <head>
+#         {%metas%}
+#         <title>{%title%}</title>
+#         {%favicon%}
+#         {%css%}
+#     </head>
+#     <body>
+#         {%app_entry%}
+#         <footer>
+#             {%config%}
+#             {%scripts%}
+#             {%renderer%}
+#         </footer>
+#     </body>
+# </html>
+# """
 
 def load_config():
     with open(CONFIG_PATH, "r") as f:
