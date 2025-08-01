@@ -1,12 +1,13 @@
 import os
 import json
+import yaml
 import dash
 from dash import html, dcc, Input, Output
 import plotly.graph_objects as go
 
 # Konfigurationspfad ermitteln
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
+CONFIG_PATH = os.path.join(BASE_DIR, "config.yaml")
 
 # Richtig: BASE_PATH nutzen für dynamischen Ingress
 requests_prefix = os.getenv("BASE_PATH", "/")
@@ -14,8 +15,8 @@ app = dash.Dash(__name__, requests_pathname_prefix=requests_prefix)
 server = app.server  # <- Home Assistant erwartet dieses Objekt!
 
 def load_config():
-    with open(CONFIG_PATH) as f:
-        return json.load(f)
+    with open(CONFIG_PATH, "r") as f:
+        return yaml.safe_load(f)
 
 @app.callback(
     Output("sankey-diagram", "figure"),
