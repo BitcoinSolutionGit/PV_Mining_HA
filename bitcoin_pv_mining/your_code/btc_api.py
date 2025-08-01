@@ -1,0 +1,1 @@
+# BTC-Preis- & Hashrate-Abfrage
