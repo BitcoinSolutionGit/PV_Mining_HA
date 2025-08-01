@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="code eingetragen">
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="Maintainer angepasst">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -65,7 +65,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1754049572588</updated>
-      <workItem from="1754049573612" duration="1217000" />
+      <workItem from="1754049573612" duration="2457000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <option name="closed" value="true" />
@@ -83,7 +83,23 @@
       <option name="project" value="LOCAL" />
       <updated>1754050184307</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Maintainer angepasst">
+      <option name="closed" value="true" />
+      <created>1754051159298</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1754051159298</updated>
+    </task>
+    <task id="LOCAL-00004" summary="Maintainer angepasst">
+      <option name="closed" value="true" />
+      <created>1754051171510</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1754051171510</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -92,6 +108,7 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="initial commit" />
     <MESSAGE value="code eingetragen" />
-    <option name="LAST_COMMIT_MESSAGE" value="code eingetragen" />
+    <MESSAGE value="Maintainer angepasst" />
+    <option name="LAST_COMMIT_MESSAGE" value="Maintainer angepasst" />
   </component>
 </project>

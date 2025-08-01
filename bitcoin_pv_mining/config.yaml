@@ -5,6 +5,7 @@ description: "Dynamische Steuerung von Bitcoin-Mining und Energiekomponenten bas
 startup: application
 boot: auto
 homeassistant_api: true
+category: automation
 options:
   miner_1_power_kw: 3.5
   miner_2_power_kw: 3.7
