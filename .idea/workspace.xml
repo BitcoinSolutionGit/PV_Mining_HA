@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="test 25" />
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="test 28" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -76,7 +76,7 @@
       <workItem from="1754054203827" duration="6841000" />
       <workItem from="1754078323501" duration="318000" />
       <workItem from="1754078656179" duration="75000" />
-      <workItem from="1754078752418" duration="10569000" />
+      <workItem from="1754078752418" duration="10978000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <option name="closed" value="true" />
@@ -406,15 +406,29 @@
       <option name="project" value="LOCAL" />
       <updated>1754089555193</updated>
     </task>
-    <option name="localTasksCounter" value="42" />
+    <task id="LOCAL-00042" summary="test 27">
+      <option name="closed" value="true" />
+      <created>1754089782382</created>
+      <option name="number" value="00042" />
+      <option name="presentableId" value="LOCAL-00042" />
+      <option name="project" value="LOCAL" />
+      <updated>1754089782382</updated>
+    </task>
+    <task id="LOCAL-00043" summary="test 28">
+      <option name="closed" value="true" />
+      <created>1754089967036</created>
+      <option name="number" value="00043" />
+      <option name="presentableId" value="LOCAL-00043" />
+      <option name="project" value="LOCAL" />
+      <updated>1754089967036</updated>
+    </task>
+    <option name="localTasksCounter" value="44" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="arch hinzugefügt" />
-    <MESSAGE value="icon hinzugefügt" />
     <MESSAGE value="dashboard hinzugefügt" />
     <MESSAGE value="config gefixt" />
     <MESSAGE value="config gefixt 2" />
@@ -438,7 +452,9 @@
     <MESSAGE value="test 22" />
     <MESSAGE value="test 24" />
     <MESSAGE value="test 25" />
-    <option name="LAST_COMMIT_MESSAGE" value="test 25" />
+    <MESSAGE value="test 27" />
+    <MESSAGE value="test 28" />
+    <option name="LAST_COMMIT_MESSAGE" value="test 28" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$dashboard.coverage" NAME="dashboard Coverage Results" MODIFIED="1754086399949" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining/ui" />
