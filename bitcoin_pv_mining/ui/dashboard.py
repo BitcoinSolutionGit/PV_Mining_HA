@@ -12,7 +12,8 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 requests_prefix = os.getenv("INGRESS_ENTRY", "/")
 
 # Dash-App mit Ingress-Kompatibilität initialisieren
-app = dash.Dash(__name__, requests_pathname_prefix=requests_prefix)
+REQUESTS_PATHNAME_PREFIX = os.getenv("INGRESS_ENTRY", "/")
+app = dash.Dash(__name__, requests_pathname_prefix=REQUESTS_PATHNAME_PREFIX)
 server = app.server  # Wichtig für HA-Ingress
 
 def load_config():
