@@ -1,1 +1,27 @@
-{}
+{
+  "miner_count": 2,
+  "miner_1": {"hashrate": 120, "verbrauch_kwh": 3.5},
+  "miner_2": {"hashrate": 140, "verbrauch_kwh": 3.7},
+  "hausbatterie_ah": 400,
+  "autobatterie_ah": 300,
+  "heizstab_max_kwh": 4.3,
+  "hausbatt_max_ladeleistung": 3.0,
+  "autobatt_max_ladeleistung": 5.0,
+  "stromkosten_eur": 0.25,
+  "btc_kest": 0.275,
+  "sensor_mapping": {
+    "pv_erzeugung": "sensor.pv_erzeugung",
+    "aktueller_verbrauch": "sensor.aktueller_verbrauch",
+    "wassertemperatur": "sensor.wassertemperatur"
+  },
+  "aktor_mapping": {
+    "heizstab_prozent": "input_number.heizstab_cache",
+    "wallbox_prozent": "input_number.wallbox_cache",
+    "hausbatterie_prozent": "input_number.batterie_cache"
+  },
+  "feature_flags": {
+    "heizstab_aktiv": true,
+    "wallbox_aktiv": true,
+    "hausbatterie_aktiv": true
+  }
+}
