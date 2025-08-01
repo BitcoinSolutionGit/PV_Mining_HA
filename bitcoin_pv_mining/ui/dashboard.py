@@ -1,35 +1,44 @@
 import os
-import dash
-from dash import html, dcc, Input, Output
-import plotly.graph_objects as go
 import yaml
+import dash
+import dash_html_components as html
+import dash_core_components as dcc
+from dash.dependencies import Input, Output
+import plotly.graph_objects as go
 
-# Ingress-Pfad aus HA (wird vom Supervisor gesetzt)
-requests_prefix = os.getenv("BASE_PATH", "/")
-
-# Dash App initialisieren mit korrektem Pfad
-app = dash.Dash(__name__, requests_pathname_prefix=requests_prefix)
-server = app.server  # <- Wichtig für HA
-
-# Config laden
+# Konfigurationspfad ermitteln
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.yaml")
 
+# Ingress-kompatibler Pfad
+requests_prefix = os.getenv("INGRESS_ENTRY", "/")
+app = dash.Dash(__name__, requests_pathname_prefix=requests_prefix)
+server = app.server  # Home Assistant benötigt dieses Attribut
+
+# Konfig laden
 def load_config():
     with open(CONFIG_PATH, "r") as f:
         return yaml.safe_load(f)
 
-@app.callback(Output("sankey-diagram", "figure"), Input("save-button", "n_clicks"))
+# Callback zur Aktualisierung des Sankey-Diagramms
+@app.callback(
+    Output("sankey-diagram", "figure"),
+    Input("save-button", "n_clicks")
+)
 def update_sankey(_):
-    config = load_config()
-    flags = config.get("feature_flags", {})
+    try:
+        config = load_config()
+        flags = config.get("feature_flags", {})
+    except Exception as e:
+        print("Fehler beim Laden der Konfiguration:", e)
+        return go.Figure()
 
     node_colors = [
         "gold",  # PV
         "blue" if flags.get("heizstab_aktiv") else "lightgray",
         "green" if flags.get("wallbox_aktiv") else "lightgray",
         "orange" if flags.get("hausbatterie_aktiv") else "lightgray",
-        "gray"
+        "gray"  # Hausverbrauch
     ]
 
     fig = go.Figure(data=[go.Sankey(
@@ -47,11 +56,11 @@ def update_sankey(_):
     )])
     return fig
 
+# Layout der App
 app.layout = html.Div([
     html.H1("PV Mining Dashboard"),
     dcc.Graph(id="sankey-diagram"),
     html.Button("Neu laden", id="save-button")
 ])
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8050, debug=False)
+# WICHTIG: NICHT app.run() verwenden – Home Assistant startet selbst!
