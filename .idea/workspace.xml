@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="venv neu" />
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="dashboard gefixt" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -76,7 +76,7 @@
       <workItem from="1754054203827" duration="6841000" />
       <workItem from="1754078323501" duration="318000" />
       <workItem from="1754078656179" duration="75000" />
-      <workItem from="1754078752418" duration="635000" />
+      <workItem from="1754078752418" duration="1465000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <option name="closed" value="true" />
@@ -222,7 +222,23 @@
       <option name="project" value="LOCAL" />
       <updated>1754079046403</updated>
     </task>
-    <option name="localTasksCounter" value="19" />
+    <task id="LOCAL-00019" summary="dashboard gefixt">
+      <option name="closed" value="true" />
+      <created>1754079581729</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1754079581729</updated>
+    </task>
+    <task id="LOCAL-00020" summary="dashboard gefixt">
+      <option name="closed" value="true" />
+      <created>1754079594772</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1754079594772</updated>
+    </task>
+    <option name="localTasksCounter" value="21" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -243,6 +259,10 @@
     <MESSAGE value="dashboard ergänzt" />
     <MESSAGE value="dash 2.14 syntax verwendet" />
     <MESSAGE value="venv neu" />
-    <option name="LAST_COMMIT_MESSAGE" value="venv neu" />
+    <MESSAGE value="dashboard gefixt" />
+    <option name="LAST_COMMIT_MESSAGE" value="dashboard gefixt" />
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$dashboard.coverage" NAME="dashboard Coverage Results" MODIFIED="1754079489352" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining/ui" />
   </component>
 </project>

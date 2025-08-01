@@ -1,2 +1,4 @@
+# Anforderungen für das PV-Mining Home Assistant Add-on
+dash
+plotly
 requests
-matplotlib
