@@ -9,6 +9,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.yaml")
 
 # Richtig: BASE_PATH nutzen für dynamischen Ingress
+# requests_prefix = os.getenv("INGRESS_ENTRY", "/")
 requests_prefix = os.getenv("BASE_PATH", "/")
 app = dash.Dash(__name__, requests_pathname_prefix=requests_prefix)
 server = app.server  # <- Home Assistant erwartet dieses Objekt!
@@ -81,5 +82,5 @@ app.layout = html.Div([
 ])
 
 # Dash-App starten – wichtig: host & port fix
-if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=8050)
+#if __name__ == "__main__":
+app.run(debug=False, host="0.0.0.0", port=8050)
