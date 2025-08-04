@@ -1,5 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-echo "Starting Dash App..."
-
-python3 ui/dashboard.py
+echo "[run.sh] Starte Bitcoin PV Mining Dashboard ..."
+python3 /app/main.py
