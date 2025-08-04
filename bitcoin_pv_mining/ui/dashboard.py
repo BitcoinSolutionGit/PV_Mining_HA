@@ -58,10 +58,16 @@ def update_sankey(_):
     return fig
 
 # Layout der App
+# app.layout = html.Div([
+#     html.H1("PV Mining Dashboard"),
+#     dcc.Graph(id="sankey-diagram"),
+#     html.Button("Neu laden", id="save-button")
+# ])
+
 app.layout = html.Div([
-    html.H1("PV Mining Dashboard"),
-    dcc.Graph(id="sankey-diagram"),
-    html.Button("Neu laden", id="save-button")
+    html.H1("Hello World Test"),
+    html.Div("Wenn du das siehst, ist die UI korrekt geladen.")
 ])
+
 
 # WICHTIG: NICHT app.run() verwenden – Home Assistant startet selbst!
