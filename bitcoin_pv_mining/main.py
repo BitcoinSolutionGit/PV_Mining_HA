@@ -91,7 +91,11 @@ def update_sankey(_):
 print("[main.py] Setze Layout")
 app.layout = html.Div([
     html.H1("PV Mining Dashboard"),
-    dcc.Graph(id="sankey-diagram", figure=go.Figure()),
+    #dcc.Graph(id="sankey-diagram", figure=go.Figure()),
+    dcc.Graph(
+        id="sankey-diagram",
+        figure=go.Figure(data=[go.Sankey(...)])
+    ),
     html.Button("Neu laden", id="save-button")
 ])
 
