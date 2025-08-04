@@ -103,41 +103,140 @@
 
 
 
+
+
+
+
+
+
+
+
+
+# import os
+# import dash
+# import requests
+# import json
+# from dash import html
+#
+# # Supervisor-Token holen
+# token = os.getenv("SUPERVISOR_TOKEN")
+# headers = {"Authorization": f"Bearer {token}"}
+#
+# try:
+#     response = requests.get("http://supervisor/addons/self/info", headers=headers)
+#     print("[SUPERVISOR RESPONSE]", response.status_code)
+#     print(response.json())
+# except Exception as e:
+#     print("[ERROR beim Supervisor-Zugriff]", str(e))
+#
+#
+#
+# raw_prefix = os.getenv("INGRESS_ENTRY")
+# if raw_prefix and raw_prefix.strip() != "":
+#     requests_prefix = raw_prefix
+#     print(f"[INFO] INGRESS_ENTRY erkannt: {requests_prefix}")
+# else:
+#     requests_prefix = "/"
+#     print("[WARN] INGRESS_ENTRY nicht gesetzt – verwende Fallback '/'")
+#
+# if not requests_prefix.endswith("/"):
+#     requests_prefix += "/"
+#
+#
+# # print("\n--- 🔍 ALLE Umgebungsvariablen ---")
+# # for key, value in os.environ.items():
+# #     print(f"[ENV] {key} = {value}")
+# # print("--- ENDE ---\n")
+#
+#
+# app = dash.Dash(
+#     __name__,
+#     url_base_pathname=requests_prefix,
+#     serve_locally=False,
+#     suppress_callback_exceptions=True
+# )
+#
+# # @app.server.before_request
+# # def set_ingress_prefix():
+# #     global app
+# #     if not hasattr(app, "requests_pathname_prefix_set"):
+# #         prefix = request.path.split("/", 4)
+# #         if len(prefix) >= 5:
+# #             ingress_prefix = "/" + "/".join(prefix[:5]) + "/"
+# #             app.config.requests_pathname_prefix = ingress_prefix
+# #             app.config.routes_pathname_prefix = ingress_prefix
+# #             print(f"[Dynamisch erkannt] Prefix: {ingress_prefix}")
+# #             app.requests_pathname_prefix_set = True
+#
+#
+# # HTML-Template
+# app.index_string = '''
+# <!DOCTYPE html>
+# <html>
+#     <head>
+#         {%metas%}
+#         <title>Bitcoin PV Dashboard</title>
+#         {%favicon%}
+#         {%css%}
+#     </head>
+#     <body>
+#         {%app_entry%}
+#         <footer>
+#             {%config%}
+#             {%scripts%}
+#             {%renderer%}
+#         </footer>
+#     </body>
+# </html>
+# '''
+#
+# # Minimal-Layout für Test
+# app.layout = html.Div([
+#     html.H1("🎉 Bitcoin PV Add-on funktioniert!"),
+#     html.P("Wenn du das siehst, klappt Ingress.")
+# ])
+#
+# server = app.server  # Wichtig: erst NACH dem Layout setzen
+#
+# if __name__ == "__main__":
+#     print("[main.py] Starte Dash auf 0.0.0.0:21000")
+#     app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)
+
+
 import os
-import dash
 import requests
+import dash
 from dash import html
 
-# Supervisor-Token holen
-token = os.getenv("SUPERVISOR_TOKEN")
-headers = {"Authorization": f"Bearer {token}"}
+# Supervisor-API: Ingress-URL auslesen
 
-try:
-    response = requests.get("http://supervisor/addons/self/info", headers=headers)
-    print("[SUPERVISOR RESPONSE]", response.status_code)
-    print(response.json())
-except Exception as e:
-    print("[ERROR beim Supervisor-Zugriff]", str(e))
+def get_ingress_url():
+    token = os.getenv("HASSIO_TOKEN") or os.getenv("SUPERVISOR_TOKEN")
+    if not token:
+        print("[ERROR] Kein Supervisor-Token gefunden!")
+        return "/"
 
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        response = requests.get("http://supervisor/core/api/hassio/addons/self/info", headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            ingress_url = data["data"].get("ingress_url", "/")
+            print(f"[INFO] Supervisor API Ingress-URL: {ingress_url}")
+            return ingress_url
+        else:
+            print(f"[WARN] Supervisor API Fehler: {response.status_code}")
+            return "/"
+    except Exception as e:
+        print(f"[ERROR] Anfrage an Supervisor fehlgeschlagen: {e}")
+        return "/"
 
+# Prefix bestimmen (ENV oder via Supervisor API)
+raw_prefix = os.getenv("INGRESS_ENTRY") or get_ingress_url()
+if not raw_prefix.endswith("/"):
+    raw_prefix += "/"
 
-raw_prefix = os.getenv("INGRESS_ENTRY")
-if raw_prefix and raw_prefix.strip() != "":
-    requests_prefix = raw_prefix
-    print(f"[INFO] INGRESS_ENTRY erkannt: {requests_prefix}")
-else:
-    requests_prefix = "/"
-    print("[WARN] INGRESS_ENTRY nicht gesetzt – verwende Fallback '/'")
-
-if not requests_prefix.endswith("/"):
-    requests_prefix += "/"
-
-
-# print("\n--- 🔍 ALLE Umgebungsvariablen ---")
-# for key, value in os.environ.items():
-#     print(f"[ENV] {key} = {value}")
-# print("--- ENDE ---\n")
-
+requests_prefix = raw_prefix
 
 app = dash.Dash(
     __name__,
@@ -145,19 +244,6 @@ app = dash.Dash(
     serve_locally=False,
     suppress_callback_exceptions=True
 )
-
-# @app.server.before_request
-# def set_ingress_prefix():
-#     global app
-#     if not hasattr(app, "requests_pathname_prefix_set"):
-#         prefix = request.path.split("/", 4)
-#         if len(prefix) >= 5:
-#             ingress_prefix = "/" + "/".join(prefix[:5]) + "/"
-#             app.config.requests_pathname_prefix = ingress_prefix
-#             app.config.routes_pathname_prefix = ingress_prefix
-#             print(f"[Dynamisch erkannt] Prefix: {ingress_prefix}")
-#             app.requests_pathname_prefix_set = True
-
 
 # HTML-Template
 app.index_string = '''
@@ -180,17 +266,14 @@ app.index_string = '''
 </html>
 '''
 
-# Minimal-Layout für Test
+# Minimal-Layout zum Testen
 app.layout = html.Div([
     html.H1("🎉 Bitcoin PV Add-on funktioniert!"),
     html.P("Wenn du das siehst, klappt Ingress.")
 ])
 
-server = app.server  # Wichtig: erst NACH dem Layout setzen
+server = app.server  # Wichtig
 
 if __name__ == "__main__":
     print("[main.py] Starte Dash auf 0.0.0.0:21000")
     app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)
-
-
-
