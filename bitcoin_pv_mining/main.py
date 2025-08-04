@@ -134,7 +134,8 @@ app = dash.Dash(
     __name__,
     routes_pathname_prefix=requests_prefix,
     requests_pathname_prefix=requests_prefix,
-    serve_locally=False  # <- Wichtig!
+    serve_locally=False,
+    suppress_callback_exceptions=True
 )
 
 server = app.server
