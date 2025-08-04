@@ -145,7 +145,7 @@ app = dash.Dash(
     serve_locally=False,
     suppress_callback_exceptions=True
 )
-server = app.server
+
 
 # HTML-Template
 app.index_string = '''
@@ -173,6 +173,8 @@ app.layout = html.Div([
     html.H1("🎉 Bitcoin PV Add-on funktioniert!"),
     html.P("Wenn du das siehst, klappt Ingress.")
 ])
+
+server = app.server  # Wichtig: erst NACH dem Layout setzen
 
 if __name__ == "__main__":
     print("[main.py] Starte Dash auf 0.0.0.0:21000")
