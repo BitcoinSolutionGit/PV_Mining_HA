@@ -209,9 +209,8 @@ import dash
 from dash import html
 
 # Supervisor-API: Ingress-URL auslesen
-
 def get_ingress_url():
-    token = os.getenv("HASSIO_TOKEN") or os.getenv("SUPERVISOR_TOKEN")
+    token = os.getenv("SUPERVISOR_TOKEN")
     if not token:
         print("[ERROR] Kein Supervisor-Token gefunden!")
         return "/"
