@@ -225,7 +225,7 @@ from dash import html
 
 # Supervisor-API: Ingress-URL auslesen
 def get_ingress_url():
-    token = os.getenv("SUPERVISOR_TOKEN")
+    token = os.getenv("SUPERVISOR_TOKEN") # or os.getenv("HASSIO_TOKEN")
     if not token:
         print("[ERROR] Kein Supervisor-Token gefunden!")
         return "/"
@@ -246,7 +246,7 @@ def get_ingress_url():
         return "/"
 
 # Prefix bestimmen (ENV oder via Supervisor API)
-raw_prefix = os.getenv("INGRESS_ENTRY") or get_ingress_url()
+raw_prefix = get_ingress_url() # or os.getenv("INGRESS_ENTRY")
 if not raw_prefix.endswith("/"):
     raw_prefix += "/"
 
@@ -254,8 +254,9 @@ requests_prefix = raw_prefix
 
 app = dash.Dash(
     __name__,
-    routes_pathname_prefix=requests_prefix,
-    requests_pathname_prefix=requests_prefix,
+    #routes_pathname_prefix=requests_prefix,
+    #requests_pathname_prefix=requests_prefix,
+    url_base_pathname=requests_prefix,
     serve_locally=False,
     suppress_callback_exceptions=True
 )
