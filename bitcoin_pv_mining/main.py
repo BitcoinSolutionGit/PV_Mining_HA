@@ -109,29 +109,15 @@ import requests
 from dash import html
 
 # Supervisor-Token holen
-token = os.getenv("SUPERVISOR_TOKEN") or os.getenv("HASSIO_TOKEN")
+token = os.getenv("SUPERVISOR_TOKEN")
 headers = {"Authorization": f"Bearer {token}"}
 
-# try:
-#     r = requests.get("http://localhost:80/core/api/hassio/addons/self/info", headers=headers)
-#     r.raise_for_status()
-#     data = r.json()
-#     ingress_url = data.get("data", {}).get("ingress_url", "")
-#     print(f"[INFO] Ingress-URL vom Supervisor erhalten: {ingress_url}")
-#
-#     # Extrahiere Pfad-Anteil
-#     if ingress_url.startswith("/api/hassio_ingress/"):
-#         ingress_prefix = ingress_url.rstrip("/") + "/"
-#         print(f"[INFO] Dynamischer Ingress Prefix erkannt: {ingress_prefix}")
-#         requests_prefix = ingress_prefix
-#     else:
-#         raise ValueError("Kein gültiger Ingress-Pfad erkannt")
-#
-# except Exception as e:
-#     print(f"[WARN] Supervisor API fehlgeschlagen: {e}")
-#     requests_prefix = os.getenv("INGRESS_ENTRY", "/")
-#     if not requests_prefix.endswith("/"):
-#         requests_prefix += "/"
+try:
+    response = requests.get("http://supervisor/addons/self/info", headers=headers)
+    print("[SUPERVISOR RESPONSE]", response.status_code)
+    print(response.json())
+except Exception as e:
+    print("[ERROR beim Supervisor-Zugriff]", str(e))
 
 
 
