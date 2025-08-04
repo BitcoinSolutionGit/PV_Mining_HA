@@ -1,11 +1,11 @@
 name: "Bitcoin PV Mining"
-version: "1.0.29"
+version: "1.0.30"
 slug: bitcoin_pv_mining
 description: "Dynamische Steuerung von Bitcoin-Mining und Energiekomponenten basierend auf PV-Überschuss"
 startup: application
 boot: auto
 ingress: true
-ingress_port: 8050
+ingress_port: 8080
 panel_icon: "mdi:chart-sankey"
 panel_title: "PV-Mining"
 #ports:
