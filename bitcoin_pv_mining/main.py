@@ -221,6 +221,8 @@ try:
 except Exception as e:
     print("[ERROR beim Supervisor-Zugriff]", str(e))
 
+
+
 # Supervisor-API: Ingress-URL auslesen
 def get_ingress_url():
     token = os.getenv("SUPERVISOR_TOKEN")
@@ -230,7 +232,7 @@ def get_ingress_url():
 
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        response = requests.get("http://supervisor/core/api/hassio/addons/self/info", headers=headers)
+        response = requests.get("http://supervisor/addons/self/info", headers=headers)
         if response.status_code == 200:
             data = response.json()
             ingress_url = data["data"].get("ingress_url", "/")
