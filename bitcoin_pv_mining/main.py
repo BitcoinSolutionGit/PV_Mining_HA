@@ -9,8 +9,10 @@ import plotly.graph_objects as go
 requests_prefix = os.getenv("INGRESS_ENTRY", "/")
 app = dash.Dash(
     __name__,
-    routes_pathname_prefix=requests_prefix  # <- korrekt für Dash ab 2.x
+    routes_pathname_prefix=requests_prefix,
+    assets_url_path=requests_prefix + "assets"
 )
+
 server = app.server  # wichtig für Home Assistant
 
 # Optional: sichere Dash-Kompatibilität
