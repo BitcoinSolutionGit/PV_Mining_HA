@@ -252,11 +252,14 @@ if not raw_prefix.endswith("/"):
 
 requests_prefix = raw_prefix
 
+print(f"[DEBUG] Verwendeter Ingress Prefix: {raw_prefix}")
+
 app = dash.Dash(
     __name__,
-    #routes_pathname_prefix=requests_prefix,
-    #requests_pathname_prefix=requests_prefix,
-    url_base_pathname=requests_prefix,
+    routes_pathname_prefix=requests_prefix,
+    requests_pathname_prefix=requests_prefix,
+    url_base_pathname=None,
+    #url_base_pathname=requests_prefix,
     serve_locally=False,
     suppress_callback_exceptions=True
 )
