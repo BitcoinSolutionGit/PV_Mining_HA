@@ -13,10 +13,11 @@ if not requests_prefix.endswith("/"):
 app = dash.Dash(
     __name__,
     routes_pathname_prefix=requests_prefix,
-    requests_pathname_prefix=requests_prefix,  # Wichtig!
+    requests_pathname_prefix=requests_prefix,
     assets_url_path=requests_prefix + "assets/",
-    serve_locally=True  # Statische Dateien direkt servieren
+    serve_locally=True
 )
+
 
 server = app.server  # wichtig für Home Assistant
 
@@ -100,6 +101,9 @@ app.index_string = '''
 # if __name__ == "__main__":
 #     print("[main.py] Starte Dash App auf 0.0.0.0:21000")
 #     app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)
+
+print("Dash Prefix:", requests_prefix)
+print("App läuft mit:", app.config.routes_pathname_prefix)
 
 # Layout zu Testzwecken
 app.layout = html.Div([
