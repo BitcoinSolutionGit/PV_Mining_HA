@@ -108,41 +108,26 @@ import dash
 from dash import html
 import re
 
-# Default-Fallback
-prefix = "/"
 
-# # Extrahiere Ingress-Pfad aus Prozess-Startkontext (falls verfügbar)
-# raw_path = os.environ.get("PATH", "")
-# match = re.search(r"/api/hassio_ingress/[\w-]+/", raw_path)
-# if match:
-#     prefix = match.group(0)
-#     print(f"[INFO] Automatisch ermittelter Prefix: {prefix}")
-# else:
-#     print("[WARN] Kein gültiger Ingress-Pfad gefunden, verwende '/'")
-#
-# # Stelle sicher, dass Slash am Ende
-# if not prefix.endswith("/"):
-#     prefix += "/"
-
-
-# DEBUG: Zeige PATH-Variable zur Analyse
-print(f"[DEBUG] PATH: {os.environ.get('PATH')}")
-
-# DEBUG: Alle relevanten ENV Variablen loggen
-for key, value in os.environ.items():
-    if any(p in key.lower() for p in ["path", "prefix", "entry", "ingress"]):
-        print(f"[ENV] {key} = {value}")
-
-raw_prefix = os.getenv("INGRESS_ENTRY")
-if raw_prefix and raw_prefix.strip() != "":
-    requests_prefix = raw_prefix
-    print(f"[INFO] INGRESS_ENTRY erkannt: {requests_prefix}")
+# Extrahiere Ingress-Pfad aus Prozess-Startkontext (falls verfügbar)
+raw_path = os.environ.get("PATH", "")
+match = re.search(r"/api/hassio_ingress/[\w-]+/", raw_path)
+if match:
+    prefix = match.group(0)
+    print(f"[INFO] Automatisch ermittelter Prefix: {prefix}")
 else:
-    requests_prefix = "/"
-    print("[WARN] INGRESS_ENTRY nicht gesetzt – verwende Fallback '/'")
+    print("[WARN] Kein gültiger Ingress-Pfad gefunden, verwende '/'")
 
-if not requests_prefix.endswith("/"):
-    requests_prefix += "/"
+# Stelle sicher, dass Slash am Ende
+if not prefix.endswith("/"):
+    prefix += "/"
+
+
+print("\n--- 🔍 ALLE Umgebungsvariablen ---")
+for key, value in os.environ.items():
+    print(f"[ENV] {key} = {value}")
+print("--- ENDE ---\n")
+
 
 app = dash.Dash(
     __name__,
@@ -151,17 +136,17 @@ app = dash.Dash(
     suppress_callback_exceptions=True
 )
 
-@app.server.before_request
-def set_ingress_prefix():
-    global app
-    if not hasattr(app, "requests_pathname_prefix_set"):
-        prefix = request.path.split("/", 4)
-        if len(prefix) >= 5:
-            ingress_prefix = "/" + "/".join(prefix[:5]) + "/"
-            app.config.requests_pathname_prefix = ingress_prefix
-            app.config.routes_pathname_prefix = ingress_prefix
-            print(f"[Dynamisch erkannt] Prefix: {ingress_prefix}")
-            app.requests_pathname_prefix_set = True
+# @app.server.before_request
+# def set_ingress_prefix():
+#     global app
+#     if not hasattr(app, "requests_pathname_prefix_set"):
+#         prefix = request.path.split("/", 4)
+#         if len(prefix) >= 5:
+#             ingress_prefix = "/" + "/".join(prefix[:5]) + "/"
+#             app.config.requests_pathname_prefix = ingress_prefix
+#             app.config.routes_pathname_prefix = ingress_prefix
+#             print(f"[Dynamisch erkannt] Prefix: {ingress_prefix}")
+#             app.requests_pathname_prefix_set = True
 
 
 # HTML-Template
