@@ -124,8 +124,16 @@ from dash import html
 
 # Dash Ingress Path setzen
 requests_prefix = os.getenv("INGRESS_ENTRY", "/")
+if not requests_prefix or requests_prefix == "/":
+    print("[WARN] INGRESS_ENTRY nicht gesetzt – setze Default für lokalen Testbetrieb")
+    requests_prefix = "/"
+else:
+    print(f"[INFO] INGRESS_ENTRY erkannt: {requests_prefix}")
+
+# Endgültige Absicherung
 if not requests_prefix.endswith("/"):
     requests_prefix += "/"
+
 
 print("[main.py] Ingress Prefix:", requests_prefix)
 
@@ -134,7 +142,7 @@ app = dash.Dash(
     __name__,
     routes_pathname_prefix=requests_prefix,
     requests_pathname_prefix=requests_prefix,
-    serve_locally=False,  # wichtig: CDN für Dash
+    serve_locally=False,
     suppress_callback_exceptions=True
 )
 server = app.server
@@ -169,4 +177,6 @@ app.layout = html.Div([
 if __name__ == "__main__":
     print("[main.py] Starte Dash auf 0.0.0.0:21000")
     app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)
+
+
 
