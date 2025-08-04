@@ -122,15 +122,26 @@ import os
 import dash
 from dash import html
 
-# Dash Ingress Path setzen
-requests_prefix = os.getenv("INGRESS_ENTRY", "/")
-if not requests_prefix or requests_prefix == "/":
-    print("[WARN] INGRESS_ENTRY nicht gesetzt – setze Default für lokalen Testbetrieb")
-    requests_prefix = "/"
-else:
-    print(f"[INFO] INGRESS_ENTRY erkannt: {requests_prefix}")
+# # Dash Ingress Path setzen
+# requests_prefix = os.getenv("INGRESS_ENTRY", "/")
+# if not requests_prefix or requests_prefix == "/":
+#     print("[WARN] INGRESS_ENTRY nicht gesetzt – setze Default für lokalen Testbetrieb")
+#     requests_prefix = "/"
+# else:
+#     print(f"[INFO] INGRESS_ENTRY erkannt: {requests_prefix}")
+#
+# # Endgültige Absicherung
+# if not requests_prefix.endswith("/"):
+#     requests_prefix += "/"
 
-# Endgültige Absicherung
+raw_prefix = os.getenv("INGRESS_ENTRY")
+if raw_prefix and raw_prefix.strip() != "":
+    requests_prefix = raw_prefix
+    print(f"[INFO] INGRESS_ENTRY erkannt: {requests_prefix}")
+else:
+    requests_prefix = "/"
+    print("[WARN] INGRESS_ENTRY nicht gesetzt – verwende Fallback '/' (lokaler Testbetrieb)")
+
 if not requests_prefix.endswith("/"):
     requests_prefix += "/"
 
