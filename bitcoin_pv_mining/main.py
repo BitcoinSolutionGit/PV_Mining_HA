@@ -13,8 +13,11 @@ if not requests_prefix.endswith("/"):
 app = dash.Dash(
     __name__,
     routes_pathname_prefix=requests_prefix,
-    assets_url_path=requests_prefix + "assets"
+    requests_pathname_prefix=requests_prefix,  # Wichtig!
+    assets_url_path=requests_prefix + "assets/",
+    serve_locally=True  # Statische Dateien direkt servieren
 )
+
 server = app.server  # wichtig für Home Assistant
 
 # Optional: sichere Dash-Kompatibilität
