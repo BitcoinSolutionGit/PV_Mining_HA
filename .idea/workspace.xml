@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="test 42" />
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="test 44" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -86,31 +86,7 @@
       <workItem from="1754304068786" duration="19000" />
       <workItem from="1754334671296" duration="2400000" />
       <workItem from="1754337188422" duration="73000" />
-      <workItem from="1754337325814" duration="6925000" />
-    </task>
-    <task id="LOCAL-00033" summary="test 16">
-      <option name="closed" value="true" />
-      <created>1754086861599</created>
-      <option name="number" value="00033" />
-      <option name="presentableId" value="LOCAL-00033" />
-      <option name="project" value="LOCAL" />
-      <updated>1754086861599</updated>
-    </task>
-    <task id="LOCAL-00034" summary="test 16">
-      <option name="closed" value="true" />
-      <created>1754087216542</created>
-      <option name="number" value="00034" />
-      <option name="presentableId" value="LOCAL-00034" />
-      <option name="project" value="LOCAL" />
-      <updated>1754087216542</updated>
-    </task>
-    <task id="LOCAL-00035" summary="test 19">
-      <option name="closed" value="true" />
-      <created>1754087955742</created>
-      <option name="number" value="00035" />
-      <option name="presentableId" value="LOCAL-00035" />
-      <option name="project" value="LOCAL" />
-      <updated>1754087955742</updated>
+      <workItem from="1754337325814" duration="7487000" />
     </task>
     <task id="LOCAL-00036" summary="test 20">
       <option name="closed" value="true" />
@@ -480,15 +456,37 @@
       <option name="project" value="LOCAL" />
       <updated>1754344007706</updated>
     </task>
-    <option name="localTasksCounter" value="82" />
+    <task id="LOCAL-00082" summary="test 43">
+      <option name="closed" value="true" />
+      <created>1754344347851</created>
+      <option name="number" value="00082" />
+      <option name="presentableId" value="LOCAL-00082" />
+      <option name="project" value="LOCAL" />
+      <updated>1754344347851</updated>
+    </task>
+    <task id="LOCAL-00083" summary="test 44">
+      <option name="closed" value="true" />
+      <created>1754344479592</created>
+      <option name="number" value="00083" />
+      <option name="presentableId" value="LOCAL-00083" />
+      <option name="project" value="LOCAL" />
+      <updated>1754344479592</updated>
+    </task>
+    <task id="LOCAL-00084" summary="test 44">
+      <option name="closed" value="true" />
+      <created>1754344514028</created>
+      <option name="number" value="00084" />
+      <option name="presentableId" value="LOCAL-00084" />
+      <option name="project" value="LOCAL" />
+      <updated>1754344514028</updated>
+    </task>
+    <option name="localTasksCounter" value="85" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="test 9" />
-    <MESSAGE value="test 10" />
     <MESSAGE value="test 11" />
     <MESSAGE value="test 12" />
     <MESSAGE value="test 21" />
@@ -512,7 +510,9 @@
     <MESSAGE value="test 40" />
     <MESSAGE value="test 41" />
     <MESSAGE value="test 42" />
-    <option name="LAST_COMMIT_MESSAGE" value="test 42" />
+    <MESSAGE value="test 43" />
+    <MESSAGE value="test 44" />
+    <option name="LAST_COMMIT_MESSAGE" value="test 44" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$main.coverage" NAME="main Coverage Results" MODIFIED="1754338107719" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />
