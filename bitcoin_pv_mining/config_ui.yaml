@@ -1,0 +1,4 @@
+feature_flags:
+  heizstab_aktiv: true
+  wallbox_aktiv: false
+  hausbatterie_aktiv: true
