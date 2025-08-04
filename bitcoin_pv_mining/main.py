@@ -7,12 +7,14 @@ import plotly.graph_objects as go
 
 # Ingress-kompatibler Pfad
 requests_prefix = os.getenv("INGRESS_ENTRY", "/")
+if not requests_prefix.endswith("/"):
+    requests_prefix += "/"
+
 app = dash.Dash(
     __name__,
     routes_pathname_prefix=requests_prefix,
     assets_url_path=requests_prefix + "assets"
 )
-
 server = app.server  # wichtig für Home Assistant
 
 # Optional: sichere Dash-Kompatibilität
