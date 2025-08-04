@@ -119,27 +119,27 @@
 
 
 import os
-import yaml
 import dash
-from dash import html, dcc
-from dash.dependencies import Input, Output
-import plotly.graph_objects as go
+from dash import html
 
-# Ingress-kompatibler Pfad
+# Dash Ingress Path setzen
 requests_prefix = os.getenv("INGRESS_ENTRY", "/")
 if not requests_prefix.endswith("/"):
     requests_prefix += "/"
 
+print("[main.py] Ingress Prefix:", requests_prefix)
+
+# Dash-App initialisieren
 app = dash.Dash(
     __name__,
     routes_pathname_prefix=requests_prefix,
     requests_pathname_prefix=requests_prefix,
-    serve_locally=False,
+    serve_locally=False,  # wichtig: CDN für Dash
     suppress_callback_exceptions=True
 )
-
 server = app.server
 
+# HTML-Template
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -160,11 +160,13 @@ app.index_string = '''
 </html>
 '''
 
+# Minimal-Layout für Test
 app.layout = html.Div([
-    html.H1("🚀 Ingress funktioniert!"),
-    html.P("Wenn du das hier siehst, ist alles korrekt konfiguriert."),
+    html.H1("🎉 Bitcoin PV Add-on funktioniert!"),
+    html.P("Wenn du das siehst, klappt Ingress.")
 ])
 
 if __name__ == "__main__":
-    print("[main] Starte Dash auf 0.0.0.0:21000")
+    print("[main.py] Starte Dash auf 0.0.0.0:21000")
     app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)
+
