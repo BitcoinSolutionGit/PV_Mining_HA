@@ -109,18 +109,16 @@ from dash import html
 import re
 
 
-# Extrahiere Ingress-Pfad aus Prozess-Startkontext (falls verfügbar)
-raw_path = os.environ.get("PATH", "")
-match = re.search(r"/api/hassio_ingress/[\w-]+/", raw_path)
-if match:
-    prefix = match.group(0)
-    print(f"[INFO] Automatisch ermittelter Prefix: {prefix}")
+raw_prefix = os.getenv("INGRESS_ENTRY")
+if raw_prefix and raw_prefix.strip() != "":
+    requests_prefix = raw_prefix
+    print(f"[INFO] INGRESS_ENTRY erkannt: {requests_prefix}")
 else:
-    print("[WARN] Kein gültiger Ingress-Pfad gefunden, verwende '/'")
+    requests_prefix = "/"
+    print("[WARN] INGRESS_ENTRY nicht gesetzt – verwende Fallback '/'")
 
-# Stelle sicher, dass Slash am Ende
-if not prefix.endswith("/"):
-    prefix += "/"
+if not requests_prefix.endswith("/"):
+    requests_prefix += "/"
 
 
 print("\n--- 🔍 ALLE Umgebungsvariablen ---")
