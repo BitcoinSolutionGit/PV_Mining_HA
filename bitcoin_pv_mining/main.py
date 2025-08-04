@@ -87,6 +87,8 @@ app.layout = html.Div([
     dcc.Graph(id="sankey-diagram"),
     html.Button("Neu laden", id="save-button")
 ])
+print("Layout geladen, Initialisierung läuft...")
+
 
 # Start der Dash-App (Pflicht für Ingress!)
 if __name__ == "__main__":

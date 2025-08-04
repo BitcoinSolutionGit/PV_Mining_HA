@@ -28,8 +28,10 @@ def load_config():
 )
 def update_sankey(_):
     try:
+        print("Callback triggered – Lade Konfiguration")
         config = load_config()
         flags = config.get("feature_flags", {})
+        print("Konfiguration:", flags)
     except Exception as e:
         print("Fehler beim Laden der Konfiguration:", e)
         return go.Figure()
