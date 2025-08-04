@@ -4,11 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="test 2">
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/btc_api.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/config.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/utils.py" beforeDir="false" />
-    </list>
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="test 2" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -33,6 +29,9 @@
   &quot;associatedIndex&quot;: 1
 }</component>
   <component name="ProjectId" id="30gWCyccPNlv6RSnGjjlBNRtq5B" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="2" id="Add" />
+  </component>
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
@@ -82,7 +81,7 @@
       <workItem from="1754078656179" duration="75000" />
       <workItem from="1754078752418" duration="11676000" />
       <workItem from="1754257352925" duration="132000" />
-      <workItem from="1754293641297" duration="1556000" />
+      <workItem from="1754293641297" duration="2070000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <option name="closed" value="true" />
@@ -460,7 +459,15 @@
       <option name="project" value="LOCAL" />
       <updated>1754294808704</updated>
     </task>
-    <option name="localTasksCounter" value="48" />
+    <task id="LOCAL-00048" summary="test 2">
+      <option name="closed" value="true" />
+      <created>1754295436534</created>
+      <option name="number" value="00048" />
+      <option name="presentableId" value="LOCAL-00048" />
+      <option name="project" value="LOCAL" />
+      <updated>1754295436534</updated>
+    </task>
+    <option name="localTasksCounter" value="49" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

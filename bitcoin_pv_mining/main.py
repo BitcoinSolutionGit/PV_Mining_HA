@@ -60,3 +60,7 @@ app.layout = html.Div([
     dcc.Graph(id="sankey-diagram"),
     html.Button("Neu laden", id="save-button")
 ])
+
+if __name__ == "__main__":
+    print("[main.py] Starte Dash App auf 0.0.0.0:8080")
+    app.run(host="0.0.0.0", port=8080, debug=False, use_reloader=False)
