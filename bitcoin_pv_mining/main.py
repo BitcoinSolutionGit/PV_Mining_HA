@@ -134,16 +134,23 @@ from dash import html
 # if not requests_prefix.endswith("/"):
 #     requests_prefix += "/"
 
-raw_prefix = os.getenv("INGRESS_ENTRY")
-if raw_prefix and raw_prefix.strip() != "":
-    requests_prefix = raw_prefix
-    print(f"[INFO] INGRESS_ENTRY erkannt: {requests_prefix}")
-else:
-    requests_prefix = "/"
-    print("[WARN] INGRESS_ENTRY nicht gesetzt – verwende Fallback '/' (lokaler Testbetrieb)")
+# raw_prefix = os.getenv("INGRESS_ENTRY")
+# if raw_prefix and raw_prefix.strip() != "":
+#     requests_prefix = raw_prefix
+#     print(f"[INFO] INGRESS_ENTRY erkannt: {requests_prefix}")
+# else:
+#     requests_prefix = "/"
+#     print("[WARN] INGRESS_ENTRY nicht gesetzt – verwende Fallback '/' (lokaler Testbetrieb)")
 
-if not requests_prefix.endswith("/"):
-    requests_prefix += "/"
+# Ingress-kompatibler Pfad
+raw_prefix = os.getenv("INGRESS_ENTRY")
+
+if not raw_prefix:
+    # --- Dynamischer Fallback per __file__ Pfadtrick nicht möglich, also hartkodieren zum Test ---
+    print("[WARN] INGRESS_ENTRY nicht gesetzt – setze Testwert")
+    raw_prefix = "/api/hassio_ingress/uAxAkKtf6pQZT1dKAB5hmnRaZDYdKlEttnr42lkk7U/"
+
+requests_prefix = raw_prefix if raw_prefix.endswith("/") else raw_prefix + "/"
 
 
 print("[main.py] Ingress Prefix:", requests_prefix)
