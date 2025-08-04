@@ -206,20 +206,20 @@
 import os
 import requests
 import dash
-import json
+# import json
 from dash import html
 
 
-# Supervisor-Token holen
-test_token = os.getenv("SUPERVISOR_TOKEN")
-test_headers = {"Authorization": f"Bearer {test_token}"}
-
-try:
-    test_response = requests.get("http://supervisor/addons/self/info", headers=test_headers)
-    print("[SUPERVISOR RESPONSE]", test_response.status_code)
-    print(test_response.json())
-except Exception as e:
-    print("[ERROR beim Supervisor-Zugriff]", str(e))
+# # Supervisor-Token holen - das liefert echt viele infos zum debugen. sonst auskommentiert lassen!
+# test_token = os.getenv("SUPERVISOR_TOKEN")
+# test_headers = {"Authorization": f"Bearer {test_token}"}
+#
+# try:
+#     test_response = requests.get("http://supervisor/addons/self/info", headers=test_headers)
+#     print("[SUPERVISOR RESPONSE]", test_response.status_code)
+#     print(test_response.json())
+# except Exception as e:
+#     print("[ERROR beim Supervisor-Zugriff]", str(e))
 
 
 
@@ -254,7 +254,8 @@ requests_prefix = raw_prefix
 
 app = dash.Dash(
     __name__,
-    url_base_pathname=requests_prefix,
+    routes_pathname_prefix=requests_prefix,
+    requests_pathname_prefix=requests_prefix,
     serve_locally=False,
     suppress_callback_exceptions=True
 )
