@@ -113,7 +113,7 @@ token = os.getenv("SUPERVISOR_TOKEN") or os.getenv("HASSIO_TOKEN")
 headers = {"Authorization": f"Bearer {token}"}
 
 try:
-    r = requests.get("http://supervisor/core/api/hassio/addons/self/info", headers=headers)
+    r = requests.get("http://localhost:80/core/api/hassio/addons/self/info", headers=headers)
     r.raise_for_status()
     data = r.json()
     ingress_url = data.get("data", {}).get("ingress_url", "")
