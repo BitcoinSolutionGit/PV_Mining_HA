@@ -136,9 +136,7 @@ if not requests_prefix.endswith("/"):
 
 app = dash.Dash(
     __name__,
-    routes_pathname_prefix=requests_prefix,
-    requests_pathname_prefix=requests_prefix,
-    url_base_pathname=requests_prefix,  # <<< NEU
+    url_base_pathname=requests_prefix,
     serve_locally=False,
     suppress_callback_exceptions=True
 )
