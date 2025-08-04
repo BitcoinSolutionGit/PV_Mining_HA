@@ -121,6 +121,7 @@
 import os
 import dash
 from dash import html
+from flask import request
 
 raw_prefix = os.getenv("INGRESS_ENTRY")
 if raw_prefix and raw_prefix.strip() != "":
@@ -141,6 +142,18 @@ app = dash.Dash(
     serve_locally=False,
     suppress_callback_exceptions=True
 )
+
+@app.server.before_request
+def set_ingress_prefix():
+    global app
+    if not hasattr(app, "requests_pathname_prefix_set"):
+        prefix = request.path.split("/", 4)
+        if len(prefix) >= 5:
+            ingress_prefix = "/" + "/".join(prefix[:5]) + "/"
+            app.config.requests_pathname_prefix = ingress_prefix
+            app.config.routes_pathname_prefix = ingress_prefix
+            print(f"[Dynamisch erkannt] Prefix: {ingress_prefix}")
+            app.requests_pathname_prefix_set = True
 
 
 # HTML-Template
