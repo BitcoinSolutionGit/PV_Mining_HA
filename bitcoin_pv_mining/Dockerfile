@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -10,4 +10,3 @@ RUN chmod +x /app/run.sh
 EXPOSE 8080
 
 CMD ["/bin/sh", "/app/run.sh"]
-

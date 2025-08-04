@@ -55,8 +55,14 @@ def load_config():
     Input("save-button", "n_clicks")
 )
 def update_sankey(_):
-    config = load_config()
-    flags = config.get("feature_flags", {})
+    try:
+        print("Callback triggered – Lade Konfiguration")
+        config = load_config()
+        flags = config.get("feature_flags", {})
+        print("Konfiguration:", flags)
+    except Exception as e:
+        print("Fehler beim Laden der Konfiguration:", e)
+        return go.Figure()
 
     node_colors = [
         "gold",  # PV
@@ -82,13 +88,12 @@ def update_sankey(_):
     return fig
 
 # Layout
+print("[main.py] Setze Layout")
 app.layout = html.Div([
     html.H1("PV Mining Dashboard"),
-    dcc.Graph(id="sankey-diagram"),
+    dcc.Graph(id="sankey-diagram", figure=go.Figure()),
     html.Button("Neu laden", id="save-button")
 ])
-print("Layout geladen, Initialisierung läuft...")
-
 
 # Start der Dash-App (Pflicht für Ingress!)
 if __name__ == "__main__":
