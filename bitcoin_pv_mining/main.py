@@ -64,38 +64,32 @@ def update_sankey(_):
         print("Fehler beim Laden der Konfiguration:", e)
         return go.Figure()
 
-    node_colors = [
-        "gold",  # PV
-        "blue" if flags.get("heizstab_aktiv") else "lightgray",
-        "green" if flags.get("wallbox_aktiv") else "lightgray",
-        "orange" if flags.get("hausbatterie_aktiv") else "lightgray",
-        "gray"  # Hausverbrauch
-    ]
+    node = dict(
+        label=["PV", "Heizstab", "Wallbox", "Hausbatterie", "Hausverbrauch"],
+        pad=15,
+        thickness=20,
+        color=[
+            "gold",  # PV
+            "blue" if flags.get("heizstab_aktiv") else "lightgray",
+            "green" if flags.get("wallbox_aktiv") else "lightgray",
+            "orange" if flags.get("hausbatterie_aktiv") else "lightgray",
+            "gray"  # Hausverbrauch
+        ]
+    )
 
-    fig = go.Figure(data=[go.Sankey(
-        node=dict(
-            label=["PV", "Heizstab", "Wallbox", "Hausbatterie", "Hausverbrauch"],
-            pad=15,
-            thickness=20,
-            color=node_colors
-        ),
-        link=dict(
-            source=[0, 0, 0, 0],
-            target=[1, 2, 3, 4],
-            value=[4, 3, 2, 1]
-        )
-    )])
-    return fig
+    link = dict(
+        source=[0, 0, 0, 0],
+        target=[1, 2, 3, 4],
+        value=[4, 3, 2, 1]
+    )
+
+    return go.Figure(go.Sankey(node=node, link=link))
 
 # Layout
 print("[main.py] Setze Layout")
 app.layout = html.Div([
     html.H1("PV Mining Dashboard"),
-    #dcc.Graph(id="sankey-diagram", figure=go.Figure()),
-    dcc.Graph(
-        id="sankey-diagram",
-        figure=go.Figure(data=[go.Sankey(...)])
-    ),
+    dcc.Graph(id="sankey-diagram", figure=go.Figure()),
     html.Button("Neu laden", id="save-button")
 ])
 
