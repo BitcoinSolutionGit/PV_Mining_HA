@@ -14,7 +14,6 @@ app = dash.Dash(
     __name__,
     routes_pathname_prefix=requests_prefix,
     requests_pathname_prefix=requests_prefix,
-    assets_url_path=requests_prefix + "assets/",
     serve_locally=True
 )
 
@@ -110,6 +109,9 @@ app.layout = html.Div([
     html.H1("Test Dashboard"),
     html.P("Diese Seite wird korrekt angezeigt."),
 ])
+
+print(">>> Dash läuft unter Prefix:", requests_prefix)
+
 
 if __name__ == "__main__":
     print("[main] Starte Dash auf 0.0.0.0:21000")
