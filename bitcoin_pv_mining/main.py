@@ -1,4 +1,3 @@
-# zentrale Logik
 import os
 import yaml
 import dash
@@ -8,12 +7,37 @@ import plotly.graph_objects as go
 
 # Ingress-kompatibler Pfad
 requests_prefix = os.getenv("INGRESS_ENTRY", "/")
-app = dash.Dash(__name__, requests_pathname_prefix=requests_prefix)
+app = dash.Dash(
+    __name__,
+    requests_pathname_prefix=requests_prefix,
+    url_base_pathname=requests_prefix
+)
 server = app.server  # wichtig für Home Assistant
 
-# Konfigpfad
+# Optional: sichere Dash-Kompatibilität
+app.index_string = '''
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>Bitcoin PV Dashboard</title>
+        {%favicon%}
+        {%css%}
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+'''
+
+# Konfigpfad – zeigt auf interne Konfigurationsdatei
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(BASE_DIR, "config.yaml")
+CONFIG_PATH = os.path.join(BASE_DIR, "config_ui.yaml")
 
 def load_config():
     try:
@@ -61,6 +85,7 @@ app.layout = html.Div([
     html.Button("Neu laden", id="save-button")
 ])
 
+# Start der Dash-App (Pflicht für Ingress!)
 if __name__ == "__main__":
     print("[main.py] Starte Dash App auf 0.0.0.0:8080")
     app.run(host="0.0.0.0", port=8080, debug=False, use_reloader=False)
