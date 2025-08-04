@@ -206,7 +206,20 @@
 import os
 import requests
 import dash
+import json
 from dash import html
+
+
+# Supervisor-Token holen
+test_token = os.getenv("SUPERVISOR_TOKEN")
+test_headers = {"Authorization": f"Bearer {test_token}"}
+
+try:
+    test_response = requests.get("http://supervisor/addons/self/info", headers=test_headers)
+    print("[SUPERVISOR RESPONSE]", test_response.status_code)
+    print(test_response.json())
+except Exception as e:
+    print("[ERROR beim Supervisor-Zugriff]", str(e))
 
 # Supervisor-API: Ingress-URL auslesen
 def get_ingress_url():
