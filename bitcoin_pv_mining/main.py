@@ -101,5 +101,5 @@ app.layout = html.Div([
 
 # Start der Dash-App (Pflicht für Ingress!)
 if __name__ == "__main__":
-    print("[main.py] Starte Dash App auf 0.0.0.0:8080")
-    app.run(host="0.0.0.0", port=8080, debug=False, use_reloader=False)
+    print("[main.py] Starte Dash App auf 0.0.0.0:21000")
+    app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)
