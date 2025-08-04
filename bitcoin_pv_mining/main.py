@@ -100,59 +100,37 @@
 # # if __name__ == "__main__":
 # #     print("[main.py] Starte Dash App auf 0.0.0.0:21000")
 # #     app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)
-#
-# print("Dash Prefix:", requests_prefix)
-# print("App läuft mit:", app.config.routes_pathname_prefix)
-#
-# # Layout zu Testzwecken
-# app.layout = html.Div([
-#     html.H1("Test Dashboard"),
-#     html.P("Diese Seite wird korrekt angezeigt."),
-# ])
-#
-# print(">>> Dash läuft unter Prefix:", requests_prefix)
-#
-#
-# if __name__ == "__main__":
-#     print("[main] Starte Dash auf 0.0.0.0:21000")
-#     app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)
+
 
 
 import os
 import dash
 from dash import html
-from flask import request
+import re
 
-raw_prefix = os.getenv("INGRESS_ENTRY")
-if raw_prefix and raw_prefix.strip() != "":
-    requests_prefix = raw_prefix
-    print(f"[INFO] INGRESS_ENTRY erkannt: {requests_prefix}")
+# Default-Fallback
+prefix = "/"
+
+# Extrahiere Ingress-Pfad aus Prozess-Startkontext (falls verfügbar)
+raw_path = os.environ.get("PATH", "")
+match = re.search(r"/api/hassio_ingress/[\w-]+/", raw_path)
+if match:
+    prefix = match.group(0)
+    print(f"[INFO] Automatisch ermittelter Prefix: {prefix}")
 else:
-    requests_prefix = "/"
-    print("[WARN] INGRESS_ENTRY nicht gesetzt – verwende Fallback '/'")
+    print("[WARN] Kein gültiger Ingress-Pfad gefunden, verwende '/'")
 
-if not requests_prefix.endswith("/"):
-    requests_prefix += "/"
+# Stelle sicher, dass Slash am Ende
+if not prefix.endswith("/"):
+    prefix += "/"
 
+# Dash App mit dynamischem Pfad
 app = dash.Dash(
     __name__,
-    url_base_pathname=requests_prefix,
+    url_base_pathname=prefix,
     serve_locally=False,
     suppress_callback_exceptions=True
 )
-
-@app.server.before_request
-def set_ingress_prefix():
-    global app
-    if not hasattr(app, "requests_pathname_prefix_set"):
-        prefix = request.path.split("/", 4)
-        if len(prefix) >= 5:
-            ingress_prefix = "/" + "/".join(prefix[:5]) + "/"
-            app.config.requests_pathname_prefix = ingress_prefix
-            app.config.routes_pathname_prefix = ingress_prefix
-            print(f"[Dynamisch erkannt] Prefix: {ingress_prefix}")
-            app.requests_pathname_prefix_set = True
-
 
 # HTML-Template
 app.index_string = '''
