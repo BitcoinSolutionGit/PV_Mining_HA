@@ -117,23 +117,25 @@
 #     print("[main] Starte Dash auf 0.0.0.0:21000")
 #     app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)
 
-import os
-import dash
-from dash import html
 
+import os
+import yaml
+import dash
+from dash import html, dcc
+from dash.dependencies import Input, Output
+import plotly.graph_objects as go
+
+# Ingress-kompatibler Pfad
 requests_prefix = os.getenv("INGRESS_ENTRY", "/")
 if not requests_prefix.endswith("/"):
     requests_prefix += "/"
 
-# Wichtig: interne Dash-Endpunkte müssen unter einem Unterpfad laufen (z. B. /dash/)
 app = dash.Dash(
     __name__,
-    routes_pathname_prefix=requests_prefix,                     # für externe Routen (Ingress)
-    requests_pathname_prefix=requests_prefix + "dash/",         # für interne Dash-Routen
-    assets_url_path=requests_prefix + "assets/",
-    serve_locally=True
+    routes_pathname_prefix=requests_prefix,
+    requests_pathname_prefix=requests_prefix,
+    serve_locally=False  # <- Wichtig!
 )
-
 
 server = app.server
 
