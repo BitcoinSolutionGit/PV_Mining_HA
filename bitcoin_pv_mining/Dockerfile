@@ -12,4 +12,3 @@ EXPOSE 21000
 
 CMD ["/bin/sh", "/app/run.sh"]
 
-
