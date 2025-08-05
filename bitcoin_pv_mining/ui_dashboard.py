@@ -10,6 +10,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, "ui_config.yaml")
 
 COLORS = {
     "pv": "#FFD700",
+    "netz": "#6666FF",
     "heizstab": "#3399FF",
     "wallbox": "#33CC66",
     "hausbatterie": "#FF9900",
@@ -36,15 +37,10 @@ def register_callbacks(app):
             print("Fehler beim Laden der Konfiguration:", e)
             return go.Figure()
 
+        node_labels = ["PV", "Netzbezug", "Heizstab", "Wallbox", "Hausbatterie", "Hausverbrauch"]
         node_colors = [
             COLORS["pv"],
-            COLORS["heizstab"] if flags.get("heizstab_aktiv") else COLORS["inactive"],
-            COLORS["wallbox"] if flags.get("wallbox_aktiv") else COLORS["inactive"],
-            COLORS["hausbatterie"] if flags.get("hausbatterie_aktiv") else COLORS["inactive"],
-            COLORS["verbrauch"]
-        ]
-
-        link_colors = [
+            COLORS["netz"],
             COLORS["heizstab"] if flags.get("heizstab_aktiv") else COLORS["inactive"],
             COLORS["wallbox"] if flags.get("wallbox_aktiv") else COLORS["inactive"],
             COLORS["hausbatterie"] if flags.get("hausbatterie_aktiv") else COLORS["inactive"],
@@ -53,17 +49,22 @@ def register_callbacks(app):
 
         fig = go.Figure(data=[go.Sankey(
             node=dict(
-                label=["PV", "Heizstab", "Wallbox", "Hausbatterie", "Hausverbrauch"],
+                label=node_labels,
                 pad=30,
                 thickness=25,
                 line=dict(color="black", width=0.5),
                 color=node_colors
             ),
             link=dict(
-                source=[0, 0, 0, 0],
-                target=[1, 2, 3, 4],
-                value=[4, 3, 2, 1],
-                color=link_colors
+                source=[0, 0, 1, 1],  # PV und Netz liefern je an Verbraucher
+                target=[2, 3, 2, 3],
+                value=[3, 2, 2, 1],
+                color=[
+                    COLORS["heizstab"] if flags.get("heizstab_aktiv") else COLORS["inactive"],
+                    COLORS["wallbox"] if flags.get("wallbox_aktiv") else COLORS["inactive"],
+                    COLORS["heizstab"] if flags.get("heizstab_aktiv") else COLORS["inactive"],
+                    COLORS["wallbox"] if flags.get("wallbox_aktiv") else COLORS["inactive"]
+                ]
             )
         )])
 
