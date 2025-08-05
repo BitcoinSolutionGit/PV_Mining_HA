@@ -210,13 +210,15 @@ import dash
 from dash import html
 import flask
 
+INGRESS_ENTRY = "/pvmining"
+
 server = flask.Flask(__name__)
 
 app = dash.Dash(
     __name__,
     server=server,
     routes_pathname_prefix='/',
-    requests_pathname_prefix='/pvmining/',
+    requests_pathname_prefix=INGRESS_ENTRY + "/",
     serve_locally=False,
     suppress_callback_exceptions=True
 )
