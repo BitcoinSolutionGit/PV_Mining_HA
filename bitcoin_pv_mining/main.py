@@ -203,34 +203,16 @@
 #     app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)
 
 
+
+
+
+
 import os
-import requests
 import dash
-# import json
+import requests
 from dash import html
 import flask
-from flask import jsonify
 
-server = flask.Flask(__name__)
-
-
-# Debug-Hilfsroute: Gibt an, ob Dash erreichbar ist
-@server.route("/pvmining/_dash-layout", methods=["GET"])
-def test_dash_layout():
-    return jsonify({"status": "OK", "hint": "_dash-layout Proxy funktioniert auf Flask-Ebene"})
-
-app = dash.Dash(
-    __name__,
-    server=server,
-    # routes_pathname_prefix='/pvmining/',        # interne Flask-Routen
-    # requests_pathname_prefix='/pvmining/',      # externe Browser-Requests
-    routes_pathname_prefix='/',
-    requests_pathname_prefix='/',
-    serve_locally=False,
-    suppress_callback_exceptions=True
-)
-
-print(f"[INFO] Dash läuft mit routes_pathname_prefix = {app.config.routes_pathname_prefix}")
 
 # Supervisor-Token holen - das liefert echt viele infos zum debugen. sonst auskommentiert lassen!
 test_token = os.getenv("SUPERVISOR_TOKEN")
@@ -244,47 +226,43 @@ except Exception as e:
     print("[ERROR beim Supervisor-Zugriff]", str(e))
 
 
+server = flask.Flask(__name__)
 
-# # Supervisor-API: Ingress-URL auslesen
-# def get_ingress_url():
-#     token = os.getenv("SUPERVISOR_TOKEN") # or os.getenv("HASSIO_TOKEN")
-#     if not token:
-#         print("[ERROR] Kein Supervisor-Token gefunden!")
-#         return "/"
-#
-#     headers = {"Authorization": f"Bearer {token}"}
-#     try:
-#         response = requests.get("http://supervisor/addons/self/info", headers=headers)
-#         if response.status_code == 200:
-#             data = response.json()
-#             ingress_url = data["data"].get("ingress_url", "/")
-#             print(f"[INFO] Supervisor API Ingress-URL: {ingress_url}")
-#             return ingress_url
-#         else:
-#             print(f"[WARN] Supervisor API Fehler: {response.status_code}")
-#             return "/"
-#     except Exception as e:
-#         print(f"[ERROR] Anfrage an Supervisor fehlgeschlagen: {e}")
-#         return "/"
-#
-# # Prefix bestimmen (ENV oder via Supervisor API)
-# raw_prefix = get_ingress_url() # or os.getenv("INGRESS_ENTRY")
-# if not raw_prefix.endswith("/"):
-#     raw_prefix += "/"
-#
-# requests_prefix = raw_prefix
-#
-# print(f"[DEBUG] Verwendeter Ingress Prefix: {raw_prefix}")
-#
-# app = dash.Dash(
-#     __name__,
-#     routes_pathname_prefix=requests_prefix,
-#     requests_pathname_prefix=requests_prefix,
-#     url_base_pathname=None,
-#     #url_base_pathname=requests_prefix,
-#     serve_locally=False,
-#     suppress_callback_exceptions=True
-# )
+# Hole Ingress-Pfad zur Laufzeit dynamisch über Supervisor-API
+def get_ingress_prefix():
+    token = os.getenv("SUPERVISOR_TOKEN")
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        response = requests.get("http://supervisor/addons/self/info", headers=headers)
+        if response.status_code == 200:
+            ingress_url = response.json()["data"]["ingress_url"]
+            print(f"[INFO] Supervisor Ingress URL: {ingress_url}")
+            return ingress_url
+        else:
+            print(f"[WARN] Supervisor Antwort: {response.status_code}")
+    except Exception as e:
+        print(f"[ERROR] Supervisor API Fehler: {str(e)}")
+    return "/"  # Fallback
+
+prefix = get_ingress_prefix()
+if not prefix.endswith("/"):
+    prefix += "/"
+
+app = dash.Dash(
+    __name__,
+    server=server,
+    routes_pathname_prefix="/",
+    requests_pathname_prefix=prefix,
+    serve_locally=False,
+    suppress_callback_exceptions=True
+)
+
+print(f"[INFO] Dash läuft mit requests_pathname_prefix = {prefix}")
+
+# Optional: Hilfsroute zum Testen
+@server.route("/_dash-layout", methods=["GET"])
+def dash_ping():
+    return {"status": "OK"}
 
 # HTML-Template
 app.index_string = '''
@@ -307,13 +285,11 @@ app.index_string = '''
 </html>
 '''
 
-# Minimal-Layout zum Testen
+# Layout
 app.layout = html.Div([
-    html.H1("🎉 Bitcoin PV Add-on funktioniert!"),
-    html.P("Wenn du das siehst, klappt Ingress.")
+    html.H1("🎉 Bitcoin PV Add-on läuft!"),
+    html.P("Ingress ist vollständig funktionsfähig.")
 ])
-
-#server = app.server  # Wichtig
 
 if __name__ == "__main__":
     print("[main.py] Starte Dash auf 0.0.0.0:21000")
