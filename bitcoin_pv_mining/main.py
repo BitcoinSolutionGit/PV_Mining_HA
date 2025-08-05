@@ -209,9 +209,15 @@ import dash
 # import json
 from dash import html
 import flask
-
+from flask import jsonify
 
 server = flask.Flask(__name__)
+
+
+# Debug-Hilfsroute: Gibt an, ob Dash erreichbar ist
+@server.route("/pvmining/_dash-layout", methods=["GET"])
+def test_dash_layout():
+    return jsonify({"status": "OK", "hint": "_dash-layout Proxy funktioniert auf Flask-Ebene"})
 
 app = dash.Dash(
     __name__,
@@ -222,6 +228,7 @@ app = dash.Dash(
     suppress_callback_exceptions=True
 )
 
+print(f"[INFO] Dash läuft mit routes_pathname_prefix = {app.config.routes_pathname_prefix}")
 
 # # Supervisor-Token holen - das liefert echt viele infos zum debugen. sonst auskommentiert lassen!
 # test_token = os.getenv("SUPERVISOR_TOKEN")
