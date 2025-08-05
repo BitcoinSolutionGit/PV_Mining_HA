@@ -230,16 +230,16 @@ app = dash.Dash(
 
 print(f"[INFO] Dash läuft mit routes_pathname_prefix = {app.config.routes_pathname_prefix}")
 
-# # Supervisor-Token holen - das liefert echt viele infos zum debugen. sonst auskommentiert lassen!
-# test_token = os.getenv("SUPERVISOR_TOKEN")
-# test_headers = {"Authorization": f"Bearer {test_token}"}
-#
-# try:
-#     test_response = requests.get("http://supervisor/addons/self/info", headers=test_headers)
-#     print("[SUPERVISOR RESPONSE]", test_response.status_code)
-#     print(test_response.json())
-# except Exception as e:
-#     print("[ERROR beim Supervisor-Zugriff]", str(e))
+# Supervisor-Token holen - das liefert echt viele infos zum debugen. sonst auskommentiert lassen!
+test_token = os.getenv("SUPERVISOR_TOKEN")
+test_headers = {"Authorization": f"Bearer {test_token}"}
+
+try:
+    test_response = requests.get("http://supervisor/addons/self/info", headers=test_headers)
+    print("[SUPERVISOR RESPONSE]", test_response.status_code)
+    print(test_response.json())
+except Exception as e:
+    print("[ERROR beim Supervisor-Zugriff]", str(e))
 
 
 
