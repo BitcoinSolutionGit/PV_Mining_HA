@@ -208,6 +208,18 @@ import requests
 import dash
 # import json
 from dash import html
+import flask
+
+server = flask.Flask(__name__)
+
+app = dash.Dash(
+    __name__,
+    server=server,
+    routes_pathname_prefix='/pvmining/',
+    requests_pathname_prefix='/pvmining/',
+    serve_locally=False,
+    suppress_callback_exceptions=True
+)
 
 
 # # Supervisor-Token holen - das liefert echt viele infos zum debugen. sonst auskommentiert lassen!
@@ -223,46 +235,46 @@ from dash import html
 
 
 
-# Supervisor-API: Ingress-URL auslesen
-def get_ingress_url():
-    token = os.getenv("SUPERVISOR_TOKEN") # or os.getenv("HASSIO_TOKEN")
-    if not token:
-        print("[ERROR] Kein Supervisor-Token gefunden!")
-        return "/"
-
-    headers = {"Authorization": f"Bearer {token}"}
-    try:
-        response = requests.get("http://supervisor/addons/self/info", headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            ingress_url = data["data"].get("ingress_url", "/")
-            print(f"[INFO] Supervisor API Ingress-URL: {ingress_url}")
-            return ingress_url
-        else:
-            print(f"[WARN] Supervisor API Fehler: {response.status_code}")
-            return "/"
-    except Exception as e:
-        print(f"[ERROR] Anfrage an Supervisor fehlgeschlagen: {e}")
-        return "/"
-
-# Prefix bestimmen (ENV oder via Supervisor API)
-raw_prefix = get_ingress_url() # or os.getenv("INGRESS_ENTRY")
-if not raw_prefix.endswith("/"):
-    raw_prefix += "/"
-
-requests_prefix = raw_prefix
-
-print(f"[DEBUG] Verwendeter Ingress Prefix: {raw_prefix}")
-
-app = dash.Dash(
-    __name__,
-    routes_pathname_prefix=requests_prefix,
-    requests_pathname_prefix=requests_prefix,
-    url_base_pathname=None,
-    #url_base_pathname=requests_prefix,
-    serve_locally=False,
-    suppress_callback_exceptions=True
-)
+# # Supervisor-API: Ingress-URL auslesen
+# def get_ingress_url():
+#     token = os.getenv("SUPERVISOR_TOKEN") # or os.getenv("HASSIO_TOKEN")
+#     if not token:
+#         print("[ERROR] Kein Supervisor-Token gefunden!")
+#         return "/"
+#
+#     headers = {"Authorization": f"Bearer {token}"}
+#     try:
+#         response = requests.get("http://supervisor/addons/self/info", headers=headers)
+#         if response.status_code == 200:
+#             data = response.json()
+#             ingress_url = data["data"].get("ingress_url", "/")
+#             print(f"[INFO] Supervisor API Ingress-URL: {ingress_url}")
+#             return ingress_url
+#         else:
+#             print(f"[WARN] Supervisor API Fehler: {response.status_code}")
+#             return "/"
+#     except Exception as e:
+#         print(f"[ERROR] Anfrage an Supervisor fehlgeschlagen: {e}")
+#         return "/"
+#
+# # Prefix bestimmen (ENV oder via Supervisor API)
+# raw_prefix = get_ingress_url() # or os.getenv("INGRESS_ENTRY")
+# if not raw_prefix.endswith("/"):
+#     raw_prefix += "/"
+#
+# requests_prefix = raw_prefix
+#
+# print(f"[DEBUG] Verwendeter Ingress Prefix: {raw_prefix}")
+#
+# app = dash.Dash(
+#     __name__,
+#     routes_pathname_prefix=requests_prefix,
+#     requests_pathname_prefix=requests_prefix,
+#     url_base_pathname=None,
+#     #url_base_pathname=requests_prefix,
+#     serve_locally=False,
+#     suppress_callback_exceptions=True
+# )
 
 # HTML-Template
 app.index_string = '''
@@ -291,7 +303,7 @@ app.layout = html.Div([
     html.P("Wenn du das siehst, klappt Ingress.")
 ])
 
-server = app.server  # Wichtig
+#server = app.server  # Wichtig
 
 if __name__ == "__main__":
     print("[main.py] Starte Dash auf 0.0.0.0:21000")
