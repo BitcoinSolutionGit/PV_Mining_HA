@@ -8,6 +8,15 @@ import plotly.graph_objects as go
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "ui_config.yaml")
 
+COLORS = {
+    "pv": "#FFD700",
+    "heizstab": "#3399FF",
+    "wallbox": "#33CC66",
+    "hausbatterie": "#FF9900",
+    "verbrauch": "#A0A0A0",
+    "inactive": "#DDDDDD"
+}
+
 def load_config():
     with open(CONFIG_PATH, "r") as f:
         return yaml.safe_load(f)
@@ -28,26 +37,43 @@ def register_callbacks(app):
             return go.Figure()
 
         node_colors = [
-            "gold",  # PV
-            "blue" if flags.get("heizstab_aktiv") else "lightgray",
-            "green" if flags.get("wallbox_aktiv") else "lightgray",
-            "orange" if flags.get("hausbatterie_aktiv") else "lightgray",
-            "gray"  # Hausverbrauch
+            COLORS["pv"],
+            COLORS["heizstab"] if flags.get("heizstab_aktiv") else COLORS["inactive"],
+            COLORS["wallbox"] if flags.get("wallbox_aktiv") else COLORS["inactive"],
+            COLORS["hausbatterie"] if flags.get("hausbatterie_aktiv") else COLORS["inactive"],
+            COLORS["verbrauch"]
+        ]
+
+        link_colors = [
+            COLORS["heizstab"] if flags.get("heizstab_aktiv") else COLORS["inactive"],
+            COLORS["wallbox"] if flags.get("wallbox_aktiv") else COLORS["inactive"],
+            COLORS["hausbatterie"] if flags.get("hausbatterie_aktiv") else COLORS["inactive"],
+            COLORS["verbrauch"]
         ]
 
         fig = go.Figure(data=[go.Sankey(
             node=dict(
                 label=["PV", "Heizstab", "Wallbox", "Hausbatterie", "Hausverbrauch"],
-                pad=15,
-                thickness=20,
+                pad=30,
+                thickness=25,
+                line=dict(color="black", width=0.5),
                 color=node_colors
             ),
             link=dict(
                 source=[0, 0, 0, 0],
                 target=[1, 2, 3, 4],
-                value=[4, 3, 2, 1]
+                value=[4, 3, 2, 1],
+                color=link_colors
             )
         )])
+
+        fig.update_layout(
+            font=dict(size=14, color="black"),
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            margin=dict(l=20, r=20, t=40, b=20)
+        )
+
         return fig
 
 layout = html.Div([
