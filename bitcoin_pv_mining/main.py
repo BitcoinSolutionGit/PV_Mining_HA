@@ -222,8 +222,10 @@ def test_dash_layout():
 app = dash.Dash(
     __name__,
     server=server,
-    routes_pathname_prefix='/pvmining/',        # interne Flask-Routen
-    requests_pathname_prefix='/pvmining/',      # externe Browser-Requests
+    # routes_pathname_prefix='/pvmining/',        # interne Flask-Routen
+    # requests_pathname_prefix='/pvmining/',      # externe Browser-Requests
+    routes_pathname_prefix='/',
+    requests_pathname_prefix='/',
     serve_locally=False,
     suppress_callback_exceptions=True
 )
