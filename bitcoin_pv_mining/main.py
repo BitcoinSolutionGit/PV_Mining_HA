@@ -3,7 +3,7 @@ import dash
 import requests
 from dash import html
 import flask
-
+from ui_dashboard import layout as dashboard_layout, register_callbacks
 
 # # Supervisor-Token holen - das liefert echt viele infos zum debugen. sonst auskommentiert lassen!
 # test_token = os.getenv("SUPERVISOR_TOKEN")
@@ -84,10 +84,13 @@ app.index_string = '''
 '''
 
 # Layout
-app.layout = html.Div([
-    html.H1("🎉 Bitcoin PV Add-on läuft!"),
-    html.P("Ingress ist vollständig funktionsfähig.")
-])
+# app.layout = html.Div([
+#     html.H1("🎉 Bitcoin PV Add-on läuft!"),
+#     html.P("Ingress ist vollständig funktionsfähig.")
+# ])
+
+app.layout = dashboard_layout
+register_callbacks(app)
 
 if __name__ == "__main__":
     print("[main.py] Starte Dash auf 0.0.0.0:21000")
