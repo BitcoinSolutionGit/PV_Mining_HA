@@ -1,5 +1,5 @@
 name: "Bitcoin PV Mining"
-version: "2.0.7"
+version: "2.0.8"
 slug: "bitcoin_pv_mining"
 description: "PV-basierte Bitcoin Mining Steuerung mit Web-UI"
 startup: services

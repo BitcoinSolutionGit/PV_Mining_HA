@@ -24,40 +24,58 @@ if not os.path.exists(CONFIG_PATH):
     except Exception as e:
         print(f"[FEHLER] Konnte Konfiguration nicht anlegen: {e}")
 
+
+# # Supervisor-Token holen - das liefert echt viele infos zum debugen. sonst auskommentiert lassen!
+# test_token = os.getenv("SUPERVISOR_TOKEN")
+# test_headers = {"Authorization": f"Bearer {test_token}"}
+#
+# try:
+#     test_response = requests.get("http://supervisor/addons/self/info", headers=test_headers)
+#     print("[SUPERVISOR RESPONSE]", test_response.status_code)
+#     print(test_response.json())
+# except Exception as e:
+#     print("[ERROR beim Supervisor-Zugriff]", str(e))
+
+
 server = flask.Flask(__name__)
 
-@server.route("/_dash-layout", methods=["GET"])
-def test_dash_layout():
-    return jsonify({"status": "OK", "hint": "_dash-layout Proxy funktioniert auf Flask-Ebene"})
+# Hole Ingress-Pfad zur Laufzeit dynamisch über Supervisor-API
+def get_ingress_prefix():
+    token = os.getenv("SUPERVISOR_TOKEN")
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        response = requests.get("http://supervisor/addons/self/info", headers=headers)
+        if response.status_code == 200:
+            ingress_url = response.json()["data"]["ingress_url"]
+            print(f"[INFO] Supervisor Ingress URL: {ingress_url}")
+            return ingress_url
+        else:
+            print(f"[WARN] Supervisor Antwort: {response.status_code}")
+    except Exception as e:
+        print(f"[ERROR] Supervisor API Fehler: {str(e)}")
+    return "/"  # Fallback
 
-token = os.getenv("SUPERVISOR_TOKEN")
-headers = {"Authorization": f"Bearer {token}"}
-
-try:
-    response = requests.get("http://supervisor/addons/self/info", headers=headers)
-    print("[SUPERVISOR RESPONSE]", response.status_code)
-    addon_data = response.json()
-    print(addon_data)
-
-    ingress_url = addon_data["data"].get("ingress_url", "/")
-    if not ingress_url.endswith("/"):
-        ingress_url += "/"
-
-    print(f"[INFO] Dash läuft mit routes_pathname_prefix = {ingress_url}")
-
-except Exception as e:
-    print("[ERROR beim Supervisor-Zugriff]", str(e))
-    ingress_url = "/"
+prefix = get_ingress_prefix()
+if not prefix.endswith("/"):
+    prefix += "/"
 
 app = dash.Dash(
     __name__,
     server=server,
     routes_pathname_prefix="/",
-    requests_pathname_prefix=ingress_url,
+    requests_pathname_prefix=prefix,
     serve_locally=False,
     suppress_callback_exceptions=True
 )
 
+print(f"[INFO] Dash läuft mit requests_pathname_prefix = {prefix}")
+
+# Optional: Hilfsroute zum Testen
+@server.route("/_dash-layout", methods=["GET"])
+def dash_ping():
+    return {"status": "OK"}
+
+# HTML-Template
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -85,13 +103,13 @@ app.index_string = '''
 </html>
 '''
 
-# app.layout = dashboard_layout
-# register_callbacks(app)
-
+# Layout
 app.layout = html.Div([
     html.H2("Testseite"),
     html.P("Wenn du das hier siehst, funktioniert das Layout grundsätzlich.")
 ])
+# app.layout = dashboard_layout
+# register_callbacks(app)
 
 if __name__ == "__main__":
     print("[main.py] Starte Dash auf 0.0.0.0:21000")
