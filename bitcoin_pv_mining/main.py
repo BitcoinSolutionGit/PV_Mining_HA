@@ -85,8 +85,13 @@ app.index_string = '''
 </html>
 '''
 
-app.layout = dashboard_layout
-register_callbacks(app)
+# app.layout = dashboard_layout
+# register_callbacks(app)
+
+app.layout = html.Div([
+    html.H2("Testseite"),
+    html.P("Wenn du das hier siehst, funktioniert das Layout grundsätzlich.")
+])
 
 if __name__ == "__main__":
     print("[main.py] Starte Dash auf 0.0.0.0:21000")
