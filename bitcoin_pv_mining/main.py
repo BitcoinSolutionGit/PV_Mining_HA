@@ -52,7 +52,7 @@ except Exception as e:
 app = dash.Dash(
     __name__,
     server=server,
-    routes_pathname_prefix=ingress_url,
+    routes_pathname_prefix="/",
     requests_pathname_prefix=ingress_url,
     serve_locally=False,
     suppress_callback_exceptions=True
