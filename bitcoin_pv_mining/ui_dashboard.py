@@ -100,14 +100,18 @@ def register_callbacks(app):
             ))
 
         return (
-            build_gauge(pv_val, "PV Generation (kW)", "green"),
-            build_gauge(load_val, "Load (kW)", "orange")
+            build_gauge(pv_val, "PV production (kW)", "green"),
+            build_gauge(load_val, "Load consumption (kW)", "orange")
         )
 
 layout = html.Div([
     html.H1("PV-mining dashboard"),
     dcc.Graph(id="sankey-diagram", figure=go.Figure()),
-    dcc.Graph(id="pv-gauge"),
-    dcc.Graph(id="load-gauge"),
+    html.Div([
+        dcc.Graph(id="pv-gauge", style={"width": "50%", "display": "inline-block"}),
+        dcc.Graph(id="consumption-gauge", style={"width": "50%", "display": "inline-block"})
+    ], style={"display": "flex", "flexDirection": "row", "justifyContent": "space-between"}),
+    # dcc.Graph(id="pv-gauge"),
+    # dcc.Graph(id="load-gauge"),
     dcc.Interval(id="pv-update", interval=10_000, n_intervals=0)
 ])
