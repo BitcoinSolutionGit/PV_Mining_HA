@@ -27,33 +27,8 @@ def load_config():
 def register_callbacks(app):
     @app.callback(
         Output("sankey-diagram", "figure"),
-        #Input("save-button", "n_clicks")
         Input("pv-update", "n_intervals")
     )
-    def update_gauge(_):
-        config = load_config()
-        sensor_id = config.get("entities", {}).get("sensor_pv")
-        value = get_sensor_value(sensor_id) if sensor_id else 0
-
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=value or 0,
-            title={"text": "PV-Erzeugung (kW)"},
-            gauge={
-                "axis": {"range": [0, 5]},
-                "bar": {"color": "green"},
-                "steps": [
-                    {"range": [0, 2.5], "color": "#e0f7e0"},
-                    {"range": [2.5, 5], "color": "#c0e0c0"}
-                ]
-            }
-        ))
-        fig.update_layout(
-            margin=dict(l=20, r=20, t=40, b=20),
-            paper_bgcolor="white"
-        )
-        return fig
-
     def update_sankey(_):
         config = load_config()
         flags = config.get("feature_flags", {})
@@ -97,10 +72,38 @@ def register_callbacks(app):
 
         return fig
 
+    @app.callback(
+        Output("pv-gauge", "figure"),
+        Input("pv-update", "n_intervals")
+    )
+    def update_gauge(_):
+        config = load_config()
+        sensor_id = config.get("entities", {}).get("sensor_pv")
+        value = get_sensor_value(sensor_id) if sensor_id else 0
+
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=value or 0,
+            title={"text": "PV-Erzeugung (kW)"},
+            gauge={
+                "axis": {"range": [0, 5]},
+                "bar": {"color": "green"},
+                "steps": [
+                    {"range": [0, 2.5], "color": "#e0f7e0"},
+                    {"range": [2.5, 5], "color": "#c0e0c0"}
+                ]
+            }
+        ))
+        fig.update_layout(
+            margin=dict(l=20, r=20, t=40, b=20),
+            paper_bgcolor="white"
+        )
+        return fig
+
 layout = html.Div([
     html.H1("PV Mining Dashboard"),
     dcc.Graph(id="sankey-diagram", figure=go.Figure()),
     dcc.Graph(id="pv-gauge"),
-    dcc.Interval(id="pv-update", interval=10_000, n_intervals=0)
+    dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
     html.Button("Neu laden", id="save-button")
 ])
