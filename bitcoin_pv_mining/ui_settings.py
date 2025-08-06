@@ -3,6 +3,8 @@ import os
 import requests
 from dash import html, dcc, Input, Output, State
 import dash
+from ha_sensors import list_all_sensors
+
 
 CONFIG_PATH = "/config/pv_mining_addon/pv_mining_local_config.yaml"
 
@@ -91,3 +93,21 @@ def register_settings_callbacks(app):
             return {"color": "blue"}, {"color": "blue"}, ""
         save_entities({"sensor_pv": pv, "sensor_verbrauch": verbrauch})
         return {"color": "black"}, {"color": "black"}, "Gespeichert!"
+
+def get_sensor_value(entity_id):
+    """Fragt einen Sensorwert über die Home Assistant API ab."""
+    token = os.getenv("SUPERVISOR_TOKEN")
+    if not token:
+        return None
+    try:
+        url = f"http://supervisor/core/api/states/{entity_id}"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            return float(response.json()["state"])
+    except Exception as e:
+        print(f"[ERROR] Sensorwert für {entity_id} nicht abrufbar:", e)
+    return None

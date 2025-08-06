@@ -3,6 +3,7 @@ import yaml
 from dash import html, dcc
 from dash.dependencies import Input, Output
 import plotly.graph_objects as go
+from ha_sensors import get_sensor_value
 
 CONFIG_PATH = "/config/pv_mining_addon/pv_mining_local_config.yaml"
 
@@ -74,5 +75,7 @@ def register_callbacks(app):
 layout = html.Div([
     html.H1("PV Mining Dashboard"),
     dcc.Graph(id="sankey-diagram", figure=go.Figure()),
-    html.Button("Neu laden", id="save-button")
+    dcc.Graph(id="pv-gauge"),
+    dcc.Interval(id="pv-update", interval=10_000, n_intervals=0)
+    #html.Button("Neu laden", id="save-button")
 ])
