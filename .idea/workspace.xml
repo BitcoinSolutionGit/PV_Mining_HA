@@ -4,9 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="Dashboard Tests 15">
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="Dashboard Tests 16">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/ui_dashboard.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/ui_dashboard.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -30,12 +31,12 @@
     &quot;assignee&quot;: &quot;BroinChayton&quot;
   }
 }</component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/BitcoinSolutionGit/PV_Mining_HA.git",
-    "accountId": "fa8a2a81-ddfa-42cd-9204-298ff9cae04e"
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/BitcoinSolutionGit/PV_Mining_HA.git&quot;,
+    &quot;accountId&quot;: &quot;fa8a2a81-ddfa-42cd-9204-298ff9cae04e&quot;
   }
-}]]></component>
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 1
 }</component>
@@ -47,26 +48,26 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.dashboard.executor": "Run",
-    "Python.main.executor": "Run",
-    "Python.ui_settings.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "master",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.dashboard.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main.executor&quot;: &quot;Run&quot;,
+    &quot;Python.ui_settings.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="D:\__Phyton\BitcoinSolution_PV_Mining_HomeAssistant\bitcoin_pv_mining" />
@@ -103,15 +104,8 @@
       <workItem from="1754393771071" duration="1477000" />
       <workItem from="1754398402426" duration="6742000" />
       <workItem from="1754478342678" duration="89000" />
-      <workItem from="1754478926539" duration="10613000" />
-    </task>
-    <task id="LOCAL-00071" summary="test 32">
-      <option name="closed" value="true" />
-      <created>1754338631836</created>
-      <option name="number" value="00071" />
-      <option name="presentableId" value="LOCAL-00071" />
-      <option name="project" value="LOCAL" />
-      <updated>1754338631836</updated>
+      <workItem from="1754478926539" duration="12551000" />
+      <workItem from="1754509467422" duration="717000" />
     </task>
     <task id="LOCAL-00072" summary="test 33">
       <option name="closed" value="true" />
@@ -497,14 +491,21 @@
       <option name="project" value="LOCAL" />
       <updated>1754490287258</updated>
     </task>
-    <option name="localTasksCounter" value="120" />
+    <task id="LOCAL-00120" summary="Dashboard Tests 16">
+      <option name="closed" value="true" />
+      <created>1754491685748</created>
+      <option name="number" value="00120" />
+      <option name="presentableId" value="LOCAL-00120" />
+      <option name="project" value="LOCAL" />
+      <updated>1754491685748</updated>
+    </task>
+    <option name="localTasksCounter" value="121" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="test 55" />
     <MESSAGE value="test 56" />
     <MESSAGE value="test 57" />
     <MESSAGE value="test 58" />
@@ -529,10 +530,11 @@
     <MESSAGE value="Dashboard Tests 13" />
     <MESSAGE value="Dashboard Tests 14" />
     <MESSAGE value="Dashboard Tests 15" />
-    <option name="LAST_COMMIT_MESSAGE" value="Dashboard Tests 15" />
+    <MESSAGE value="Dashboard Tests 16" />
+    <option name="LAST_COMMIT_MESSAGE" value="Dashboard Tests 16" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$main.coverage" NAME="main Coverage Results" MODIFIED="1754489545457" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />
+    <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$main.coverage" NAME="main Coverage Results" MODIFIED="1754509750857" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$dashboard.coverage" NAME="dashboard Coverage Results" MODIFIED="1754086399949" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining/ui" />
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$ui_settings.coverage" NAME="ui_settings Coverage Results" MODIFIED="1754482408803" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />
   </component>

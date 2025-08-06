@@ -10,8 +10,10 @@ from ui_settings import generate_settings_layout, register_settings_callbacks
 
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
+FORCE_CREATE_CONFIG = os.getenv("FORCE_CREATE_CONFIG", "false").lower() == "true"
 
-if not os.path.exists(CONFIG_PATH):
+
+if FORCE_CREATE_CONFIG or not os.path.exists(CONFIG_PATH):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
         default_content = """feature_flags:
@@ -93,8 +95,8 @@ app.index_string = '''
 
 app.layout = html.Div([
     dcc.Tabs(id="tabs", value="dashboard", children=[
-        dcc.Tab(label="Dashboard", value="dashboard"),
-        dcc.Tab(label="Einstellungen", value="settings"),
+        dcc.Tab(label="dashboard", value="dashboard"),
+        dcc.Tab(label="settings", value="settings"),
     ]),
     html.Div(id="tabs-content")
 ])

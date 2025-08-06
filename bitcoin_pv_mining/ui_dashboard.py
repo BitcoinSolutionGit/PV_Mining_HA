@@ -9,10 +9,10 @@ CONFIG_PATH = "/config/pv_mining_addon/pv_mining_local_config.yaml"
 
 COLORS = {
     "pv": "#FFD700",
-    "heizstab": "#3399FF",
+    "heater": "#3399FF",
     "wallbox": "#33CC66",
-    "hausbatterie": "#FF9900",
-    "verbrauch": "#A0A0A0",
+    "battery": "#FF9900",
+    "load": "#A0A0A0",
     "inactive": "#DDDDDD"
 }
 
@@ -21,7 +21,7 @@ def load_config():
         with open(CONFIG_PATH, "r") as f:
             return yaml.safe_load(f)
     except Exception as e:
-        print("[WARN] Konfigurationsdatei fehlt oder ungültig:", e)
+        print("[WARN] Config file missing or invalid:", e)
         return {}
 
 def register_callbacks(app):
@@ -33,13 +33,13 @@ def register_callbacks(app):
         config = load_config()
         flags = config.get("feature_flags", {})
 
-        node_labels = ["PV", "Heizstab", "Wallbox", "Hausbatterie", "Hausverbrauch"]
+        node_labels = ["PV", "Heater", "Wallbox", "Battery", "Load"]
         node_colors = [
             COLORS["pv"],
-            COLORS["heizstab"] if flags.get("heizstab_aktiv") else COLORS["inactive"],
-            COLORS["wallbox"] if flags.get("wallbox_aktiv") else COLORS["inactive"],
-            COLORS["hausbatterie"] if flags.get("hausbatterie_aktiv") else COLORS["inactive"],
-            COLORS["verbrauch"]
+            COLORS["heater"] if flags.get("heater_active") else COLORS["inactive"],
+            COLORS["wallbox"] if flags.get("wallbox_active") else COLORS["inactive"],
+            COLORS["battery"] if flags.get("battery_active") else COLORS["inactive"],
+            COLORS["load"]
         ]
 
         fig = go.Figure(data=[go.Sankey(
@@ -55,10 +55,10 @@ def register_callbacks(app):
                 target=[1, 2, 3, 4],
                 value=[4, 3, 2, 1],
                 color=[
-                    COLORS["heizstab"] if flags.get("heizstab_aktiv") else COLORS["inactive"],
-                    COLORS["wallbox"] if flags.get("wallbox_aktiv") else COLORS["inactive"],
-                    COLORS["hausbatterie"] if flags.get("hausbatterie_aktiv") else COLORS["inactive"],
-                    COLORS["verbrauch"]
+                    COLORS["heater"] if flags.get("heater_active") else COLORS["inactive"],
+                    COLORS["wallbox"] if flags.get("wallbox_active") else COLORS["inactive"],
+                    COLORS["battery"] if flags.get("battery_active") else COLORS["inactive"],
+                    COLORS["load"]
                 ]
             )
         )])
@@ -74,15 +74,15 @@ def register_callbacks(app):
 
     @app.callback(
         Output("pv-gauge", "figure"),
-        Output("verbrauch-gauge", "figure"),
+        Output("load-gauge", "figure"),
         Input("pv-update", "n_intervals")
     )
     def update_gauges(_):
         config = load_config()
         pv_id = config.get("entities", {}).get("sensor_pv")
-        v_id = config.get("entities", {}).get("sensor_verbrauch")
+        load_id = config.get("entities", {}).get("sensor_verbrauch")
         pv_val = get_sensor_value(pv_id) if pv_id else 0
-        v_val = get_sensor_value(v_id) if v_id else 0
+        load_val = get_sensor_value(load_id) if load_id else 0
 
         def build_gauge(value, title, color):
             return go.Figure(go.Indicator(
@@ -100,14 +100,14 @@ def register_callbacks(app):
             ))
 
         return (
-            build_gauge(pv_val, "PV-Erzeugung (kW)", "green"),
-            build_gauge(v_val, "Hausverbrauch (kW)", "orange")
+            build_gauge(pv_val, "PV Generation (kW)", "green"),
+            build_gauge(load_val, "Load (kW)", "orange")
         )
 
 layout = html.Div([
     html.H1("PV Mining Dashboard"),
     dcc.Graph(id="sankey-diagram", figure=go.Figure()),
     dcc.Graph(id="pv-gauge"),
-    dcc.Graph(id="verbrauch-gauge"),
+    dcc.Graph(id="load-gauge"),
     dcc.Interval(id="pv-update", interval=10_000, n_intervals=0)
 ])
