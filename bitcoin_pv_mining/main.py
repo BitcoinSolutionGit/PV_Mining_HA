@@ -25,12 +25,12 @@ def get_ingress_prefix():
         response = requests.get("http://supervisor/addons/self/info", headers=headers)
         if response.status_code == 200:
             ingress_url = response.json()["data"]["ingress_url"]
-            print(f"[INFO] Supervisor Ingress URL: {ingress_url}")
+            print(f"[INFO] Supervisor ingress URL: {ingress_url}")
             return ingress_url
         else:
-            print(f"[WARN] Supervisor Antwort: {response.status_code}")
+            print(f"[WARN] Supervisor answer: {response.status_code}")
     except Exception as e:
-        print(f"[ERROR] Supervisor API Fehler: {str(e)}")
+        print(f"[ERROR] Supervisor API error: {str(e)}")
     return "/"  # Fallback
 
 prefix = get_ingress_prefix()
@@ -46,7 +46,7 @@ app = dash.Dash(
     suppress_callback_exceptions=True
 )
 
-print(f"[INFO] Dash läuft mit requests_pathname_prefix = {prefix}")
+print(f"[INFO] Dash runs with requests_pathname_prefix = {prefix}")
 
 @app.server.route("/_dash-layout", methods=["GET"])
 def dash_ping():
@@ -101,5 +101,5 @@ register_callbacks(app)
 register_settings_callbacks(app)
 
 if __name__ == "__main__":
-    print("[main.py] Starte Dash auf 0.0.0.0:21000")
+    print("[main.py] starting dash at 0.0.0.0:21000")
     app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)

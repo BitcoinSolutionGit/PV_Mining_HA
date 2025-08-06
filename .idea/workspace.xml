@@ -4,15 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="Dashboard Tests 17">
-      <change afterPath="$PROJECT_DIR$/bitcoin_pv_mining/i18n.py" afterDir="false" />
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="Dashboard Tests 18">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/ha_sensors.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/ha_sensors.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/run.sh" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/run.sh" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/ui_settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/ui_settings.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/repository.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/repository.yaml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -109,15 +105,7 @@
       <workItem from="1754398402426" duration="6742000" />
       <workItem from="1754478342678" duration="89000" />
       <workItem from="1754478926539" duration="12551000" />
-      <workItem from="1754509467422" duration="3684000" />
-    </task>
-    <task id="LOCAL-00073" summary="test 34">
-      <option name="closed" value="true" />
-      <created>1754339935887</created>
-      <option name="number" value="00073" />
-      <option name="presentableId" value="LOCAL-00073" />
-      <option name="project" value="LOCAL" />
-      <updated>1754339935887</updated>
+      <workItem from="1754509467422" duration="4400000" />
     </task>
     <task id="LOCAL-00074" summary="test 35">
       <option name="closed" value="true" />
@@ -503,14 +491,21 @@
       <option name="project" value="LOCAL" />
       <updated>1754510490774</updated>
     </task>
-    <option name="localTasksCounter" value="122" />
+    <task id="LOCAL-00122" summary="Dashboard Tests 18">
+      <option name="closed" value="true" />
+      <created>1754513189100</created>
+      <option name="number" value="00122" />
+      <option name="presentableId" value="LOCAL-00122" />
+      <option name="project" value="LOCAL" />
+      <updated>1754513189100</updated>
+    </task>
+    <option name="localTasksCounter" value="123" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="test 57" />
     <MESSAGE value="test 58" />
     <MESSAGE value="test 59" />
     <MESSAGE value="test 60" />
@@ -535,7 +530,8 @@
     <MESSAGE value="Dashboard Tests 15" />
     <MESSAGE value="Dashboard Tests 16" />
     <MESSAGE value="Dashboard Tests 17" />
-    <option name="LAST_COMMIT_MESSAGE" value="Dashboard Tests 17" />
+    <MESSAGE value="Dashboard Tests 18" />
+    <option name="LAST_COMMIT_MESSAGE" value="Dashboard Tests 18" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$main.coverage" NAME="main Coverage Results" MODIFIED="1754509750857" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />

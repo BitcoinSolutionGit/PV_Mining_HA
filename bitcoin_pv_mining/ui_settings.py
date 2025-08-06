@@ -115,7 +115,7 @@ def register_settings_callbacks(app):
             raise dash.exceptions.PreventUpdate
         if not pv_production or not load_consumption:
             return {"color": "blue"}, {"color": "blue"}, ""
-        save_entities({"sensor_pv_production": pv_production, "sensor-load-consumption": load_consumption})
+        save_entities({"sensor_pv_production": pv_production, "sensor_load_consumption": load_consumption})
         return {"color": "black"}, {"color": "black"}, "saved!"
 
 def get_sensor_value(entity_id):
