@@ -30,9 +30,12 @@ def fetch_sensors_from_homeassistant():
         print("[WARN] Kein Supervisor-Token für HA-API verfügbar.")
         return []
 
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
     try:
-        res = requests.get("http://homeassistant.local:8123/api/states", headers=headers, timeout=5)
+        res = requests.get("http://supervisor/core/api/states", headers=headers, timeout=5)
         if res.status_code == 200:
             sensors = [e["entity_id"] for e in res.json() if e["entity_id"].startswith("sensor.")]
             return [{"label": s, "value": s} for s in sensors]
@@ -41,6 +44,7 @@ def fetch_sensors_from_homeassistant():
     except Exception as e:
         print(f"[ERROR] Sensor-Abruf fehlgeschlagen: {e}")
     return []
+
 
 def generate_settings_layout():
     current = load_entities()
