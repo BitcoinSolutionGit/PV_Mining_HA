@@ -79,8 +79,8 @@ def register_callbacks(app):
     )
     def update_gauges(_):
         config = load_config()
-        pv_id = config.get("entities", {}).get("sensor_pv")
-        load_id = config.get("entities", {}).get("sensor_verbrauch")
+        pv_id = config.get("entities", {}).get("sensor_pv_production")
+        load_id = config.get("entities", {}).get("sensor_load_consumption")
         pv_val = get_sensor_value(pv_id) if pv_id else 0
         load_val = get_sensor_value(load_id) if load_id else 0
 
@@ -105,7 +105,7 @@ def register_callbacks(app):
         )
 
 layout = html.Div([
-    html.H1("PV Mining Dashboard"),
+    html.H1("PV-mining dashboard"),
     dcc.Graph(id="sankey-diagram", figure=go.Figure()),
     dcc.Graph(id="pv-gauge"),
     dcc.Graph(id="load-gauge"),
