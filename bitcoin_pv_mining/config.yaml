@@ -1,12 +1,12 @@
 name: "Bitcoin PV Mining"
-version: "2.0.9"
+version: "2.1.1"
 slug: "bitcoin_pv_mining"
 description: "PV-basierte Bitcoin Mining Steuerung mit Web-UI"
 startup: services
 ingress: true
 ingress_port: 21000
 panel_icon: mdi:currency-btc
-panel_title: Bitcoin PV
+panel_title: PV Mining
 init: false
 homeassistant_api: true
 map:

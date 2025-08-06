@@ -1,12 +1,13 @@
 import os
 import requests
 import dash
-from dash import html
+from dash import html, dcc
 import flask
-from flask import jsonify
+from dash.dependencies import Input, Output
+from flask import jsonify, request
 from ui_dashboard import layout as dashboard_layout, register_callbacks
+from ui_settings import generate_settings_layout, register_settings_callbacks
 
-# Lokale Konfig sicherstellen
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
 
@@ -17,6 +18,9 @@ if not os.path.exists(CONFIG_PATH):
   heizstab_aktiv: false
   wallbox_aktiv: false
   hausbatterie_aktiv: false
+entities:
+  sensor_pv: ""
+  sensor_verbrauch: ""
 """
         with open(CONFIG_PATH, "w") as f:
             f.write(default_content)
@@ -24,22 +28,8 @@ if not os.path.exists(CONFIG_PATH):
     except Exception as e:
         print(f"[FEHLER] Konnte Konfiguration nicht anlegen: {e}")
 
-
-# # Supervisor-Token holen - das liefert echt viele infos zum debugen. sonst auskommentiert lassen!
-# test_token = os.getenv("SUPERVISOR_TOKEN")
-# test_headers = {"Authorization": f"Bearer {test_token}"}
-#
-# try:
-#     test_response = requests.get("http://supervisor/addons/self/info", headers=test_headers)
-#     print("[SUPERVISOR RESPONSE]", test_response.status_code)
-#     print(test_response.json())
-# except Exception as e:
-#     print("[ERROR beim Supervisor-Zugriff]", str(e))
-
-
 server = flask.Flask(__name__)
 
-# Hole Ingress-Pfad zur Laufzeit dynamisch über Supervisor-API
 def get_ingress_prefix():
     token = os.getenv("SUPERVISOR_TOKEN")
     headers = {"Authorization": f"Bearer {token}"}
@@ -70,12 +60,10 @@ app = dash.Dash(
 
 print(f"[INFO] Dash läuft mit requests_pathname_prefix = {prefix}")
 
-# Optional: Hilfsroute zum Testen
-@server.route("/_dash-layout", methods=["GET"])
+@app.server.route("/_dash-layout", methods=["GET"])
 def dash_ping():
     return {"status": "OK"}
 
-# HTML-Template
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -103,14 +91,26 @@ app.index_string = '''
 </html>
 '''
 
-# Layout
-app.layout = dashboard_layout
-register_callbacks(app)
-# app.layout = html.Div([
-#     html.H2("Testseite"),
-#     html.P("Wenn du das hier siehst, funktioniert das Layout grundsätzlich.")
-# ])
+app.layout = html.Div([
+    dcc.Tabs(id="tabs", value="dashboard", children=[
+        dcc.Tab(label="Dashboard", value="dashboard"),
+        dcc.Tab(label="Einstellungen", value="settings"),
+    ]),
+    html.Div(id="tabs-content")
+])
 
+@dash.callback(
+    Output("tabs-content", "children"),
+    Input("tabs", "value")
+)
+def render_tab(tab):
+    if tab == "dashboard":
+        return dashboard_layout
+    elif tab == "settings":
+        return generate_settings_layout()
+
+register_callbacks(app)
+register_settings_callbacks(app)
 
 if __name__ == "__main__":
     print("[main.py] Starte Dash auf 0.0.0.0:21000")
