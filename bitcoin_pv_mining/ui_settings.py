@@ -97,7 +97,8 @@ def generate_settings_layout():
         html.Div(id="save-status", style={"marginTop": "10px", "color": "green"}),
 
         html.Button("recreate local config", id="rebuild-config",
-                    style={"marginTop": "20px", "backgroundColor": "red", "color": "white"})
+                    style={"marginTop": "20px", "backgroundColor": "red", "color": "white"}),
+        html.Div(id="rebuild-config-status", style={"marginTop": "10px", "color": "green"})
 
     ])
 
@@ -117,6 +118,19 @@ def register_settings_callbacks(app):
             return {"color": "blue"}, {"color": "blue"}, ""
         save_entities({"sensor_pv_production": pv_production, "sensor_load_consumption": load_consumption})
         return {"color": "black"}, {"color": "black"}, "saved!"
+
+    @app.callback(
+        Output("rebuild-config-status", "children"),
+        Input("rebuild-config", "n_clicks"),
+        prevent_initial_call=True
+    )
+    def handle_rebuild_click(n_clicks):
+        if n_clicks:
+            if recreate_config_file():
+                return "Config has been recreated."
+            return "Error while recreating config."
+        return dash.no_update
+
 
 def get_sensor_value(entity_id):
     """Fragt einen Sensorwert über die Home Assistant API ab."""
