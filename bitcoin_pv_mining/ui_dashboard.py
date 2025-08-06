@@ -109,7 +109,7 @@ layout = html.Div([
     dcc.Graph(id="sankey-diagram", figure=go.Figure()),
     html.Div([
         dcc.Graph(id="pv-gauge", style={"width": "50%", "display": "inline-block"}),
-        dcc.Graph(id="consumption-gauge", style={"width": "50%", "display": "inline-block"})
+        dcc.Graph(id="load-gauge", style={"width": "50%", "display": "inline-block"})
     ], style={"display": "flex", "flexDirection": "row", "justifyContent": "space-between"}),
     # dcc.Graph(id="pv-gauge"),
     # dcc.Graph(id="load-gauge"),
