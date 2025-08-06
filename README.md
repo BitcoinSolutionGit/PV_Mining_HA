@@ -1,1 +1,1 @@
-# Bitcoin PV Mining Add-on for Home Assistant
+# Bitcoin PV-mining Addon for Home Assistant

@@ -6,29 +6,15 @@ import flask
 from dash.dependencies import Input, Output
 from flask import jsonify, request
 from ui_dashboard import layout as dashboard_layout, register_callbacks
-from ui_settings import generate_settings_layout, register_settings_callbacks
+from ui_settings import generate_settings_layout, register_settings_callbacks, recreate_config_file
 
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
+# force rebuild button triggers this manually later
 FORCE_CREATE_CONFIG = os.getenv("FORCE_CREATE_CONFIG", "false").lower() == "true"
 
-
 if FORCE_CREATE_CONFIG or not os.path.exists(CONFIG_PATH):
-    try:
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        default_content = """feature_flags:
-  heizstab_aktiv: false
-  wallbox_aktiv: false
-  hausbatterie_aktiv: false
-entities:
-  sensor_pv: ""
-  sensor_verbrauch: ""
-"""
-        with open(CONFIG_PATH, "w") as f:
-            f.write(default_content)
-        print(f"[INIT] Standardkonfiguration erstellt unter: {CONFIG_PATH}")
-    except Exception as e:
-        print(f"[FEHLER] Konnte Konfiguration nicht anlegen: {e}")
+    recreate_config_file()
 
 server = flask.Flask(__name__)
 

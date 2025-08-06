@@ -1,5 +1,5 @@
-name: Bitcoin PV Mining Home Assistant Add-on
-url: https://github.com/BroinChayton/BitcoinSolution_PV_Mining_HomeAssistant
-maintainer: Broin Chayton <office@bitcoinsolution.at>
+name: Bitcoin PV-mining Home Assistant Addon
+url: https://github.com/BitcoinSolutionGit/PV_Mining_HA
+maintainer: W. <office@bitcoinsolution.at>
 addons:
   - PV Mining

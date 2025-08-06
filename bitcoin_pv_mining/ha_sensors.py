@@ -8,7 +8,7 @@ def get_sensor_value(entity_id):
     """Liefert aktuellen Wert eines Sensors."""
     token = get_ha_token()
     if not token:
-        print("[ERROR] Kein Supervisor-Token verfügbar")
+        print("[ERROR] no Supervisor-Token available")
         return None
 
     url = f"http://supervisor/core/api/states/{entity_id}"
@@ -22,9 +22,9 @@ def get_sensor_value(entity_id):
         if response.status_code == 200:
             state = response.json().get("state")
             return float(state) if state not in (None, "unknown", "unavailable") else None
-        print(f"[WARN] Fehler beim Abruf von {entity_id}: {response.status_code}")
+        print(f"[WARN] Error fetching {entity_id}: {response.status_code}")
     except Exception as e:
-        print(f"[ERROR] Sensorwert {entity_id} nicht abrufbar:", e)
+        print(f"[ERROR] sensor value {entity_id} unfetchable:", e)
 
     return None
 
@@ -45,6 +45,6 @@ def list_all_sensors():
                 if s["entity_id"].startswith("sensor.")
             ]
     except Exception as e:
-        print("[ERROR] Sensorliste konnte nicht geladen werden:", e)
+        print("[ERROR] sensor list unreadable:", e)
 
     return []

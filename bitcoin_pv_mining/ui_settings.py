@@ -5,8 +5,28 @@ from dash import html, dcc, Input, Output, State
 import dash
 from ha_sensors import list_all_sensors
 
-
+CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = "/config/pv_mining_addon/pv_mining_local_config.yaml"
+
+def recreate_config_file():
+    default_content = """
+feature_flags:
+  heater_active: false
+  wallbox_active: false
+  battery_active: false
+entities:
+  sensor_pv_production: ""
+  sensor_load_consumption: ""
+"""
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with open(CONFIG_PATH, "w") as f:
+            f.write(default_content)
+        print("[INFO] Config manually recreated.")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Manual config recreation failed: {e}")
+        return False
 
 def load_entities():
     try:
@@ -23,13 +43,13 @@ def save_entities(data):
         with open(CONFIG_PATH, "w") as f:
             yaml.dump(full_config, f)
     except Exception as e:
-        print("[FEHLER] Beim Speichern der Entities:", e)
+        print("[ERROR] Saving entities failed:", e)
 
 def fetch_sensors_from_homeassistant():
     """Liefert eine Liste aller sensor-Entitäten aus HA"""
     token = os.getenv("SUPERVISOR_TOKEN")
     if not token:
-        print("[WARN] Kein Supervisor-Token für HA-API verfügbar.")
+        print("[WARN] No Supervisor token available.")
         return []
 
     headers = {
@@ -42,9 +62,9 @@ def fetch_sensors_from_homeassistant():
             sensors = [e["entity_id"] for e in res.json() if e["entity_id"].startswith("sensor.")]
             return [{"label": s, "value": s} for s in sensors]
         else:
-            print(f"[WARN] HA API Fehler: {res.status_code}")
+            print(f"[WARN] HA API Error: {res.status_code}")
     except Exception as e:
-        print(f"[ERROR] Sensor-Abruf fehlgeschlagen: {e}")
+        print(f"[ERROR] Failed to fetch sensors: {e}")
     return []
 
 
@@ -53,46 +73,50 @@ def generate_settings_layout():
     sensor_options = fetch_sensors_from_homeassistant()
 
     return html.Div([
-        html.H2("Sensor-Auswahl"),
+        html.H2("select sensors"),
 
-        html.Label("Sensor für PV-Produktion"),
+        html.Label("PV-production sensor"),
         dcc.Dropdown(
-            id="sensor-pv",
+            id="sensor-pv-production",
             options=sensor_options,
-            value=current.get("sensor_pv", ""),
-            placeholder="Sensor auswählen...",
+            value=current.get("sensor_pv_production", ""),
+            placeholder="select sensor...",
             style={"width": "100%", "color": "blue"}
         ),
 
-        html.Label("Sensor für Verbrauch", style={"marginTop": "15px"}),
+        html.Label("Load-consumption sensor", style={"marginTop": "15px"}),
         dcc.Dropdown(
-            id="sensor-verbrauch",
+            id="sensor-load-consumption",
             options=sensor_options,
-            value=current.get("sensor_verbrauch", ""),
-            placeholder="Sensor auswählen...",
+            value=current.get("sensor_load_consumption", ""),
+            placeholder="select sensor...",
             style={"width": "100%", "color": "blue"}
         ),
 
-        html.Button("Speichern", id="save-entities", style={"marginTop": "20px"}),
-        html.Div(id="save-status", style={"marginTop": "10px", "color": "green"})
+        html.Button("Save", id="save-entities", style={"marginTop": "20px"}),
+        html.Div(id="save-status", style={"marginTop": "10px", "color": "green"}),
+
+        html.Button("recreate local config", id="rebuild-config",
+                    style={"marginTop": "20px", "backgroundColor": "red", "color": "white"})
+
     ])
 
 def register_settings_callbacks(app):
     @app.callback(
-        Output("sensor-pv", "style"),
-        Output("sensor-verbrauch", "style"),
+        Output("sensor-pv-production", "style"),
+        Output("sensor-load-consumption", "style"),
         Output("save-status", "children"),
         Input("save-entities", "n_clicks"),
-        State("sensor-pv", "value"),
-        State("sensor-verbrauch", "value")
+        State("sensor-pv-production", "value"),
+        State("sensor-load-consumption", "value")
     )
-    def save_inputs(n_clicks, pv, verbrauch):
+    def save_inputs(n_clicks, pv_production, load_consumption):
         if n_clicks is None:
             raise dash.exceptions.PreventUpdate
-        if not pv or not verbrauch:
+        if not pv_production or not load_consumption:
             return {"color": "blue"}, {"color": "blue"}, ""
-        save_entities({"sensor_pv": pv, "sensor_verbrauch": verbrauch})
-        return {"color": "black"}, {"color": "black"}, "Gespeichert!"
+        save_entities({"sensor_pv_production": pv_production, "sensor-load-consumption": load_consumption})
+        return {"color": "black"}, {"color": "black"}, "saved!"
 
 def get_sensor_value(entity_id):
     """Fragt einen Sensorwert über die Home Assistant API ab."""
@@ -109,5 +133,7 @@ def get_sensor_value(entity_id):
         if response.status_code == 200:
             return float(response.json()["state"])
     except Exception as e:
-        print(f"[ERROR] Sensorwert für {entity_id} nicht abrufbar:", e)
+        print(f"[ERROR] cant fetch sensor value for {entity_id} :", e)
     return None
+
+
