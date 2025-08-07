@@ -41,7 +41,7 @@ def save_entities(CONFIG_PATH, entities):
     with open(CONFIG_PATH, "w") as f:
         yaml.dump(config, f)
 
-def convert_blockchain_info_hashrate_to_TH(raw_hashrate):
+def convert_blockchain_info_hashrate_to_th(raw_hashrate):
     try:
         # Convert from GH/s to TH/s (1 TH/s = 1e3 GH/s)
         exahash = float(raw_hashrate) / 1e3
@@ -49,7 +49,7 @@ def convert_blockchain_info_hashrate_to_TH(raw_hashrate):
     except:
         return None
 
-def convert_blockchain_info_hashrate_to_TH(raw_hashrate):
+def convert_blockchain_com_hashrate_to_th(raw_hashrate):
     try:
         # Convert from TH/s to TH/s (1 TH/s = 1 TH/s)
         exahash = float(raw_hashrate) / 1
@@ -83,14 +83,14 @@ def update_btc_data_periodically(CONFIG_PATH):
             if now - LAST_UPDATE["blockchain_info"] >= INTERVALS_MINUTES["blockchain_info"] * 60:
                 hashrate = get_btc_hashrate_from_blockchain_info()
                 if hashrate is not None:
-                    entities["sensor_btc_hashrate"] = convert_blockchain_info_hashrate_to_TH(hashrate)
+                    entities["sensor_btc_hashrate"] = convert_blockchain_info_hashrate_to_th(hashrate)
                     LAST_UPDATE["blockchain_info"] = now
                     updated = True
 
             elif now - LAST_UPDATE["blockchain_com"] >= INTERVALS_MINUTES["blockchain_com"] * 60:
                 hashrate = get_btc_hashrate_from_blockchain_com()
                 if hashrate is not None:
-                    entities["sensor_btc_hashrate"] = convert_blockchain_info_hashrate_to_TH(hashrate)
+                    entities["sensor_btc_hashrate"] = convert_blockchain_com_hashrate_to_th(hashrate)
                     LAST_UPDATE["blockchain_com"] = now
                     updated = True
 

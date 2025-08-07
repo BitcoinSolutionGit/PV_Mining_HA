@@ -82,8 +82,10 @@ def register_callbacks(app):
         config = load_config()
         pv_id = config.get("entities", {}).get("sensor_pv_production")
         load_id = config.get("entities", {}).get("sensor_load_consumption")
+        feed_id = config.get("entities", {}).get("sensor_grid_feed_id")
         pv_val = get_sensor_value(pv_id) if pv_id else 0
         load_val = get_sensor_value(load_id) if load_id else 0
+        feed_val = get_sensor_value(feed_id) if feed_id else 0
 
         def build_gauge(value, title, color):
             return go.Figure(go.Indicator(
@@ -102,7 +104,8 @@ def register_callbacks(app):
 
         return (
             build_gauge(pv_val, "PV production (kW)", "green"),
-            build_gauge(load_val, "Load consumption (kW)", "orange")
+            build_gauge(load_val, "Load consumption (kW)", "orange"),
+            build_gauge(feed_val, "Grid feed-in (kW)", "red")
         )
 
     @app.callback(
@@ -132,6 +135,12 @@ layout = html.Div([
             "height": "300px"
         }),
         dcc.Graph(id="load-gauge", style={
+            "flex": "1 1 300px",
+            "minWidth": "300px",
+            "maxWidth": "500px",
+            "height": "300px"
+        }),
+        dcc.Graph(id="feed-gauge", style={
             "flex": "1 1 300px",
             "minWidth": "300px",
             "maxWidth": "500px",
