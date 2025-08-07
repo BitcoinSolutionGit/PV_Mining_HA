@@ -98,11 +98,11 @@ app.index_string = '''
                 background-color: #ddd;
             }
             .custom-tab-selected {
-                background-color: #007BFF;
+                background-color: #ccc;
                 color: black;
                 font-weight: bold;
-                border: 2px solid #004080;
-                box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+                border: 2px solid #999;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
             }
             @media (max-width: 600px) {
                 .custom-tab {
