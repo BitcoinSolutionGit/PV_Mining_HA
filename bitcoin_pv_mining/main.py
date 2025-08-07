@@ -144,13 +144,6 @@ app.layout = html.Div([
         html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab": "settings"}),
     ], id="tab-buttons", className="header-bar"),
 
-    html.Div([
-        html.Div(id="btc-price", style={"textAlign": "center", "fontWeight": "bold"}),
-        html.Div(id="btc-hashrate", style={"textAlign": "center", "fontWeight": "bold"})
-    ], style={"display": "flex", "justifyContent": "center", "gap": "40px", "marginTop": "20px"}),
-
-    dcc.Interval(id="btc-refresh", interval=60_000, n_intervals=0),
-
     html.Div(id="tabs-content", style={"marginTop": "10px"})
 ])
 

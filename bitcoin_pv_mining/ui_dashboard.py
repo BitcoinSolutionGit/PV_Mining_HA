@@ -105,6 +105,19 @@ def register_callbacks(app):
             build_gauge(load_val, "Load consumption (kW)", "orange")
         )
 
+    @app.callback(
+        Output("btc-price", "children"),
+        Output("btc-hashrate", "children"),
+        Input("btc-refresh", "n_intervals")
+    )
+    def update_btc_display(_):
+        config = load_config()
+        entities = config.get("entities", {})
+        price = entities.get("sensor_btc_price", "N/A")
+        hashrate = entities.get("sensor_btc_hashrate", "N/A")
+        return f"BTC Price: ${price}", f"Hashrate: {hashrate} PH/s"
+
+
 layout = html.Div([
     html.H1("PV-mining dashboard"),
     dcc.Graph(id="sankey-diagram", figure=go.Figure()),
@@ -128,7 +141,14 @@ layout = html.Div([
         "justifyContent": "center",
         "gap": "20px"
     }),
-    # dcc.Graph(id="pv-gauge"),
-    # dcc.Graph(id="load-gauge"),
-    dcc.Interval(id="pv-update", interval=10_000, n_intervals=0)
+
+    dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
+
+    html.Div([
+        html.Div(id="btc-price", style={"textAlign": "center", "fontWeight": "bold"}),
+        html.Div(id="btc-hashrate", style={"textAlign": "center", "fontWeight": "bold"})
+    ], style={"display": "flex", "justifyContent": "center", "gap": "40px", "marginTop": "20px"}),
+
+    dcc.Interval(id="btc-refresh", interval=60_000, n_intervals=0)
+
 ])
