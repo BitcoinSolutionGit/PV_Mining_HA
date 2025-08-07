@@ -151,6 +151,7 @@ app.layout = html.Div([
 
     dcc.Interval(id="btc-refresh", interval=60_000, n_intervals=0),
 
+    html.Div(id="tabs-content", style={"marginTop": "10px"})
 ])
 
 @dash.callback(
