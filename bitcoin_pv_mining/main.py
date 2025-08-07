@@ -99,7 +99,7 @@ app.index_string = '''
             }
             .custom-tab-selected {
                 background-color: #007BFF;
-                color: white;
+                color: black;
                 font-weight: bold;
                 border: 2px solid #004080;
                 box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
