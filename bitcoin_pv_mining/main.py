@@ -69,20 +69,31 @@ app.index_string = '''
                 padding: 0;
             }
 
-            .tabs-container {
+            /* Container um die Tabs */
+            .dash-tabs {
                 display: flex;
+                flex-direction: row;
                 flex-wrap: wrap;
                 justify-content: center;
-                gap: 10px;
-                margin-bottom: 10px;
+                align-items: center;
             }
 
+            /* Einzelner Tab */
             .tab {
                 flex: 1 1 auto;
-                min-width: 120px;
+                min-width: 100px;
                 max-width: 200px;
                 text-align: center;
                 padding: 10px;
+                margin: 5px;
+                border-radius: 5px;
+                background-color: #f2f2f2;
+                cursor: pointer;
+            }
+
+            .tab--selected {
+                background-color: #d0e0ff;
+                font-weight: bold;
             }
         </style>
     </head>
@@ -97,29 +108,14 @@ app.index_string = '''
 </html>
 '''
 
-
-# app.layout = html.Div([
-#     dcc.Tabs(id="tabs", value="dashboard", children=[
-#         dcc.Tab(label="dashboard", value="dashboard"),
-#         dcc.Tab(label="settings", value="settings"),
-#     ]),
-#     html.Div(id="tabs-content")
-# ])
 app.layout = html.Div([
-    html.Div([
-        dcc.Tabs(
-            id="tabs",
-            value="dashboard",
-            children=[
-                dcc.Tab(label="Dashboard", value="dashboard", className="tab"),
-                dcc.Tab(label="Settings", value="settings", className="tab"),
-            ],
-            className="tabs-container"
-        )
-    ], style={"marginBottom": "10px"}),
-
+    dcc.Tabs(id="tabs", value="dashboard", children=[
+        dcc.Tab(label="Dashboard", value="dashboard"),
+        dcc.Tab(label="Settings", value="settings"),
+    ]),
     html.Div(id="tabs-content")
 ])
+
 
 @dash.callback(
     Output("tabs-content", "children"),
