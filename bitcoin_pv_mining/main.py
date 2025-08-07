@@ -116,6 +116,7 @@ def dash_ping():
 #     html.Div(id="tabs-content")
 # ])
 
+
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -129,40 +130,29 @@ app.index_string = '''
                 background-color: white;
                 color: black;
                 font-family: Arial, sans-serif;
-                margin: 0;
-                padding: 0;
             }
-        
-            .dash-spreadsheet-container {
-                overflow-x: auto;
-            }
-        
-            .custom-tabs .tab {
-                display: inline-block !important;
-                padding: 6px 12px;
-                margin: 4px;
+            .custom-tab {
+                background-color: #eee;
                 border: 1px solid #ccc;
                 border-radius: 4px;
-                background-color: #eee;
-                cursor: pointer;
+                padding: 6px 12px;
                 font-size: 14px;
-                white-space: nowrap;
+                cursor: pointer;
             }
-        
-            .custom-tabs .tab--selected {
-                background-color: #ccc;
+            .custom-tab:hover {
+                background-color: #ddd;
+            }
+            .custom-tab-selected {
+                background-color: #bbb;
                 font-weight: bold;
             }
-        
             @media (max-width: 600px) {
-                .custom-tabs .tab {
+                .custom-tab {
                     font-size: 12px;
                     padding: 4px 8px;
-                    margin: 2px;
                 }
             }
         </style>
-
     </head>
     <body>
         {%app_entry%}
@@ -176,25 +166,38 @@ app.index_string = '''
 '''
 
 app.layout = html.Div([
+    dcc.Store(id="active-tab", data="dashboard"),
+
     html.Div([
-        dcc.Tabs(
-            id="tabs",
-            value="dashboard",
-            className="custom-tabs",
-            children=[
-                dcc.Tab(label="Dashboard", value="dashboard", className="tab", selected_className="tab--selected"),
-                dcc.Tab(label="Settings", value="settings", className="tab", selected_className="tab--selected"),
-            ]
-        )
-    ], style={"textAlign": "center"}),
-    html.Div(id="tabs-content")
+        html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab"),
+        html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab"),
+    ], style={
+        "display": "flex",
+        "justifyContent": "center",
+        "gap": "10px",
+        "padding": "5px",
+        "flexWrap": "wrap"
+    }),
+
+    html.Div(id="tabs-content", style={"marginTop": "10px"})
 ])
 
-
+@dash.callback(
+    Output("active-tab", "data"),
+    Input("btn-dashboard", "n_clicks"),
+    Input("btn-settings", "n_clicks"),
+    prevent_initial_call=True
+)
+def switch_tabs(n1, n2):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise dash.exceptions.PreventUpdate
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    return "dashboard" if button_id == "btn-dashboard" else "settings"
 
 @dash.callback(
     Output("tabs-content", "children"),
-    Input("tabs", "value")
+    Input("active-tab", "data")
 )
 def render_tab(tab):
     if tab == "dashboard":
@@ -206,5 +209,5 @@ register_callbacks(app)
 register_settings_callbacks(app)
 
 if __name__ == "__main__":
-    print("[main.py] starting dash at 0.0.0.0:21000")
+    print("[main.py] Starting Dash on 0.0.0.0:21000")
     app.run(host="0.0.0.0", port=21000, debug=False, use_reloader=False)
