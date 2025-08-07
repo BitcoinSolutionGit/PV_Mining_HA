@@ -146,8 +146,8 @@ app.index_string = '''
                 background-color: #007BFF;
                 color: white;
                 font-weight: bold;
-                border: 2px solid #0056b3;
-                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+                border: 2px solid #004080;
+                box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
             }
             @media (max-width: 600px) {
                 .custom-tab {
