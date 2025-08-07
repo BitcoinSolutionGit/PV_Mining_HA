@@ -52,6 +52,70 @@ print(f"[INFO] Dash runs with requests_pathname_prefix = {prefix}")
 def dash_ping():
     return {"status": "OK"}
 
+# app.index_string = '''
+# <!DOCTYPE html>
+# <html>
+#     <head>
+#         {%metas%}
+#         <title>Bitcoin PV Dashboard</title>
+#         {%favicon%}
+#         {%css%}
+#         <style>
+#             body {
+#                 background-color: white;
+#                 color: black;
+#                 font-family: Arial, sans-serif;
+#                 margin: 0;
+#                 padding: 0;
+#             }
+#
+#             /* Container um die Tabs */
+#             .dash-tabs {
+#                 display: flex;
+#                 flex-direction: row;
+#                 flex-wrap: wrap;
+#                 justify-content: center;
+#                 align-items: center;
+#             }
+#
+#             /* Einzelner Tab */
+#             .tab {
+#                 flex: 0 1 auto;
+#                 min-width: 75px;
+#                 max-width: 200px;
+#                 text-align: center;
+#                 padding: 5px;
+#                 margin: 5px;
+#                 border-radius: 5px;
+#                 background-color: #f2f2f2;
+#                 cursor: pointer;
+#             }
+#
+#             .tab--selected {
+#                 background-color: #d0e0ff;
+#                 font-weight: bold;
+#             }
+#         </style>
+#     </head>
+#     <body>
+#         {%app_entry%}
+#         <footer>
+#             {%config%}
+#             {%scripts%}
+#             {%renderer%}
+#         </footer>
+#     </body>
+# </html>
+# '''
+#
+# app.layout = html.Div([
+#     dcc.Tabs(id="tabs", value="dashboard", children=[
+#         dcc.Tab(label="Dashboard", value="dashboard"),
+#         dcc.Tab(label="Settings", value="settings"),
+#     ]),
+#     html.Div(id="tabs-content")
+# ])
+
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -68,34 +132,37 @@ app.index_string = '''
                 margin: 0;
                 padding: 0;
             }
-
-            /* Container um die Tabs */
-            .dash-tabs {
-                display: flex;
-                flex-direction: row;
-                flex-wrap: wrap;
-                justify-content: center;
-                align-items: center;
+        
+            .dash-spreadsheet-container {
+                overflow-x: auto;
             }
-
-            /* Einzelner Tab */
-            .tab {
-                flex: 0 1 auto;
-                min-width: 75px;
-                max-width: 200px;
-                text-align: center;
-                padding: 5px;
-                margin: 5px;
-                border-radius: 5px;
-                background-color: #f2f2f2;
+        
+            .custom-tabs .tab {
+                display: inline-block !important;
+                padding: 6px 12px;
+                margin: 4px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                background-color: #eee;
                 cursor: pointer;
+                font-size: 14px;
+                white-space: nowrap;
             }
-
-            .tab--selected {
-                background-color: #d0e0ff;
+        
+            .custom-tabs .tab--selected {
+                background-color: #ccc;
                 font-weight: bold;
             }
+        
+            @media (max-width: 600px) {
+                .custom-tabs .tab {
+                    font-size: 12px;
+                    padding: 4px 8px;
+                    margin: 2px;
+                }
+            }
         </style>
+
     </head>
     <body>
         {%app_entry%}
@@ -109,12 +176,20 @@ app.index_string = '''
 '''
 
 app.layout = html.Div([
-    dcc.Tabs(id="tabs", value="dashboard", children=[
-        dcc.Tab(label="Dashboard", value="dashboard"),
-        dcc.Tab(label="Settings", value="settings"),
-    ]),
+    html.Div([
+        dcc.Tabs(
+            id="tabs",
+            value="dashboard",
+            className="custom-tabs",
+            children=[
+                dcc.Tab(label="Dashboard", value="dashboard", className="tab", selected_className="tab--selected"),
+                dcc.Tab(label="Settings", value="settings", className="tab", selected_className="tab--selected"),
+            ]
+        )
+    ], style={"textAlign": "center"}),
     html.Div(id="tabs-content")
 ])
+
 
 
 @dash.callback(
