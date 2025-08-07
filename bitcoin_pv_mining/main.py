@@ -156,7 +156,10 @@ def switch_tabs(n1, n2):
     if not ctx.triggered:
         raise dash.exceptions.PreventUpdate
     button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    return "dashboard" if button_id == "btn-dashboard" else "settings"
+    active = "dashboard" if button_id == "btn-dashboard" else "settings"
+    return active, \
+        "custom-tab custom-tab-selected" if active == "dashboard" else "custom-tab", \
+        "custom-tab custom-tab-selected" if active == "settings" else "custom-tab"
 
 @dash.callback(
     Output("tabs-content", "children"),
