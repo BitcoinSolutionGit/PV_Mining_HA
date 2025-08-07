@@ -108,8 +108,8 @@ layout = html.Div([
     html.H1("PV-mining dashboard"),
     dcc.Graph(id="sankey-diagram", figure=go.Figure()),
     html.Div([
-        dcc.Graph(id="pv-gauge", style={"width": "50%", "display": "inline-block"}),
-        dcc.Graph(id="load-gauge", style={"width": "50%", "display": "inline-block"})
+        dcc.Graph(id="pv-gauge", style={"width": "100%", "maxWidth": "500px", "flex":"1"}),
+        dcc.Graph(id="load-gauge", style={"width": "100%", "maxWidth": "500px", "flex":"1"})
     ], style={"display": "flex", "flexDirection": "wrap", "justifyContent": "center", "gap": "20px"}),
     # dcc.Graph(id="pv-gauge"),
     # dcc.Graph(id="load-gauge"),
