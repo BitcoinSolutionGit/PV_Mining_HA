@@ -9,6 +9,7 @@ from flask import jsonify, request
 from flask import send_from_directory
 from ui_dashboard import layout as dashboard_layout, register_callbacks
 from ui_settings import generate_settings_layout, register_settings_callbacks, recreate_config_file
+from btc_api import set_config_path, update_btc_data_periodically
 
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
@@ -28,6 +29,10 @@ if not os.path.exists(ICON_TARGET_PATH):
         print("[INFO] Icon copied to config directory.")
     except Exception as e:
         print(f"[ERROR] Failed to copy icon: {e}")
+
+# Start BTC API updater
+set_config_path(CONFIG_PATH)
+update_btc_data_periodically()
 server = flask.Flask(__name__)
 
 def get_ingress_prefix():
@@ -140,7 +145,13 @@ app.layout = html.Div([
         html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab": "settings"}),
     ], id="tab-buttons", className="header-bar"),
 
-    html.Div(id="tabs-content", style={"marginTop": "10px"})
+    html.Div([
+        html.Div(id="btc-price", style={"textAlign": "center", "fontWeight": "bold"}),
+        html.Div(id="btc-hashrate", style={"textAlign": "center", "fontWeight": "bold"})
+    ], style={"display": "flex", "justifyContent": "center", "gap": "40px", "marginTop": "20px"}),
+
+    dcc.Interval(id="btc-refresh", interval=60_000, n_intervals=0),
+
 ])
 
 @dash.callback(

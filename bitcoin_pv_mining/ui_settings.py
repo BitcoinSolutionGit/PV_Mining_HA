@@ -14,9 +14,12 @@ feature_flags:
   heater_active: false
   wallbox_active: false
   battery_active: false
+  
 entities:
   sensor_pv_production: ""
   sensor_load_consumption: ""
+  sensor_btc_price: ""
+  sensor_btc_hashrate: ""
 """
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
