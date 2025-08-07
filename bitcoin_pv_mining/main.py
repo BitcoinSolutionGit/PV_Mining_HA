@@ -139,7 +139,7 @@ app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
 
     html.Div([
-        html.Img(src="/config-icon", className="header-icon"),
+        html.Img(src=f"{prefix}config-icon", className="header-icon"),
         html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab", **{"data-tab": "dashboard"}),
         html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab": "settings"}),
     ], id="tab-buttons", className="header-bar"),
