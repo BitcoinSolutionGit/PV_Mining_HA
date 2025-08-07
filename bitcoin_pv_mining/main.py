@@ -1,21 +1,33 @@
 import os
+import shutil
 import requests
 import dash
 from dash import html, dcc
 import flask
 from dash.dependencies import Input, Output
 from flask import jsonify, request
+from flask import send_from_directory
 from ui_dashboard import layout as dashboard_layout, register_callbacks
 from ui_settings import generate_settings_layout, register_settings_callbacks, recreate_config_file
 
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
+ICON_SOURCE_PATH = "/app/icon.png"  # im GitHub-Repo
+ICON_TARGET_PATH = "/config/pv_mining_addon/icon.png"
+
 # force rebuild button triggers this manually later
 FORCE_CREATE_CONFIG = os.getenv("FORCE_CREATE_CONFIG", "false").lower() == "true"
 
 if FORCE_CREATE_CONFIG or not os.path.exists(CONFIG_PATH):
     recreate_config_file()
 
+# Copy icon if it doesn't exist
+if not os.path.exists(ICON_TARGET_PATH):
+    try:
+        shutil.copy(ICON_SOURCE_PATH, ICON_TARGET_PATH)
+        print("[INFO] Icon copied to config directory.")
+    except Exception as e:
+        print(f"[ERROR] Failed to copy icon: {e}")
 server = flask.Flask(__name__)
 
 def get_ingress_prefix():
@@ -51,78 +63,16 @@ print(f"[INFO] Dash runs with requests_pathname_prefix = {prefix}")
 @app.server.route("/_dash-layout", methods=["GET"])
 def dash_ping():
     return {"status": "OK"}
-
-# app.index_string = '''
-# <!DOCTYPE html>
-# <html>
-#     <head>
-#         {%metas%}
-#         <title>Bitcoin PV Dashboard</title>
-#         {%favicon%}
-#         {%css%}
-#         <style>
-#             body {
-#                 background-color: white;
-#                 color: black;
-#                 font-family: Arial, sans-serif;
-#                 margin: 0;
-#                 padding: 0;
-#             }
-#
-#             /* Container um die Tabs */
-#             .dash-tabs {
-#                 display: flex;
-#                 flex-direction: row;
-#                 flex-wrap: wrap;
-#                 justify-content: center;
-#                 align-items: center;
-#             }
-#
-#             /* Einzelner Tab */
-#             .tab {
-#                 flex: 0 1 auto;
-#                 min-width: 75px;
-#                 max-width: 200px;
-#                 text-align: center;
-#                 padding: 5px;
-#                 margin: 5px;
-#                 border-radius: 5px;
-#                 background-color: #f2f2f2;
-#                 cursor: pointer;
-#             }
-#
-#             .tab--selected {
-#                 background-color: #d0e0ff;
-#                 font-weight: bold;
-#             }
-#         </style>
-#     </head>
-#     <body>
-#         {%app_entry%}
-#         <footer>
-#             {%config%}
-#             {%scripts%}
-#             {%renderer%}
-#         </footer>
-#     </body>
-# </html>
-# '''
-#
-# app.layout = html.Div([
-#     dcc.Tabs(id="tabs", value="dashboard", children=[
-#         dcc.Tab(label="Dashboard", value="dashboard"),
-#         dcc.Tab(label="Settings", value="settings"),
-#     ]),
-#     html.Div(id="tabs-content")
-# ])
-
+@app.server.route('/config-icon')
+def serve_icon():
+    return send_from_directory(CONFIG_DIR, 'icon.png')
 
 app.index_string = '''
 <!DOCTYPE html>
 <html>
     <head>
         {%metas%}
-        <title>Bitcoin PV Dashboard</title>
+        <title>Bitcoin PV-mining dashboard</title>
         {%favicon%}
         {%css%}
         <style>
@@ -138,6 +88,7 @@ app.index_string = '''
                 padding: 6px 12px;
                 font-size: 14px;
                 cursor: pointer;
+                transition: all 0.2s ease-in-out;
             }
             .custom-tab:hover {
                 background-color: #ddd;
@@ -154,6 +105,18 @@ app.index_string = '''
                     font-size: 12px;
                     padding: 4px 8px;
                 }
+            }
+            .header-bar {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+                padding: 8px;
+            }
+            .header-icon {
+                width: 32px;
+                height: 32px;
             }
         </style>
     </head>
@@ -172,21 +135,18 @@ app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
 
     html.Div([
-        html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab"),
-        html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab"),
-    ], style={
-        "display": "flex",
-        "justifyContent": "center",
-        "gap": "10px",
-        "padding": "5px",
-        "flexWrap": "wrap"
-    }),
+        html.Img(src="/local/pv_mining_addon/icon.png", className="header-icon"),
+        html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab", **{"data-tab": "dashboard"}),
+        html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab": "settings"}),
+    ], id="tab-buttons", className="header-bar"),
 
     html.Div(id="tabs-content", style={"marginTop": "10px"})
 ])
 
 @dash.callback(
     Output("active-tab", "data"),
+    Output("btn-dashboard", "className"),
+    Output("btn-settings", "className"),
     Input("btn-dashboard", "n_clicks"),
     Input("btn-settings", "n_clicks"),
     prevent_initial_call=True

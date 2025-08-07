@@ -1,5 +1,5 @@
 name: "Bitcoin PV Mining"
-version: "2.1.35"
+version: "2.1.36"
 slug: "bitcoin_pv_mining"
 description: "PV-based Bitcoin mining control with web UI"
 ingress: true
@@ -16,3 +16,4 @@ arch:
   - aarch64
   - armv7
 
+icon: "icon.png"
