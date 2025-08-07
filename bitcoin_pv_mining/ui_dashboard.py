@@ -76,6 +76,7 @@ def register_callbacks(app):
     @app.callback(
         Output("pv-gauge", "figure"),
         Output("load-gauge", "figure"),
+        Output("feed-gauge", "figure"),
         Input("pv-update", "n_intervals")
     )
     def update_gauges(_):
