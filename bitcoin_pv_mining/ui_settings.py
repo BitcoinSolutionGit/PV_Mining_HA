@@ -18,6 +18,7 @@ feature_flags:
 entities:
   sensor_pv_production: ""
   sensor_load_consumption: ""
+  sensor_grid_feed_in: ""
   sensor_btc_price: ""
   sensor_btc_hashrate: ""
 """
@@ -96,6 +97,15 @@ def generate_settings_layout():
             style={"width": "100%", "color": "blue"}
         ),
 
+        html.Label("Grid feed-in sensor", style={"marginTop": "15px"}),
+        dcc.Dropdown(
+            id="sensor-grid-feed-in",
+            options=sensor_options,
+            value=current.get("sensor_grid_feed_in", ""),
+            placeholder="select sensor...",
+            style={"width": "100%", "color": "blue"}
+        ),
+
         html.Button("Save", id="save-entities", style={"marginTop": "20px"}),
         html.Div(id="save-status", style={"marginTop": "10px", "color": "green"}),
 
@@ -109,18 +119,20 @@ def register_settings_callbacks(app):
     @app.callback(
         Output("sensor-pv-production", "style"),
         Output("sensor-load-consumption", "style"),
+        Output("sensor-grid-feed-in", "style"),
         Output("save-status", "children"),
         Input("save-entities", "n_clicks"),
         State("sensor-pv-production", "value"),
-        State("sensor-load-consumption", "value")
+        State("sensor-load-consumption", "value"),
+        State("sensor-grid-feed-in", "value")
     )
-    def save_inputs(n_clicks, pv_production, load_consumption):
+    def save_inputs(n_clicks, pv_production, load_consumption, grid_feedin):
         if n_clicks is None:
             raise dash.exceptions.PreventUpdate
-        if not pv_production or not load_consumption:
-            return {"color": "blue"}, {"color": "blue"}, ""
-        save_entities({"sensor_pv_production": pv_production, "sensor_load_consumption": load_consumption})
-        return {"color": "black"}, {"color": "black"}, "saved!"
+        if not pv_production or not load_consumption or not grid_feedin:
+            return {"color": "blue"}, {"color": "blue"}, {"color": "blue"}, ""
+        save_entities({"sensor_pv_production": pv_production, "sensor_load_consumption": load_consumption, "sensor_grid_feed_in": grid_feedin})
+        return {"color": "black"}, {"color": "black"}, {"color": "black"}, "saved!"
 
     @app.callback(
         Output("rebuild-config-status", "children"),
