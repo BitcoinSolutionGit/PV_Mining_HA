@@ -65,6 +65,24 @@ app.index_string = '''
                 background-color: white;
                 color: black;
                 font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+            }
+
+            .tabs-container {
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 10px;
+                margin-bottom: 10px;
+            }
+
+            .tab {
+                flex: 1 1 auto;
+                min-width: 120px;
+                max-width: 200px;
+                text-align: center;
+                padding: 10px;
             }
         </style>
     </head>
@@ -79,11 +97,27 @@ app.index_string = '''
 </html>
 '''
 
+
+# app.layout = html.Div([
+#     dcc.Tabs(id="tabs", value="dashboard", children=[
+#         dcc.Tab(label="dashboard", value="dashboard"),
+#         dcc.Tab(label="settings", value="settings"),
+#     ]),
+#     html.Div(id="tabs-content")
+# ])
 app.layout = html.Div([
-    dcc.Tabs(id="tabs", value="dashboard", children=[
-        dcc.Tab(label="dashboard", value="dashboard"),
-        dcc.Tab(label="settings", value="settings"),
-    ]),
+    html.Div([
+        dcc.Tabs(
+            id="tabs",
+            value="dashboard",
+            children=[
+                dcc.Tab(label="Dashboard", value="dashboard", className="tab"),
+                dcc.Tab(label="Settings", value="settings", className="tab"),
+            ],
+            className="tabs-container"
+        )
+    ], style={"marginBottom": "10px"}),
+
     html.Div(id="tabs-content")
 ])
 
