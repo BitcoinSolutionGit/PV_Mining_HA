@@ -9,7 +9,7 @@ from flask import jsonify, request
 from flask import send_from_directory
 from ui_dashboard import layout as dashboard_layout, register_callbacks
 from ui_settings import generate_settings_layout, register_settings_callbacks, recreate_config_file
-from btc_api import set_config_path, update_btc_data_periodically
+from btc_api import update_btc_data_periodically
 
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
@@ -31,8 +31,7 @@ if not os.path.exists(ICON_TARGET_PATH):
         print(f"[ERROR] Failed to copy icon: {e}")
 
 # Start BTC API updater
-set_config_path(CONFIG_PATH)
-update_btc_data_periodically()
+update_btc_data_periodically(CONFIG_PATH)
 server = flask.Flask(__name__)
 
 def get_ingress_prefix():
