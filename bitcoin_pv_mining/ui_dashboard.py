@@ -108,9 +108,25 @@ layout = html.Div([
     html.H1("PV-mining dashboard"),
     dcc.Graph(id="sankey-diagram", figure=go.Figure()),
     html.Div([
-        dcc.Graph(id="pv-gauge", style={"width": "100%", "maxWidth": "500px", "flex":"1"}),
-        dcc.Graph(id="load-gauge", style={"width": "100%", "maxWidth": "500px", "flex":"1"})
-    ], style={"display": "flex", "flexDirection": "wrap", "justifyContent": "center", "gap": "20px"}),
+        dcc.Graph(id="pv-gauge", style={
+            "flex": "1 1 300px",
+            "minWidth": "300px",
+            "maxWidth": "500px",
+            "height": "300px"
+        }),
+        dcc.Graph(id="load-gauge", style={
+            "flex": "1 1 300px",
+            "minWidth": "300px",
+            "maxWidth": "500px",
+            "height": "300px"
+        })
+    ], style={
+        "display": "flex",
+        "flexDirection": "row",
+        "flexWrap": "wrap",
+        "justifyContent": "center",
+        "gap": "20px"
+    }),
     # dcc.Graph(id="pv-gauge"),
     # dcc.Graph(id="load-gauge"),
     dcc.Interval(id="pv-update", interval=10_000, n_intervals=0)
