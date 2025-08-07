@@ -140,7 +140,7 @@ app.layout = html.Div([
 
     html.Div([
         html.Img(src=f"{prefix}config-icon", className="header-icon"),
-        html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab", **{"data-tab": "dashboard"}),
+        html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab custom-tab-selected", **{"data-tab": "dashboard"}),
         html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab": "settings"}),
     ], id="tab-buttons", className="header-bar"),
 
