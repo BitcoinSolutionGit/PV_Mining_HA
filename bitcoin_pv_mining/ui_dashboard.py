@@ -110,7 +110,7 @@ layout = html.Div([
     html.Div([
         dcc.Graph(id="pv-gauge", style={"width": "50%", "display": "inline-block"}),
         dcc.Graph(id="load-gauge", style={"width": "50%", "display": "inline-block"})
-    ], style={"display": "flex", "flexDirection": "row", "justifyContent": "space-between"}),
+    ], style={"display": "flex", "flexDirection": "wrap", "justifyContent": "center", "gap": "20px"}),
     # dcc.Graph(id="pv-gauge"),
     # dcc.Graph(id="load-gauge"),
     dcc.Interval(id="pv-update", interval=10_000, n_intervals=0)
