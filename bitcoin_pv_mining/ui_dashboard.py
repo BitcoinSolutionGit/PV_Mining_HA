@@ -115,10 +115,9 @@ def register_callbacks(app):
         entities = config.get("entities", {})
         price = entities.get("sensor_btc_price", "N/A")
         hashrate = entities.get("sensor_btc_hashrate", "N/A")
-        # return f"BTC Price: ${price}", f"Hashrate: {hashrate} PH/s"
 
         price_str = f"BTC Price: ${price:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if price else "–"
-        hashrate_str = f"Hashrate: {hashrate:,.2f} EH/s".replace(",", "X").replace(".", ",").replace("X",
+        hashrate_str = f"Hashrate: {hashrate:,.2f} TH/s".replace(",", "X").replace(".", ",").replace("X",
                                                                                                      ".") if hashrate else "–"
         return price_str, hashrate_str
 
