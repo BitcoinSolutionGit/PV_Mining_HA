@@ -84,7 +84,7 @@ app.index_string = '''
                 min-width: 100px;
                 max-width: 200px;
                 text-align: center;
-                padding: 10px;
+                padding: 5px;
                 margin: 5px;
                 border-radius: 5px;
                 background-color: #f2f2f2;
