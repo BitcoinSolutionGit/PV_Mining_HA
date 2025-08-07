@@ -4,6 +4,9 @@ import time
 import yaml
 import requests
 
+CONFIG_DIR = "/config/pv_mining_addon"
+CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
+
 INTERVALS_MINUTES = {
     "coingecko": 5,
     "coinbase": 10,
@@ -25,23 +28,23 @@ LAST_UPDATE = {
     "blockchain_com": 0
 }
 
-def load_config(config_path):
+def load_config(CONFIG_PATH):
     try:
-        with open(config_path, "r") as f:
+        with open(CONFIG_PATH, "r") as f:
             return yaml.safe_load(f)
     except:
         return {}
 
-def save_entities(config_path, entities):
-    config = load_config(config_path)
+def save_entities(CONFIG_PATH, entities):
+    config = load_config(CONFIG_PATH)
     config["entities"] = entities
-    with open(config_path, "w") as f:
+    with open(CONFIG_PATH, "w") as f:
         yaml.dump(config, f)
 
-def update_btc_data_periodically(config_path):
+def update_btc_data_periodically(CONFIG_PATH):
     def updater():
         while True:
-            config = load_config(config_path)
+            config = load_config(CONFIG_PATH)
             entities = config.get("entities", {})
             now = time.time()
             updated = False
@@ -75,7 +78,7 @@ def update_btc_data_periodically(config_path):
                     updated = True
 
             if updated:
-                save_entities(config_path, entities)
+                save_entities(CONFIG_PATH, entities)
                 print("[BTC] Updated BTC info:", entities)
 
             time.sleep(30)

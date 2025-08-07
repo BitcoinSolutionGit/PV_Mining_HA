@@ -6,7 +6,7 @@ import dash
 from ha_sensors import list_all_sensors
 
 CONFIG_DIR = "/config/pv_mining_addon"
-CONFIG_PATH = "/config/pv_mining_addon/pv_mining_local_config.yaml"
+CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
 
 def recreate_config_file():
     default_content = """

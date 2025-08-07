@@ -5,7 +5,8 @@ from dash.dependencies import Input, Output
 import plotly.graph_objects as go
 from ha_sensors import get_sensor_value
 
-CONFIG_PATH = "/config/pv_mining_addon/pv_mining_local_config.yaml"
+CONFIG_DIR = "/config/pv_mining_addon"
+CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
 
 COLORS = {
     "pv": "#FFD700",
