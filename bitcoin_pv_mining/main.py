@@ -80,7 +80,7 @@ app.index_string = '''
 
             /* Einzelner Tab */
             .tab {
-                flex: 1 1 auto;
+                flex: 0 1 auto;
                 min-width: 75px;
                 max-width: 200px;
                 text-align: center;
