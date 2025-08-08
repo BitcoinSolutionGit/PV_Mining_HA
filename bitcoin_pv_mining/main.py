@@ -5,22 +5,16 @@ import dash
 from dash import html, dcc
 import flask
 from dash.dependencies import Input, Output
-from flask import jsonify, request
 from flask import send_from_directory
 from ui_dashboard import layout as dashboard_layout, register_callbacks
-from ui_settings import generate_settings_layout, register_settings_callbacks, recreate_config_file
-from btc_api import update_btc_data_periodically
+from services.btc_api import update_btc_data_periodically
+from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
+
 
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
-ICON_SOURCE_PATH = "/app/icon.png"  # im GitHub-Repo
+ICON_SOURCE_PATH = "/app/config/pv_mining_addon/icon.png"  # im GitHub-Repo
 ICON_TARGET_PATH = "/config/pv_mining_addon/icon.png"
-
-# force rebuild button triggers this manually later
-FORCE_CREATE_CONFIG = os.getenv("FORCE_CREATE_CONFIG", "false").lower() == "true"
-
-if FORCE_CREATE_CONFIG or not os.path.exists(CONFIG_PATH):
-    recreate_config_file()
 
 # Copy icon if it doesn't exist
 if not os.path.exists(ICON_TARGET_PATH):
@@ -69,7 +63,7 @@ def dash_ping():
     return {"status": "OK"}
 @app.server.route('/config-icon')
 def serve_icon():
-    return send_from_directory(CONFIG_DIR, 'icon.png')
+    return send_from_directory(CONFIG_DIR, 'config/pv_mining_addon/icon.png')
 
 app.index_string = '''
 <!DOCTYPE html>
@@ -141,7 +135,7 @@ app.layout = html.Div([
     html.Div([
         html.Img(src=f"{prefix}config-icon", className="header-icon"),
         html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab custom-tab-selected", **{"data-tab": "dashboard"}),
-        html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab": "settings"}),
+        html.Button("Sensors", id="btn-sensors", n_clicks=0, className="custom-tab", **{"data-tab": "sensors"}),
     ], id="tab-buttons", className="header-bar"),
 
     html.Div(id="tabs-content", style={"marginTop": "10px"})
@@ -150,9 +144,9 @@ app.layout = html.Div([
 @dash.callback(
     Output("active-tab", "data"),
     Output("btn-dashboard", "className"),
-    Output("btn-settings", "className"),
+    Output("btn-sensors", "className"),
     Input("btn-dashboard", "n_clicks"),
-    Input("btn-settings", "n_clicks"),
+    Input("btn-sensors", "n_clicks"),
     prevent_initial_call=True
 )
 def switch_tabs(n1, n2):
@@ -160,10 +154,10 @@ def switch_tabs(n1, n2):
     if not ctx.triggered:
         raise dash.exceptions.PreventUpdate
     button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    active = "dashboard" if button_id == "btn-dashboard" else "settings"
+    active = "dashboard" if button_id == "btn-dashboard" else "sensors"
     return active, \
         "custom-tab custom-tab-selected" if active == "dashboard" else "custom-tab", \
-        "custom-tab custom-tab-selected" if active == "settings" else "custom-tab"
+        "custom-tab custom-tab-selected" if active == "sensors" else "custom-tab"
 
 @dash.callback(
     Output("tabs-content", "children"),
@@ -171,12 +165,13 @@ def switch_tabs(n1, n2):
 )
 def render_tab(tab):
     if tab == "dashboard":
-        return dashboard_layout
-    elif tab == "settings":
-        return generate_settings_layout()
+        return dashboard_layout()
+    elif tab == "sensors":
+        return sensors_layout()
 
-register_callbacks(app)
-register_settings_callbacks(app)
+
+register_callbacks(app)     # Dashboard
+reg_sensors(app)            # Sensors
 
 if __name__ == "__main__":
     print("[main.py] Starting Dash on 0.0.0.0:21000")

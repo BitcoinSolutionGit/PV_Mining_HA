@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+
+# Local/HA runtime
+/config/
+!config/pv_mining_addon/icon.png
+
+# Local overrides (user-specific)
+*.local.yaml
+runtime.yaml
+state.json
+
+# IDE
+.vscode/
+.idea/
+*.iml

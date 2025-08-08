@@ -1,6 +1,6 @@
 # /config/pv_mining_addon/btc_api_tests.py
 
-from btc_api import (
+from bitcoin_pv_mining.services.btc_api import (
     get_btc_price_from_coingecko,
     get_btc_price_from_coinbase,
     get_btc_hashrate_from_blockchain_info,
