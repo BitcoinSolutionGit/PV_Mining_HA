@@ -2,16 +2,17 @@
 __pycache__/
 *.pyc
 
-# Local/HA runtime
-/config/
-!config/pv_mining_addon/icon.png
+# Virtual environment
+.venv/
 
-# Local overrides (user-specific)
-*.local.yaml
-runtime.yaml
-state.json
-
-# IDE
-.vscode/
+# IDE files
 .idea/
 *.iml
+
+# HA Runtime & lokale User-Configs
+bitcoin_pv_mining/config/pv_mining_addon/*.local.yaml
+bitcoin_pv_mining/config/pv_mining_addon/runtime.yaml
+bitcoin_pv_mining/config/pv_mining_addon/state.json
+
+# Cache & Logs
+*.log
