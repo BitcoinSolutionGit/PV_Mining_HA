@@ -13,12 +13,26 @@ from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg
 
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
-ICON_SOURCE_PATH = "/app/config/pv_mining_addon/icon.png"  # im GitHub-Repo
+
+def resolve_icon_source():
+    # 1) Container-Pfad
+    c1 = "/app/icon.png"
+    if os.path.exists(c1):
+        return c1
+    # 2) Lokal neben main.py
+    c2 = os.path.join(os.path.dirname(__file__), "icon.png")
+    if os.path.exists(c2):
+        return c2
+    return None
+
+ICON_SOURCE_PATH = resolve_icon_source()
 ICON_TARGET_PATH = "/config/pv_mining_addon/icon.png"
 
 # Copy icon if it doesn't exist
-if not os.path.exists(ICON_TARGET_PATH):
+if ICON_SOURCE_PATH and not os.path.exists(ICON_TARGET_PATH):
     try:
+        os.makedirs(os.path.dirname(ICON_TARGET_PATH), exist_ok=True)
+        import shutil
         shutil.copy(ICON_SOURCE_PATH, ICON_TARGET_PATH)
         print("[INFO] Icon copied to config directory.")
     except Exception as e:
@@ -63,7 +77,7 @@ def dash_ping():
     return {"status": "OK"}
 @app.server.route('/config-icon')
 def serve_icon():
-    return send_from_directory(CONFIG_DIR, 'config/pv_mining_addon/icon.png')
+    return send_from_directory(CONFIG_DIR, 'icon.png')
 
 app.index_string = '''
 <!DOCTYPE html>

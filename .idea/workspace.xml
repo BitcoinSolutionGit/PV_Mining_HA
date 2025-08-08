@@ -4,7 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V3.0.0" />
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V3.0.0">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/config/pv_mining_addon/icon.png" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/icon.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -113,7 +117,7 @@
       <workItem from="1754581452432" duration="7968000" />
       <workItem from="1754599278464" duration="744000" />
       <workItem from="1754653880664" duration="5312000" />
-      <workItem from="1754680657923" duration="2922000" />
+      <workItem from="1754680657923" duration="3752000" />
     </task>
     <task id="LOCAL-00110" summary="Dashboard Tests 5">
       <option name="closed" value="true" />
