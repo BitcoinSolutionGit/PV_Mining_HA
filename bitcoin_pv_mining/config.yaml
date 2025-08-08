@@ -1,5 +1,5 @@
 name: "Bitcoin PV Mining"
-version: "2.1.52"
+version: "2.1.53"
 slug: "bitcoin_pv_mining"
 description: "PV-based Bitcoin mining control with web UI"
 ingress: true
@@ -17,3 +17,10 @@ arch:
   - armv7
 
 icon: "icon.png"
+
+git_source:
+  base_url: "https://github.com"
+  project_path: "BitcoinSolutionGit/PV_Mining_HA"
+  branch: "main"
+  yamls_dir: "yamls"
+  token_env: "GITLAB_TOKEN"

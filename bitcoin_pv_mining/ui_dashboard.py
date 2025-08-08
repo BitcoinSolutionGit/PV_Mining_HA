@@ -83,7 +83,7 @@ def register_callbacks(app):
         config = load_config()
         pv_id = config.get("entities", {}).get("sensor_pv_production")
         load_id = config.get("entities", {}).get("sensor_load_consumption")
-        feed_id = config.get("entities", {}).get("sensor_grid_feed_id")
+        feed_id = config.get("entities", {}).get("sensor_grid_feed_in")
         pv_val = get_sensor_value(pv_id) if pv_id else 0
         load_val = get_sensor_value(load_id) if load_id else 0
         feed_val = get_sensor_value(feed_id) if feed_id else 0
