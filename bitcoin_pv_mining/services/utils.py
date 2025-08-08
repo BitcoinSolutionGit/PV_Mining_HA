@@ -5,12 +5,26 @@ CONFIG_DIR = "/config/pv_mining_addon"
 SENSORS_PATH = os.path.join(CONFIG_DIR, "sensors.yaml")
 STATE_PATH = os.path.join(CONFIG_DIR, "state.json")
 
-def load_yaml(path, default):
+def load_yaml(path: str, default=None):
+    """Lädt YAML und gibt default zurück, falls nicht vorhanden."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or default
     except Exception:
         return default
+
+def save_yaml(path, data):
+    """
+    Speichert ein Python-Objekt (z.B. dict) als YAML.
+    Erstellt Ordner bei Bedarf automatisch.
+    """
+    import os
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+    except Exception as e:
+        print(f"[ERROR] Could not save YAML to {path}: {e}")
 
 def load_sensors():
     return load_yaml(SENSORS_PATH, {"entities": {}})

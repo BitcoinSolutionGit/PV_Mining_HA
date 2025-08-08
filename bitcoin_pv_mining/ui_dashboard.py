@@ -4,10 +4,43 @@ from dash import html, dcc
 from dash.dependencies import Input, Output
 import plotly.graph_objects as go
 from services.ha_sensors import get_sensor_value
+from services.utils import load_yaml  # nutzt deine utils.py
 
 CONFIG_DIR = "/config/pv_mining_addon"
-CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
+SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
+SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
+MAIN_CFG = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
+CONFIG_PATH = MAIN_CFG  # für load_config()
 
+# ------------------------------
+# Sensor-Resolver
+# ------------------------------
+def resolve_sensor_id(kind: str) -> str:
+    """
+    kind ∈ {"pv_production","load_consumption","grid_feed_in"}
+    Priorität: sensors.local.yaml -> sensors.yaml -> pv_mining_local_config.yaml/entities
+    """
+    mapping_def = load_yaml(SENS_DEF, {}).get("mapping", {})
+    mapping_ovr = load_yaml(SENS_OVR, {}).get("mapping", {})
+
+    # override gewinnt
+    sid = (mapping_ovr.get(kind) or mapping_def.get(kind) or "").strip()
+    if sid:
+        return sid
+
+    # Fallback auf alte entities
+    cfg = load_yaml(MAIN_CFG, {})
+    ents = cfg.get("entities", {})
+    fallback_keys = {
+        "pv_production": "sensor_pv_production",
+        "load_consumption": "sensor_load_consumption",
+        "grid_feed_in": "sensor_grid_feed_in",
+    }
+    return (ents.get(fallback_keys[kind], "") or "").strip()
+
+# ------------------------------
+# Farben
+# ------------------------------
 COLORS = {
     "pv": "#FFD700",
     "heater": "#3399FF",
@@ -17,6 +50,9 @@ COLORS = {
     "inactive": "#DDDDDD"
 }
 
+# ------------------------------
+# Config-Loader
+# ------------------------------
 def load_config():
     try:
         with open(CONFIG_PATH, "r") as f:
@@ -25,6 +61,9 @@ def load_config():
         print("[WARN] Config file missing or invalid:", e)
         return {}
 
+# ------------------------------
+# Callbacks
+# ------------------------------
 def register_callbacks(app):
     @app.callback(
         Output("sankey-diagram", "figure"),
@@ -80,10 +119,10 @@ def register_callbacks(app):
         Input("pv-update", "n_intervals")
     )
     def update_gauges(_):
-        config = load_config()
-        pv_id = config.get("entities", {}).get("sensor_pv_production")
-        load_id = config.get("entities", {}).get("sensor_load_consumption")
-        feed_id = config.get("entities", {}).get("sensor_grid_feed_in")
+        pv_id = resolve_sensor_id("pv_production")
+        load_id = resolve_sensor_id("load_consumption")
+        feed_id = resolve_sensor_id("grid_feed_in")
+
         pv_val = get_sensor_value(pv_id) if pv_id else 0
         load_val = get_sensor_value(load_id) if load_id else 0
         feed_val = get_sensor_value(feed_id) if feed_id else 0
@@ -121,40 +160,21 @@ def register_callbacks(app):
         hashrate = entities.get("sensor_btc_hashrate", "N/A")
 
         price_str = f"BTC Price: ${price:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if price else "–"
-        hashrate_str = f"Hashrate: {hashrate:,.2f} TH/s".replace(",", "X").replace(".", ",").replace("X",
-                                                                                                     ".") if hashrate else "–"
+        hashrate_str = f"Hashrate: {hashrate:,.2f} TH/s".replace(",", "X").replace(".", ",").replace("X", ".") if hashrate else "–"
         return price_str, hashrate_str
 
+# ------------------------------
+# Layout
+# ------------------------------
 def layout():
     return html.Div([
         html.H1("PV-mining dashboard"),
         dcc.Graph(id="sankey-diagram", figure=go.Figure()),
         html.Div([
-            dcc.Graph(id="pv-gauge", style={
-                "flex": "1 1 300px",
-                "minWidth": "300px",
-                "maxWidth": "500px",
-                "height": "300px"
-            }),
-            dcc.Graph(id="load-gauge", style={
-                "flex": "1 1 300px",
-                "minWidth": "300px",
-                "maxWidth": "500px",
-                "height": "300px"
-            }),
-            dcc.Graph(id="feed-gauge", style={
-                "flex": "1 1 300px",
-                "minWidth": "300px",
-                "maxWidth": "500px",
-                "height": "300px"
-            })
-        ], style={
-            "display": "flex",
-            "flexDirection": "row",
-            "flexWrap": "wrap",
-            "justifyContent": "center",
-            "gap": "20px"
-        }),
+            dcc.Graph(id="pv-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+            dcc.Graph(id="load-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+            dcc.Graph(id="feed-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"})
+        ], style={"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
 
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
 
@@ -164,5 +184,4 @@ def layout():
         ], style={"display": "flex", "justifyContent": "center", "gap": "40px", "marginTop": "20px"}),
 
         dcc.Interval(id="btc-refresh", interval=60_000, n_intervals=0)
-
     ])

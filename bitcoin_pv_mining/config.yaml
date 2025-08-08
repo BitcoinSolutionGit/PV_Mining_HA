@@ -1,5 +1,5 @@
 name: "Bitcoin PV Mining"
-version: "3.0.1"
+version: "3.0.2"
 slug: "bitcoin_pv_mining"
 description: "PV-based Bitcoin mining control with web UI"
 ingress: true
