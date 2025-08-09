@@ -1,5 +1,5 @@
 feature_flags:
-  miners_aktive: true
+  miners_active: true
   heater_active: true
   wallbox_active: true
   battery_active: true
