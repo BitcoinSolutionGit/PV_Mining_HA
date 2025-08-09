@@ -8,7 +8,7 @@ from flask import send_from_directory
 from ui_dashboard import layout as dashboard_layout, register_callbacks
 from services.btc_api import update_btc_data_periodically
 from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
-from services.license import verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable
+from services.license import verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
 from flask import request, redirect
 from services.utils import get_addon_version
 
@@ -120,7 +120,11 @@ def serve_icon():
 def on_click_premium(n):
     if not n:
         raise dash.exceptions.PreventUpdate
-    ok = issue_token_and_enable(sponsor="demo_user", plan="monthly")
+    if has_valid_token_cached():
+        print("[LICENSE] click: token already valid, skipping issue", flush=True)
+        verify_license()
+    else:
+        issue_token_and_enable(sponsor="demo_user", plan="monthly")
     return {"enabled": is_premium_enabled()}
 
 @dash.callback(
@@ -257,7 +261,7 @@ app.index_string = '''
 
 app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
-    dcc.Store(id="premium-enabled", data={"enabled": False}),
+    dcc.Store(id="premium-enabled", data={"enabled": is_premium_enabled()}),
     # dcc.Interval(id="license-poll", interval=30_000, n_intervals=0),  # <- wird erst später genutzt
 
 

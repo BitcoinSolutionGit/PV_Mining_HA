@@ -93,7 +93,7 @@ def update_btc_data_periodically(CONFIG_PATH):
 
             if updated:
                 save_entities(CONFIG_PATH, entities)
-                print("[BTC] Updated BTC info:", entities)
+                # print("[BTC] Updated BTC info:", entities)
 
             time.sleep(30)
 
