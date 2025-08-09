@@ -131,6 +131,71 @@ def dash_ping():
 def serve_icon():
     return send_from_directory(CONFIG_DIR, 'icon.png')
 
+# 1) Pollt den Status (beim Start + alle 30s)
+@dash.callback(
+    Output("premium-enabled","data"),
+    Input("license-poll","n_intervals"),
+    Input("btn-premium","n_clicks"),
+    prevent_initial_call=True
+)
+def premium_router(n_poll, n_clicks):
+    trig = (callback_context.triggered[0]["prop_id"].split(".")[0]
+            if callback_context.triggered else "")
+    if trig == "btn-premium":
+        simulate_sponsor_activation()  # oder echter Flow
+    # egal ob Poll oder Click: Status zurückgeben
+    return {"enabled": is_premium_enabled()}
+
+# 2) Stellt Sichtbarkeit & Label des Buttons
+@dash.callback(
+    Output("btn-premium", "className"),
+    Output("btn-premium", "children"),
+    Input("premium-enabled", "data")
+)
+def toggle_premium_button(data):
+    enabled = bool((data or {}).get("enabled"))
+    if enabled:
+        # Button ausblenden ODER als „aktiv“ markieren – du kannst hier entscheiden:
+        # Variante A: ganz ausblenden:
+        # return "custom-tab premium-btn premium-btn-hidden", "Premium Active"
+        # Variante B: sichtbar, aber als aktiv:
+        return "custom-tab premium-btn premium-btn-active", "Premium Active"
+    return "custom-tab premium-btn", "Activate Premium"
+
+
+@dash.callback(
+    Output("active-tab", "data"),
+    Output("btn-dashboard", "className"),
+    Output("btn-sensors", "className"),
+    Input("btn-dashboard", "n_clicks"),
+    Input("btn-sensors", "n_clicks"),
+    prevent_initial_call=True
+)
+def switch_tabs(n1, n2):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise dash.exceptions.PreventUpdate
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    active = "dashboard" if button_id == "btn-dashboard" else "sensors"
+    return active, \
+        "custom-tab custom-tab-selected" if active == "dashboard" else "custom-tab", \
+        "custom-tab custom-tab-selected" if active == "sensors" else "custom-tab"
+
+@dash.callback(
+    Output("tabs-content", "children"),
+    Input("active-tab", "data")
+)
+def render_tab(tab):
+    if tab == "dashboard":
+        return dashboard_layout()
+    elif tab == "sensors":
+        return sensors_layout()
+
+
+register_callbacks(app)     # Dashboard
+reg_sensors(app)            # Sensors
+
+
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -233,69 +298,7 @@ app.layout = html.Div([
     html.Div(id="tabs-content", style={"marginTop": "10px"})
 ])
 
-# 1) Pollt den Status (beim Start + alle 30s)
-@dash.callback(
-    Output("premium-enabled","data"),
-    Input("license-poll","n_intervals"),
-    Input("btn-premium","n_clicks"),
-    prevent_initial_call=True
-)
-def premium_router(n_poll, n_clicks):
-    trig = (callback_context.triggered[0]["prop_id"].split(".")[0]
-            if callback_context.triggered else "")
-    if trig == "btn-premium":
-        simulate_sponsor_activation()  # oder echter Flow
-    # egal ob Poll oder Click: Status zurückgeben
-    return {"enabled": is_premium_enabled()}
 
-# 2) Stellt Sichtbarkeit & Label des Buttons
-@dash.callback(
-    Output("btn-premium", "className"),
-    Output("btn-premium", "children"),
-    Input("premium-enabled", "data")
-)
-def toggle_premium_button(data):
-    enabled = bool((data or {}).get("enabled"))
-    if enabled:
-        # Button ausblenden ODER als „aktiv“ markieren – du kannst hier entscheiden:
-        # Variante A: ganz ausblenden:
-        # return "custom-tab premium-btn premium-btn-hidden", "Premium Active"
-        # Variante B: sichtbar, aber als aktiv:
-        return "custom-tab premium-btn premium-btn-active", "Premium Active"
-    return "custom-tab premium-btn", "Activate Premium"
-
-
-@dash.callback(
-    Output("active-tab", "data"),
-    Output("btn-dashboard", "className"),
-    Output("btn-sensors", "className"),
-    Input("btn-dashboard", "n_clicks"),
-    Input("btn-sensors", "n_clicks"),
-    prevent_initial_call=True
-)
-def switch_tabs(n1, n2):
-    ctx = dash.callback_context
-    if not ctx.triggered:
-        raise dash.exceptions.PreventUpdate
-    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    active = "dashboard" if button_id == "btn-dashboard" else "sensors"
-    return active, \
-        "custom-tab custom-tab-selected" if active == "dashboard" else "custom-tab", \
-        "custom-tab custom-tab-selected" if active == "sensors" else "custom-tab"
-
-@dash.callback(
-    Output("tabs-content", "children"),
-    Input("active-tab", "data")
-)
-def render_tab(tab):
-    if tab == "dashboard":
-        return dashboard_layout()
-    elif tab == "sensors":
-        return sensors_layout()
-
-
-register_callbacks(app)     # Dashboard
-reg_sensors(app)            # Sensors
 
 if __name__ == "__main__":
     print("[main.py] Starting Dash on 0.0.0.0:21000")
