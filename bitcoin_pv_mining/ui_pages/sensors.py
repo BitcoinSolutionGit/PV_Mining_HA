@@ -25,7 +25,7 @@ def resolve_sensor_id(kind: str) -> str:
     ents = cfg.get("entities", {})
     fallback_keys = {
         "pv_production": "sensor_pv_production",
-        "load_consumption": "sensor_load_consumption",
+        "grid_consumption": "sensor_grid_consumption",
         "grid_feed_in": "sensor_grid_feed_in",
     }
     return (ents.get(fallback_keys[kind], "") or "").strip()
@@ -46,11 +46,11 @@ def layout():
             placeholder="Select sensor..."
         ),
 
-        html.Label("Load consumption", style={"marginTop": "15px"}),
+        html.Label("Grid consumption", style={"marginTop": "15px"}),
         dcc.Dropdown(
-            id="sensor-load-consumption",
+            id="sensor-grid-consumption",
             options=sensor_options,
-            value=resolve_sensor_id("load_consumption"),
+            value=resolve_sensor_id("grid_consumption"),
             placeholder="Select sensor..."
         ),
 
@@ -72,7 +72,7 @@ def register_callbacks(app):
         Output("save-sensors-status", "children"),
         Input("save-sensors", "n_clicks"),
         State("sensor-pv-production", "value"),
-        State("sensor-load-consumption", "value"),
+        State("sensor-grid-consumption", "value"),
         State("sensor-grid-feed-in", "value")
     )
     def save_mapping(n_clicks, pv, load, feed):
@@ -81,7 +81,7 @@ def register_callbacks(app):
 
         mapping = {
             "pv_production": pv or "",
-            "load_consumption": load or "",
+            "grid_consumption": load or "",
             "grid_feed_in": feed or ""
         }
 
@@ -92,7 +92,7 @@ def register_callbacks(app):
         cfg = load_yaml(MAIN_CFG, {})
         cfg.setdefault("entities", {})
         cfg["entities"]["sensor_pv_production"] = pv or ""
-        cfg["entities"]["sensor_load_consumption"] = load or ""
+        cfg["entities"]["sensor_grid_consumption"] = load or ""
         cfg["entities"]["sensor_grid_feed_in"] = feed or ""
         save_yaml(MAIN_CFG, cfg)
 

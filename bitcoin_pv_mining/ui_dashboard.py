@@ -17,26 +17,37 @@ CONFIG_PATH = MAIN_CFG  # für load_config()
 # ------------------------------
 def resolve_sensor_id(kind: str) -> str:
     """
-    kind ∈ {"pv_production","load_consumption","grid_feed_in"}
-    Priorität: sensors.local.yaml -> sensors.yaml -> pv_mining_local_config.yaml/entities
+    kind ∈ {"pv_production","grid_consumption","grid_feed_in"}
+    Priorität: sensors.local.yaml -> sensors.yaml -> pv_mining_local_config.yaml/entities (Legacy)
     """
-    mapping_def = load_yaml(SENS_DEF, {}).get("mapping", {})
-    mapping_ovr = load_yaml(SENS_OVR, {}).get("mapping", {})
+    def _mget(path, *keys):
+        m = (load_yaml(path, {}).get("mapping", {}) or {})
+        for k in keys:
+            v = (m.get(k) or "").strip()
+            if v:
+                return v
+        return ""
 
-    # override gewinnt
-    sid = (mapping_ovr.get(kind) or mapping_def.get(kind) or "").strip()
+    if kind == "grid_consumption":
+        # 1) neuer key
+        sid = _mget(SENS_OVR, "grid_consumption") or _mget(SENS_DEF, "grid_consumption")
+        # 2) Fallback auf alten key
+        if not sid:
+            sid = _mget(SENS_OVR, "load_consumption") or _mget(SENS_DEF, "load_consumption")
+    else:
+        sid = _mget(SENS_OVR, kind) or _mget(SENS_DEF, kind)
+
     if sid:
         return sid
 
-    # Fallback auf alte entities
-    cfg = load_yaml(MAIN_CFG, {})
-    ents = cfg.get("entities", {})
-    fallback_keys = {
-        "pv_production": "sensor_pv_production",
-        "load_consumption": "sensor_load_consumption",
-        "grid_feed_in": "sensor_grid_feed_in",
+    # letzter Fallback: alte entities
+    ents = (load_yaml(MAIN_CFG, {}).get("entities", {}) or {})
+    legacy = {
+        "pv_production":   "sensor_pv_production",
+        "grid_consumption":"sensor_load_consumption",  # legacy key!
+        "grid_feed_in":    "sensor_grid_feed_in",
     }
-    return (ents.get(fallback_keys[kind], "") or "").strip()
+    return (ents.get(legacy.get(kind, ""), "") or "").strip()
 
 # ------------------------------
 # Farben
@@ -120,11 +131,11 @@ def register_callbacks(app):
     )
     def update_gauges(_):
         pv_id = resolve_sensor_id("pv_production")
-        load_id = resolve_sensor_id("load_consumption")
+        grid_id = resolve_sensor_id("grid_consumption")
         feed_id = resolve_sensor_id("grid_feed_in")
 
         pv_val = get_sensor_value(pv_id) if pv_id else 0
-        load_val = get_sensor_value(load_id) if load_id else 0
+        grid_val = get_sensor_value(grid_id) if grid_id else 0
         feed_val = get_sensor_value(feed_id) if feed_id else 0
 
         def build_gauge(value, title, color):
@@ -144,7 +155,7 @@ def register_callbacks(app):
 
         return (
             build_gauge(pv_val, "PV production (kW)", "green"),
-            build_gauge(load_val, "Load consumption (kW)", "orange"),
+            build_gauge(grid_val, "Grid consumption (kW)", "orange"),
             build_gauge(feed_val, "Grid feed-in (kW)", "red")
         )
 
@@ -174,7 +185,7 @@ def layout():
 
         html.Div([
             dcc.Graph(id="pv-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
-            dcc.Graph(id="load-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+            dcc.Graph(id="grid-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
             dcc.Graph(id="feed-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"})
         ], style={"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
 
