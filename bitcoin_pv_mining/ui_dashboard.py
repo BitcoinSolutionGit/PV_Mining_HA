@@ -21,49 +21,16 @@ def resolve_sensor_id(kind: str) -> str:
         m = (load_yaml(path, {}).get("mapping", {}) or {})
         return (m.get(key) or "").strip()
     return _mget(SENS_OVR, kind) or _mget(SENS_DEF, kind)
-# def resolve_sensor_id(kind: str) -> str:
-#     """
-#     kind ∈ {"pv_production","grid_consumption","grid_feed_in"}
-#     Priorität: sensors.local.yaml -> sensors.yaml -> pv_mining_local_config.yaml/entities (Legacy)
-#     """
-#     def _mget(path, *keys):
-#         m = (load_yaml(path, {}).get("mapping", {}) or {})
-#         for k in keys:
-#             v = (m.get(k) or "").strip()
-#             if v:
-#                 return v
-#         return ""
-#
-#     if kind == "grid_consumption":
-#         # 1) neuer key
-#         sid = _mget(SENS_OVR, "grid_consumption") or _mget(SENS_DEF, "grid_consumption")
-#         # 2) Fallback auf alten key
-#         if not sid:
-#             sid = _mget(SENS_OVR, "load_consumption") or _mget(SENS_DEF, "load_consumption")
-#     else:
-#         sid = _mget(SENS_OVR, kind) or _mget(SENS_DEF, kind)
-#
-#     if sid:
-#         return sid
-#
-#     # letzter Fallback: alte entities
-#     ents = (load_yaml(MAIN_CFG, {}).get("entities", {}) or {})
-#     legacy = {
-#         "pv_production":   "sensor_pv_production",
-#         "grid_consumption":"sensor_load_consumption",  # legacy key!
-#         "grid_feed_in":    "sensor_grid_feed_in",
-#     }
-#     return (ents.get(legacy.get(kind, ""), "") or "").strip()
-
 
 # ------------------------------
 # Farben
 # ------------------------------
 COLORS = {
     "inflow": "#FFD700",
+    "miners":  "#FF9900",
+    "battery": "#8E44AD",
     "heater": "#3399FF",
     "wallbox": "#33CC66",
-    "battery": "#FF9900",
     "load": "#A0A0A0",
     "inactive": "#DDDDDD"
 }
@@ -99,27 +66,30 @@ def register_callbacks(app):
         # Nodes
         node_labels = [
             f"Energy Inflow<br>PV: {pv_pct}%<br>Grid: {grid_pct}%",  # 0
-            "Heater",           # 1
-            "Wallbox",          # 2
-            "Battery",          # 3
-            "Total Load"        # 4
+            "Miners",           # 1
+            "Battery",          # 2
+            "Heater",           # 3
+            "Wallbox",          # 4
+            "Total Load"        # 5
         ]
         node_colors = [
             COLORS["inflow"],
+            COLORS["miners"] if flags.get("miners_active") else COLORS["inactive"],
+            COLORS["battery"] if flags.get("battery_active") else COLORS["inactive"],
             COLORS["heater"] if flags.get("heater_active") else COLORS["inactive"],
             COLORS["wallbox"] if flags.get("wallbox_active") else COLORS["inactive"],
-            COLORS["battery"] if flags.get("battery_active") else COLORS["inactive"],
             COLORS["load"]
         ]
 
         # Aktive Ziele ermitteln (mind. Load)
         targets = []
-        if flags.get("heater_active"):  targets.append(1)
-        if flags.get("wallbox_active"): targets.append(2)
-        if flags.get("battery_active"): targets.append(3)
+        if flags.get("miners_active"): targets.append(1)
+        if flags.get("battery_active"): targets.append(2)
+        if flags.get("heater_active"):  targets.append(3)
+        if flags.get("wallbox_active"): targets.append(4)
         # Load immer als Fallback-Ziel
-        if 4 not in targets:
-            targets.append(4)
+        if 5 not in targets:
+            targets.append(5)
 
         # Gleichmäßig verteilen (einfach & robust)
         n = len(targets) if inflow > 0 else 1
@@ -132,10 +102,11 @@ def register_callbacks(app):
         link_color  = []
 
         color_map = {
-            1: ("#3399FF" if flags.get("heater_active")  else "#DDDDDD"),
-            2: ("#33CC66" if flags.get("wallbox_active") else "#DDDDDD"),
-            3: ("#FF9900" if flags.get("battery_active") else "#DDDDDD"),
-            4: "#A0A0A0",
+            1: ("#FF9900" if flags.get("miners_active") else "#DDDDDD"),
+            2: ("#8E44AD" if flags.get("battery_active") else "#DDDDDD"),
+            3: ("#3399FF" if flags.get("heater_active")  else "#DDDDDD"),
+            4: ("#33CC66" if flags.get("wallbox_active") else "#DDDDDD"),
+            5: "#A0A0A0",
         }
 
         for t in targets:
@@ -170,79 +141,7 @@ def register_callbacks(app):
         fig.update_traces(hoverlabel=dict(bgcolor="white"))
 
         return fig
-#
-# # ------------------------------
-# # Config-Loader
-# # ------------------------------
-# def load_config():
-#     try:
-#         with open(CONFIG_PATH, "r") as f:
-#             return yaml.safe_load(f)
-#     except Exception as e:
-#         print("[WARN] Config file missing or invalid:", e)
-#         return {}
-#
-# # ------------------------------
-# # Callbacks
-# # ------------------------------
-# def register_callbacks(app):
-#     @app.callback(
-#         Output("sankey-diagram", "figure"),
-#         Input("pv-update", "n_intervals")
-#     )
-#     def update_sankey(_):
-#         config = load_config()
-#         flags = config.get("feature_flags", {})
-#
-#         pv_val = get_sensor_value(resolve_sensor_id("pv_production")) or 0
-#         grid_val = get_sensor_value(resolve_sensor_id("grid_consumption")) or 0
-#         total_inflow = pv_val + grid_val
-#
-#         pv_pct = round((pv_val / total_inflow) * 100, 1) if total_inflow > 0 else 0
-#         grid_pct = round((grid_val / total_inflow) * 100, 1) if total_inflow > 0 else 0
-#
-#         node_labels = [
-#             f"Energy Inflow\n(PV: {pv_pct}% / Grid: {grid_pct}%)",
-#             "Miner 1", "Miner 2", "Heizstab", "Hausverbrauch", "Einspeisung"
-#         ]
-#         # node_labels = ["PV", "Heater", "Wallbox", "Battery", "Load"]
-#         node_colors = [
-#             COLORS["inflow"],
-#             COLORS["heater"] if flags.get("heater_active") else COLORS["inactive"],
-#             COLORS["wallbox"] if flags.get("wallbox_active") else COLORS["inactive"],
-#             COLORS["battery"] if flags.get("battery_active") else COLORS["inactive"],
-#             COLORS["load"]
-#         ]
-#
-#         fig = go.Figure(data=[go.Sankey(
-#             node=dict(
-#                 label=node_labels,
-#                 pad=30,
-#                 thickness=25,
-#                 line=dict(color="black", width=0.5),
-#                 color=node_colors
-#             ),
-#             link=dict(
-#                 source=[0, 0, 0, 0],
-#                 target=[1, 2, 3, 4],
-#                 value=[4, 3, 2, 1],
-#                 color=[
-#                     COLORS["heater"] if flags.get("heater_active") else COLORS["inactive"],
-#                     COLORS["wallbox"] if flags.get("wallbox_active") else COLORS["inactive"],
-#                     COLORS["battery"] if flags.get("battery_active") else COLORS["inactive"],
-#                     COLORS["load"]
-#                 ]
-#             )
-#         )])
-#
-#         fig.update_layout(
-#             font=dict(size=14, color="black"),
-#             plot_bgcolor='white',
-#             paper_bgcolor='white',
-#             margin=dict(l=20, r=20, t=40, b=20)
-#         )
-#
-#         return fig
+
 
     @app.callback(
         Output("pv-gauge", "figure"),
@@ -286,7 +185,7 @@ def register_callbacks(app):
         Input("btc-refresh", "n_intervals")
     )
     def update_btc_display(_):
-        config = load_config()
+        config = load_yaml(os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml"), {})
         entities = config.get("entities", {})
         price = entities.get("sensor_btc_price", "N/A")
         hashrate = entities.get("sensor_btc_hashrate", "N/A")

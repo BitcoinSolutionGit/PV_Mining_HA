@@ -34,6 +34,11 @@ def is_premium_enabled() -> bool:
     return bool(load_state().get("premium_enabled", False))
 
 
+def require_premium() -> None:
+    if not is_premium_enabled():
+        raise RuntimeError("premium_required")
+
+
 def set_premium_enabled(flag: bool) -> None:
     """Setzt das Premium-Flag in state.json."""
     st = load_state()

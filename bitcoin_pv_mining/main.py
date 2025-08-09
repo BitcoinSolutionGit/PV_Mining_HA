@@ -6,6 +6,7 @@ from dash import html, dcc
 from dash.dependencies import Input, Output
 from flask import send_from_directory
 from ui_dashboard import layout as dashboard_layout, register_callbacks
+from ui_pages.miners import layout as miners_layout
 from services.btc_api import update_btc_data_periodically
 from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
 from services.license import verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
@@ -140,36 +141,77 @@ def toggle_premium_button(data):
         # return "custom-tab premium-btn premium-btn-hidden", "Premium Active"
         # Variante B: sichtbar, aber als aktiv:
         return "custom-tab premium-btn premium-btn-active", "Premium Active"
-    return "custom-tab premium-btn", "Activate Premium"
+    return "custom-tab premium-btn premium-btn-locked", "Activate Premium"
 
 
 @dash.callback(
     Output("active-tab", "data"),
     Output("btn-dashboard", "className"),
     Output("btn-sensors", "className"),
+    Output("btn-miners", "className"),
     Input("btn-dashboard", "n_clicks"),
     Input("btn-sensors", "n_clicks"),
+    Input("btn-miners", "n_clicks"),
+    Input("premium-enabled", "data"),
     prevent_initial_call=True
 )
-def switch_tabs(n1, n2):
+def switch_tabs(n1, n2,n3, premium_data):
+    enabled = bool((premium_data or {}).get("enabled"))
     ctx = dash.callback_context
     if not ctx.triggered:
         raise dash.exceptions.PreventUpdate
-    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    active = "dashboard" if button_id == "btn-dashboard" else "sensors"
-    return active, \
-        "custom-tab custom-tab-selected" if active == "dashboard" else "custom-tab", \
-        "custom-tab custom-tab-selected" if active == "sensors" else "custom-tab"
+    btn = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    target = "dashboard"
+    if btn == "btn-sensors":
+        target = "sensors"
+    elif btn == "btn-miners":
+        target = "miners" if enabled else "dashboard"  # Premium required
+
+    return (
+        target,
+        "custom-tab custom-tab-selected" if target == "dashboard" else "custom-tab",
+        "custom-tab custom-tab-selected" if target == "sensors" else "custom-tab",
+        "custom-tab custom-tab-selected" if target == "miners" else "custom-tab",
+    )
+
+def premium_upsell():
+    return html.Div([
+        html.H3("Premium Feature"),
+        html.P("Dieses Feature ist mit Premium verfügbar."),
+        html.Button("Activate Premium", id="btn-premium", n_clicks=0, className="custom-tab premium-btn")
+    ], style={"textAlign":"center", "padding":"20px"})
+
+
+@dash.callback(
+    Output("btn-miners", "className", allow_duplicate=True),
+    Input("premium-enabled", "data"),
+    Input("active-tab", "data"),
+    prevent_initial_call="initial_duplicate"
+)
+def style_miners_button(premium_data, active_tab):
+    enabled = bool((premium_data or {}).get("enabled"))
+    classes = ["custom-tab"]
+    if active_tab == "miners":
+        classes.append("custom-tab-selected")
+    classes.append("miner-premium-ok" if enabled else "miner-premium-locked")
+    return " ".join(classes)
+
 
 @dash.callback(
     Output("tabs-content", "children"),
-    Input("active-tab", "data")
+    Input("active-tab", "data"),
+    Input("premium-enabled", "data")
 )
-def render_tab(tab):
+def render_tab(tab, premium_data):
+    enabled = bool((premium_data or {}).get("enabled"))
     if tab == "dashboard":
         return dashboard_layout()
-    elif tab == "sensors":
+    if tab == "sensors":
         return sensors_layout()
+    if tab == "miners":
+        return miners_layout() if enabled else premium_upsell()
+    return dashboard_layout()
 
 
 register_callbacks(app)     # Dashboard
@@ -246,6 +288,21 @@ app.index_string = '''
                 border: 2px solid #1e874b;
                 cursor: default;
             }
+            .premium-btn-locked {
+                background: linear-gradient(#e57373, #e53935);
+                color: white;
+                font-weight: bold;
+                border: 1px solid #b71c1c;
+            }
+            .premium-btn-locked:hover {
+                filter: brightness(1.05);
+            }
+            /* --- Miners-Button: Rahmenfarbe nach Premium-Status --- */
+            .custom-tab.miner-premium-ok { border-color: #27ae60 !important; }
+            .custom-tab.miner-premium-locked { border-color: #e74c3c !important; }
+            /* Wenn der Tab ausgewählt ist, überschreibt diese Regel die Standardauswahlfarbe */
+            .custom-tab.miner-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
+            .custom-tab.miner-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
         </style>
     </head>
     <body>
@@ -269,6 +326,7 @@ app.layout = html.Div([
         html.Img(src=f"{prefix}config-icon", className="header-icon"),
         html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab custom-tab-selected", **{"data-tab": "dashboard"}),
         html.Button("Sensors", id="btn-sensors", n_clicks=0, className="custom-tab", **{"data-tab": "sensors"}),
+        html.Button("Miners", id="btn-miners", n_clicks=0, className="custom-tab", **{"data-tab": "miners"}),
         # Spacer + Premium-Button ganz rechts
         html.Div(style={"flex": "1"}),
         html.Button("Activate Premium", id="btn-premium", n_clicks=0, className="custom-tab premium-btn"),
