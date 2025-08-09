@@ -51,3 +51,16 @@ def save_state(st):
 
 def iso_now():
     return dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+def get_addon_version(default: str = "0.0.0") -> str:
+    """
+    Liest die Add-on-Version aus /app/config.yaml (Add-on Root).
+    Fallback auf default, wenn Datei fehlt/ungültig.
+    """
+    path = "/app/config.yaml"
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+        return str(cfg.get("version", default))
+    except Exception:
+        return default

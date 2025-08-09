@@ -1,110 +1,85 @@
 # services/license.py
-import os, requests, threading, time, uuid
-from .utils import load_state, save_state, iso_now
+import os, requests, threading, time
+from .utils import load_state, save_state, iso_now, get_addon_version
 
-# === Konfiguration ===
 LICENSE_BASE_URL = os.getenv("LICENSE_BASE_URL", "https://license.bitcoinsolution.at")
-# WICHTIG: Signierter Token (payload_b64url+'.'+sig_b64url), NICHT der alte "license_key"
-LICENSE_TOKEN    = os.getenv("LICENSE_TOKEN", "").strip()
+HEARTBEAT_SEC    = 60 * 10   # alle 10 Minuten
 
-# Stabile Installations-ID (UUID). Beim ersten Start generieren & in state.json merken.
-def _get_install_id() -> str:
+def get_token() -> str:
+    return load_state().get("license_token", "")
+
+def set_token(tok: str) -> None:
     st = load_state()
-    iid = st.get("install_id")
-    if not iid:
-        iid = f"ha-{uuid.uuid4()}"
-        st["install_id"] = iid
-        save_state(st)
-    return iid
+    st["license_token"] = tok
+    save_state(st)
 
-ADDON_VERSION    = os.getenv("ADDON_VERSION", "3.0.2")
-HEARTBEAT_SEC    = 60 * 10  # alle 10 Minuten
-
-# === Status-Helpers ===
 def is_premium_enabled() -> bool:
     return bool(load_state().get("premium_enabled", False))
 
-def _set_premium_enabled(val: bool):
+def set_premium_enabled(flag: bool) -> None:
     st = load_state()
-    st["premium_enabled"] = bool(val)
+    st["premium_enabled"] = bool(flag)
     save_state(st)
 
-# Optional: DEV-Schalter im UI behalten
-def activate_premium_dev() -> bool:
-    print("[DEBUG] Activate Premium Button gedrückt – DEV-Modus aktiv")
-    _set_premium_enabled(True)
-    st = load_state()
-    st["last_heartbeat_at"] = iso_now()
-    save_state(st)
-    return True
-
-# === ECHTER VERIFY ===
 def verify_license() -> bool:
-    """Ruft verify.php per GET mit ?token= auf, speichert Ergebnis im state.json"""
-    if not LICENSE_TOKEN:
-        print("[LICENSE] No LICENSE_TOKEN set -> free mode")
-        _set_premium_enabled(False)
+    """Fragt /verify.php mit ?token=... ab und setzt premium_enabled entsprechend."""
+    tok = get_token()
+    if not tok:
+        set_premium_enabled(False)
         return False
     try:
-        r = requests.get(
-            f"{LICENSE_BASE_URL}/verify.php",
-            params={"token": LICENSE_TOKEN},  # requests URL-encodet automatisch
-            timeout=8,
-        )
-        if r.status_code == 200 and r.headers.get("content-type","").startswith("application/json"):
-            data = r.json()
-            ok = bool(data.get("ok")) and data.get("status") == "valid"
-            st = load_state()
-            st["premium_enabled"] = ok
-            st["last_verify_at"] = iso_now()
-            # nützlich fürs UI/Debug:
-            if "payload" in data:
-                st["license_payload"] = data["payload"]
-            save_state(st)
-            print("[LICENSE] verify:", data)
-            return ok
-        print("[LICENSE] unexpected verify response:", r.status_code, r.text[:200])
+        url = f"{LICENSE_BASE_URL}/verify.php"
+        r = requests.get(url, params={"token": tok}, timeout=8)
+        ok = (r.status_code == 200 and r.headers.get("content-type","").startswith("application/json")
+              and bool(r.json().get("ok")))
+        set_premium_enabled(ok)
+        st = load_state()
+        st["last_verify_at"] = iso_now()
+        save_state(st)
+        print("[LICENSE] verify:", r.text[:200])
+        return ok
     except Exception as e:
         print("[LICENSE] verify error:", e)
-    return False
+        return False
 
-# === HEARTBEAT ===
-def send_heartbeat():
-    """POST zu heartbeat.php mit token + install_id + addon_version"""
-    if not LICENSE_TOKEN:
+def heartbeat_once(addon_version: str = None) -> None:
+    tok = get_token()
+    if not tok:
         return
     try:
-        body = {
-            "token": LICENSE_TOKEN,
-            "install_id": _get_install_id(),
-            "addon_version": ADDON_VERSION,
+        payload = {
+            "token": tok,
+            "install_id": load_state().get("install_id", "unknown-install"),
+            "addon_version": addon_version or get_addon_version()
         }
-        r = requests.post(
-            f"{LICENSE_BASE_URL}/heartbeat.php",
-            json=body,
-            timeout=6,
-        )
-        # 200 + JSON wird serverseitig immer geliefert (Fehler kommen als ok:false)
-        data = {}
-        try:
-            data = r.json()
-        except Exception:
-            pass
-
+        r = requests.post(f"{LICENSE_BASE_URL}/heartbeat.php", json=payload, timeout=8)
+        print("[LICENSE] heartbeat:", r.text[:200])
         st = load_state()
         st["last_heartbeat_at"] = iso_now()
-        # Optional im State merken, was der Server sagte (Lease etc.)
-        if isinstance(data, dict):
-            st["last_heartbeat_response"] = data
         save_state(st)
-        print("[LICENSE] heartbeat:", data if data else r.text[:200])
     except Exception as e:
         print("[LICENSE] heartbeat error:", e)
 
-def start_heartbeat_loop():
+def start_heartbeat_loop(addon_version: str = None):
+    """Sendet Heartbeats nur, wenn premium_enabled True ist und ein Token existiert."""
     def loop():
         while True:
-            if is_premium_enabled():
-                send_heartbeat()
+            if is_premium_enabled() and get_token():
+                heartbeat_once(addon_version=addon_version)
             time.sleep(HEARTBEAT_SEC)
     threading.Thread(target=loop, daemon=True).start()
+
+def issue_token_and_enable(sponsor: str = "demo_user", plan: str = "monthly") -> bool:
+    """Holt Token von /issue.php und ruft anschließend verify_license()."""
+    try:
+        r = requests.post(f"{LICENSE_BASE_URL}/issue.php",
+                          data={"sponsor": sponsor, "plan": plan}, timeout=8)
+        print("[LICENSE] issue:", r.text[:200])
+        js = r.json()
+        if js.get("ok") and js.get("token"):
+            set_token(js["token"])
+            return verify_license()
+        return False
+    except Exception as e:
+        print("[LICENSE] issue error:", e)
+        return False

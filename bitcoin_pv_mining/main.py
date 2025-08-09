@@ -1,23 +1,21 @@
 import os
-import shutil
 import requests
 import dash
 import flask
 from dash import html, dcc
 from dash.dependencies import Input, Output
-from dash import callback_context
 from flask import send_from_directory
 from ui_dashboard import layout as dashboard_layout, register_callbacks
 from services.btc_api import update_btc_data_periodically
 from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
-from services.license import verify_license, start_heartbeat_loop, is_premium_enabled
-from flask import request, redirect  # schon vorhanden? sonst ergänzen
-from services.githubauth import simulate_sponsor_activation  # später: build_github_oauth_url, complete_github_oauth
+from services.license import verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable
+from flask import request, redirect
+from services.utils import get_addon_version
 
 
 # beim Start
 verify_license()
-start_heartbeat_loop()
+start_heartbeat_loop(addon_version=get_addon_version())
 
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
@@ -91,15 +89,8 @@ def _abs_url(path: str) -> str:
 
 @app.server.route(f"{prefix}oauth/start")
 def oauth_start():
-    # HEUTE: direkt simulieren & zurück aufs Dashboard
-    simulate_sponsor_activation()
-    return redirect(prefix)  # zurück zur App
-
-    # SPÄTER (echter Flow):
-    # state = "random-csrf-string"
-    # redirect_uri = _abs_url("oauth/callback")
-    # url = build_github_oauth_url(redirect_uri, state)
-    # return redirect(url)
+    issue_token_and_enable(sponsor="demo_user", plan="monthly")
+    return redirect(prefix)
 
 @app.server.route(f"{prefix}oauth/callback")
 def oauth_callback():
@@ -121,22 +112,17 @@ def dash_ping():
 def serve_icon():
     return send_from_directory(CONFIG_DIR, 'icon.png')
 
-# 1) Pollt den Status (beim Start + alle 30s)
 @dash.callback(
-    Output("premium-enabled","data"),
-    Input("license-poll","n_intervals"),
+    Output("premium-enabled","data", allow_duplicate=True),
     Input("btn-premium","n_clicks"),
-    prevent_initial_call=False
+    prevent_initial_call=True
 )
-def premium_router(n_poll, n_clicks):
-    trig = (callback_context.triggered[0]["prop_id"].split(".")[0]
-            if callback_context.triggered else "")
-    if trig == "btn-premium":
-        simulate_sponsor_activation()  # heute: Simulation
-        # später: OAuth/verify hier
+def on_click_premium(n):
+    if not n:
+        raise dash.exceptions.PreventUpdate
+    ok = issue_token_and_enable(sponsor="demo_user", plan="monthly")
     return {"enabled": is_premium_enabled()}
 
-# 2) Stellt Sichtbarkeit & Label des Buttons
 @dash.callback(
     Output("btn-premium", "className"),
     Output("btn-premium", "children"),
@@ -272,7 +258,8 @@ app.index_string = '''
 app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
     dcc.Store(id="premium-enabled", data={"enabled": False}),
-    dcc.Interval(id="license-poll", interval=30_000, n_intervals=0),
+    # dcc.Interval(id="license-poll", interval=30_000, n_intervals=0),  # <- wird erst später genutzt
+
 
     html.Div([
         html.Img(src=f"{prefix}config-icon", className="header-icon"),
