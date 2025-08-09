@@ -31,6 +31,7 @@ def _set_premium_enabled(val: bool):
 
 # Optional: DEV-Schalter im UI behalten
 def activate_premium_dev() -> bool:
+    print("[DEBUG] Activate Premium Button gedrückt – DEV-Modus aktiv")
     _set_premium_enabled(True)
     st = load_state()
     st["last_heartbeat_at"] = iso_now()

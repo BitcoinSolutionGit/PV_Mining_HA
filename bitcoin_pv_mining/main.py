@@ -216,8 +216,10 @@ app.index_string = '''
 
 app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
-    dcc.Store(id="premium-enabled"),
-    dcc.Interval(id="license-poll", interval=30_000, n_intervals=0),  # alle 30s + beim Start
+    dcc.Store(id="premium-enabled", data={"enabled": False}),
+    dcc.Interval(id="license-poll", interval=30_000, n_intervals=0),
+
+    dcc.Store(id="active-tab", data="dashboard"),
 
     html.Div([
         html.Img(src=f"{prefix}config-icon", className="header-icon"),

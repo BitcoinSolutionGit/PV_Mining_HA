@@ -170,9 +170,6 @@ def layout():
     return html.Div([
         html.H1("PV-mining dashboard"),
 
-        dcc.Store(id="premium-enabled", data={"enabled": False}), # Speichert Premium-Status (Standard: deaktiviert)
-        dcc.Interval(id="license-poll", interval=30_000, n_intervals=0), # Poll für Lizenz-Status (z. B. alle 30s)
-
         dcc.Graph(id="sankey-diagram", figure=go.Figure()),
 
         html.Div([
