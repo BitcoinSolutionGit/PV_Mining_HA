@@ -2,13 +2,32 @@ import os
 import shutil
 import requests
 import dash
-from dash import html, dcc
 import flask
+from dash import html, dcc
 from dash.dependencies import Input, Output
+from dash import callback_context
 from flask import send_from_directory
 from ui_dashboard import layout as dashboard_layout, register_callbacks
 from services.btc_api import update_btc_data_periodically
 from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
+from services.license import verify_license, start_heartbeat_loop, is_premium_enabled
+from flask import request, redirect  # schon vorhanden? sonst ergänzen
+from services.githubauth import simulate_sponsor_activation  # später: build_github_oauth_url, complete_github_oauth
+
+
+# beim Start
+verify_license()
+start_heartbeat_loop()
+
+# Button-Callback bleibt wie besprochen, nur die Action:
+@dash.callback(
+    Output("premium-enabled", "data", allow_duplicate=True),
+    Input("btn-premium", "n_clicks"),
+    prevent_initial_call=True
+)
+def on_click_premium(n):
+    ok = verify_license()
+    return {"enabled": is_premium_enabled()}
 
 
 CONFIG_DIR = "/config/pv_mining_addon"
@@ -72,6 +91,39 @@ app = dash.Dash(
 
 print(f"[INFO] Dash runs with requests_pathname_prefix = {prefix}")
 
+# --- OAuth Placeholder Routes ---
+def _abs_url(path: str) -> str:
+    # Baut absolute URL inkl. Ingress-Prefix
+    base = request.host_url.rstrip('/')  # z.B. https://ha.local:8123/
+    p = prefix if prefix.endswith('/') else prefix + '/'
+    if path.startswith('/'):
+        path = path[1:]
+    return f"{base}{p}{path}"
+
+@app.server.route(f"{prefix}oauth/start")
+def oauth_start():
+    # HEUTE: direkt simulieren & zurück aufs Dashboard
+    simulate_sponsor_activation()
+    return redirect(prefix)  # zurück zur App
+
+    # SPÄTER (echter Flow):
+    # state = "random-csrf-string"
+    # redirect_uri = _abs_url("oauth/callback")
+    # url = build_github_oauth_url(redirect_uri, state)
+    # return redirect(url)
+
+@app.server.route(f"{prefix}oauth/callback")
+def oauth_callback():
+    # HEUTE: keine echte Verarbeitung nötig – zurück zur App
+    return redirect(prefix)
+
+    # SPÄTER:
+    # code = request.args.get("code", "")
+    # redirect_uri = _abs_url("oauth/callback")
+    # ok = complete_github_oauth(code, redirect_uri)
+    # return redirect(prefix)
+
+
 @app.server.route("/_dash-layout", methods=["GET"])
 def dash_ping():
     return {"status": "OK"}
@@ -130,6 +182,25 @@ app.index_string = '''
                 width: 32px;
                 height: 32px;
             }
+            
+            .premium-btn {
+                background: linear-gradient(#2ecc71, #27ae60);
+                color: white;
+                font-weight: bold;
+                border: 1px solid #1e874b;
+            }
+            .premium-btn:hover {
+                filter: brightness(1.05);
+            }
+            .premium-btn-hidden {
+                display: none;
+            }
+            .premium-btn-active {
+                background: #e0ffe9;
+                color: #1e874b;
+                border: 2px solid #1e874b;
+                cursor: default;
+            }
         </style>
     </head>
     <body>
@@ -145,15 +216,52 @@ app.index_string = '''
 
 app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
+    dcc.Store(id="premium-enabled"),
+    dcc.Interval(id="license-poll", interval=30_000, n_intervals=0),  # alle 30s + beim Start
 
     html.Div([
         html.Img(src=f"{prefix}config-icon", className="header-icon"),
         html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab custom-tab-selected", **{"data-tab": "dashboard"}),
         html.Button("Sensors", id="btn-sensors", n_clicks=0, className="custom-tab", **{"data-tab": "sensors"}),
+        # Spacer + Premium-Button ganz rechts
+        html.Div(style={"flex": "1"}),
+        html.Button("Activate Premium", id="btn-premium", n_clicks=0, className="custom-tab premium-btn"),
     ], id="tab-buttons", className="header-bar"),
 
     html.Div(id="tabs-content", style={"marginTop": "10px"})
 ])
+
+# 1) Pollt den Status (beim Start + alle 30s)
+@dash.callback(
+    Output("premium-enabled","data"),
+    Input("license-poll","n_intervals"),
+    Input("btn-premium","n_clicks"),
+    prevent_initial_call=True
+)
+def premium_router(n_poll, n_clicks):
+    trig = (callback_context.triggered[0]["prop_id"].split(".")[0]
+            if callback_context.triggered else "")
+    if trig == "btn-premium":
+        simulate_sponsor_activation()  # oder echter Flow
+    # egal ob Poll oder Click: Status zurückgeben
+    return {"enabled": is_premium_enabled()}
+
+# 2) Stellt Sichtbarkeit & Label des Buttons
+@dash.callback(
+    Output("btn-premium", "className"),
+    Output("btn-premium", "children"),
+    Input("premium-enabled", "data")
+)
+def toggle_premium_button(data):
+    enabled = bool((data or {}).get("enabled"))
+    if enabled:
+        # Button ausblenden ODER als „aktiv“ markieren – du kannst hier entscheiden:
+        # Variante A: ganz ausblenden:
+        # return "custom-tab premium-btn premium-btn-hidden", "Premium Active"
+        # Variante B: sichtbar, aber als aktiv:
+        return "custom-tab premium-btn premium-btn-active", "Premium Active"
+    return "custom-tab premium-btn", "Activate Premium"
+
 
 @dash.callback(
     Output("active-tab", "data"),

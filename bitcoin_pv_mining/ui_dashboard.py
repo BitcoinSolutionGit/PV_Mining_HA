@@ -169,7 +169,12 @@ def register_callbacks(app):
 def layout():
     return html.Div([
         html.H1("PV-mining dashboard"),
+
+        dcc.Store(id="premium-enabled", data={"enabled": False}), # Speichert Premium-Status (Standard: deaktiviert)
+        dcc.Interval(id="license-poll", interval=30_000, n_intervals=0), # Poll für Lizenz-Status (z. B. alle 30s)
+
         dcc.Graph(id="sankey-diagram", figure=go.Figure()),
+
         html.Div([
             dcc.Graph(id="pv-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
             dcc.Graph(id="load-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
@@ -177,11 +182,10 @@ def layout():
         ], style={"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
 
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
-
         html.Div([
             html.Div(id="btc-price", style={"textAlign": "center", "fontWeight": "bold"}),
             html.Div(id="btc-hashrate", style={"textAlign": "center", "fontWeight": "bold"})
         ], style={"display": "flex", "justifyContent": "center", "gap": "40px", "marginTop": "20px"}),
-
         dcc.Interval(id="btc-refresh", interval=60_000, n_intervals=0)
     ])
+
