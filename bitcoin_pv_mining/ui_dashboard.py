@@ -98,7 +98,7 @@ def register_callbacks(app):
 
         # Nodes
         node_labels = [
-            f"Energy Inflow\n(PV: {pv_pct}% / Grid: {grid_pct}%)",  # 0
+            f"Energy Inflow<br>PV: {pv_pct}%<br>Grid: {grid_pct}%",  # 0
             "Heater",           # 1
             "Wallbox",          # 2
             "Battery",          # 3
@@ -166,6 +166,9 @@ def register_callbacks(app):
             paper_bgcolor='white',
             margin=dict(l=20, r=20, t=40, b=20)
         )
+
+        fig.update_traces(hoverlabel=dict(bgcolor="white"))
+
         return fig
 #
 # # ------------------------------

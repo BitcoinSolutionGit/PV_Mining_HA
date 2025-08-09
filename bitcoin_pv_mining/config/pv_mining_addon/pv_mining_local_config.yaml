@@ -1,0 +1,4 @@
+feature_flags:
+  heater_active: true
+  wallbox_active: true
+  battery_active: true
