@@ -19,17 +19,6 @@ from services.githubauth import simulate_sponsor_activation  # später: build_gi
 verify_license()
 start_heartbeat_loop()
 
-# Button-Callback bleibt wie besprochen, nur die Action:
-@dash.callback(
-    Output("premium-enabled", "data", allow_duplicate=True),
-    Input("btn-premium", "n_clicks"),
-    prevent_initial_call=True
-)
-def on_click_premium(n):
-    ok = verify_license()
-    return {"enabled": is_premium_enabled()}
-
-
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
 
@@ -127,6 +116,7 @@ def oauth_callback():
 @app.server.route("/_dash-layout", methods=["GET"])
 def dash_ping():
     return {"status": "OK"}
+
 @app.server.route('/config-icon')
 def serve_icon():
     return send_from_directory(CONFIG_DIR, 'icon.png')
@@ -136,14 +126,14 @@ def serve_icon():
     Output("premium-enabled","data"),
     Input("license-poll","n_intervals"),
     Input("btn-premium","n_clicks"),
-    prevent_initial_call=True
+    prevent_initial_call=False
 )
 def premium_router(n_poll, n_clicks):
     trig = (callback_context.triggered[0]["prop_id"].split(".")[0]
             if callback_context.triggered else "")
     if trig == "btn-premium":
-        simulate_sponsor_activation()  # oder echter Flow
-    # egal ob Poll oder Click: Status zurückgeben
+        simulate_sponsor_activation()  # heute: Simulation
+        # später: OAuth/verify hier
     return {"enabled": is_premium_enabled()}
 
 # 2) Stellt Sichtbarkeit & Label des Buttons
@@ -283,8 +273,6 @@ app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
     dcc.Store(id="premium-enabled", data={"enabled": False}),
     dcc.Interval(id="license-poll", interval=30_000, n_intervals=0),
-
-    dcc.Store(id="active-tab", data="dashboard"),
 
     html.Div([
         html.Img(src=f"{prefix}config-icon", className="header-icon"),
