@@ -82,22 +82,39 @@ def set_vars(**pairs):
     save_yaml(ELEC_OVR, ovr)
 
 # ---------- Logik: aktueller Preis + Formatierung ----------
+def _to_float(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+def _normalize_to_eur_per_kwh(value):
+    f = _to_float(value)
+    if f is None:
+        return None
+    unit = str(get_var("price_unit", "auto") or "auto").lower()
+    # Explizit eingestellte Einheit
+    if unit in ("eur", "eur/kwh", "€", "euro"):
+        return f
+    if unit in ("ct", "ct/kwh", "cent", "cents", "¢"):
+        return f / 100.0
+    # Auto-Erkennung: typische ct/kWh-Werte sind > 3 und < 1000
+    if 3.0 <= f < 1000.0:
+        return f / 100.0
+    return f
+
 def current_price() -> float | None:
     mode = str(get_var("pricing_mode", "") or "").lower()
     sensor_id = resolve_sensor_id("current_electricity_price")
     if mode not in ("fixed", "dynamic"):
         mode = "dynamic" if sensor_id else "fixed"
+
     if mode == "fixed":
-        try:
-            return float(get_var("fixed_price_value", 0.0) or 0.0)
-        except (TypeError, ValueError):
-            return 0.0
+        return _normalize_to_eur_per_kwh(get_var("fixed_price_value", 0.0))
+
     if not sensor_id:
         return None
-    try:
-        return float(get_sensor_value(sensor_id))
-    except (TypeError, ValueError):
-        return None
+    return _normalize_to_eur_per_kwh(get_sensor_value(sensor_id))
 
 def currency_symbol():
     c = str(get_var("currency", "EUR") or "EUR").upper()

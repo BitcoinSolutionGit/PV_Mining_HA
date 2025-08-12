@@ -8,3 +8,4 @@ electricity:
     dynamic_price_value:
     network_fee_down_value:
     network_fee_up_value:
+    price_unit: EUR/kWh #ct/kWh   # oder 'EUR/kWh'
