@@ -7,8 +7,8 @@ from services.ha_sensors import get_sensor_value
 from services.utils import load_yaml  # nutzt deine utils.py
 
 CONFIG_DIR = "/config/pv_mining_addon"
-SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
-SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
+DASHB_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
+DASHB_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
 MAIN_CFG = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
 CONFIG_PATH = MAIN_CFG  # für load_config()
 
@@ -20,7 +20,7 @@ def resolve_sensor_id(kind: str) -> str:
     def _mget(path, key):
         m = (load_yaml(path, {}).get("mapping", {}) or {})
         return (m.get(key) or "").strip()
-    return _mget(SENS_OVR, kind) or _mget(SENS_DEF, kind)
+    return _mget(DASHB_OVR, kind) or _mget(DASHB_DEF, kind)
 
 # ------------------------------
 # Farben

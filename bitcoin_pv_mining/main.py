@@ -2,16 +2,22 @@ import os
 import requests
 import dash
 import flask
+
 from dash import html, dcc
 from dash.dependencies import Input, Output
+
 from flask import send_from_directory
-from ui_dashboard import layout as dashboard_layout, register_callbacks
-from ui_pages.miners import layout as miners_layout
-from services.btc_api import update_btc_data_periodically
-from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
-from services.license import verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
 from flask import request, redirect
+from ui_dashboard import layout as dashboard_layout, register_callbacks
+
+from services.btc_api import update_btc_data_periodically
+from services.license import verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
 from services.utils import get_addon_version
+
+from ui_pages.miners import layout as miners_layout
+from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
+from ui_pages.electricity import layout as electricity_layout, register_callbacks as reg_electricity
+
 
 
 # beim Start
@@ -149,13 +155,15 @@ def toggle_premium_button(data):
     Output("btn-dashboard", "className"),
     Output("btn-sensors", "className"),
     Output("btn-miners", "className"),
+    Output("btn-electricity", "className"),
     Input("btn-dashboard", "n_clicks"),
     Input("btn-sensors", "n_clicks"),
     Input("btn-miners", "n_clicks"),
+    Input("btn-electricity", "n_clicks"),
     Input("premium-enabled", "data"),
     prevent_initial_call=True
 )
-def switch_tabs(n1, n2,n3, premium_data):
+def switch_tabs(n1, n2,n3, n4, premium_data):
     enabled = bool((premium_data or {}).get("enabled"))
     ctx = dash.callback_context
     if not ctx.triggered:
@@ -167,12 +175,15 @@ def switch_tabs(n1, n2,n3, premium_data):
         target = "sensors"
     elif btn == "btn-miners":
         target = "miners" if enabled else "dashboard"  # Premium required
+    elif btn == "btn-electricity":
+        target = "electricity"
 
     return (
         target,
         "custom-tab custom-tab-selected" if target == "dashboard" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "sensors" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "miners" else "custom-tab",
+        "custom-tab custom-tab-selected" if target == "electricity" else "custom-tab",
     )
 
 def premium_upsell():
@@ -211,11 +222,15 @@ def render_tab(tab, premium_data):
         return sensors_layout()
     if tab == "miners":
         return miners_layout() if enabled else premium_upsell()
+    if tab == "electricity":
+        return electricity_layout()
     return dashboard_layout()
 
 
 register_callbacks(app)     # Dashboard
 reg_sensors(app)            # Sensors
+#reg_miners(app)             # Sensors
+reg_electricity (app)       # electricity
 
 
 app.index_string = '''
@@ -327,6 +342,8 @@ app.layout = html.Div([
         html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab custom-tab-selected", **{"data-tab": "dashboard"}),
         html.Button("Sensors", id="btn-sensors", n_clicks=0, className="custom-tab", **{"data-tab": "sensors"}),
         html.Button("Miners", id="btn-miners", n_clicks=0, className="custom-tab", **{"data-tab": "miners"}),
+        html.Button("Electricity", id="btn-electricity", n_clicks=0, className="custom-tab", **{"data-tab": "electricity"}),
+
         # Spacer + Premium-Button ganz rechts
         html.Div(style={"flex": "1"}),
         html.Button("Activate Premium", id="btn-premium", n_clicks=0, className="custom-tab premium-btn"),
