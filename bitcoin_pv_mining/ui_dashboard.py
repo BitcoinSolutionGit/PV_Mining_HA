@@ -83,9 +83,9 @@ def register_callbacks(app):
             f"Energy Inflow<br>PV: {pv_pct}%<br>Grid: {grid_pct}%",  # 0
             "Miners",           # 1
             "Battery",          # 2
-            "Heater",           # 3
+            "Water Heater",     # 3
             "Wallbox",          # 4
-            "Total Load"        # 5
+            "House usage"       # 5
         ]
         node_colors = [
             COLORS["inflow"],
