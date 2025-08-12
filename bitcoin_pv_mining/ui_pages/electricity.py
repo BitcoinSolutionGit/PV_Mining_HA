@@ -2,7 +2,7 @@ import os
 import dash
 from dash import html, dcc
 from dash.dependencies import Input, Output, State
-from services.ha_sensors import list_all_sensors
+from services.ha_sensors import list_all_sensors, get_sensor_value
 from services.utils import load_yaml, save_yaml
 
 CONFIG_DIR = "/config/pv_mining_addon"
@@ -26,6 +26,47 @@ def _ensure_path(data: dict, path: str) -> dict:
     for k in path.split("."):
         cur = cur.setdefault(k, {})
     return cur
+
+def _elec_get_var(key, default=None):
+    """electricity.variables[key] aus .local, dann .yaml"""
+    v = _get_path(load_yaml(ELEC_OVR, {}) or {}, f"electricity.variables.{key}")
+    if v is None:
+        v = _get_path(load_yaml(ELEC_DEF, {}) or {}, f"electricity.variables.{key}")
+    return default if v is None else v
+
+def _elec_resolve_price_sensor():
+    """electricity.mapping.current_electricity_price (local>def), sonst legacy entities.*"""
+    # mapping unter electricity.*
+    for path in (ELEC_OVR, ELEC_DEF):
+        m = _get_path(load_yaml(path, {}) or {}, "electricity.mapping") or {}
+        sid = (m.get("current_electricity_price") or "").strip() if isinstance(m, dict) else ""
+        if sid:
+            return sid
+    # legacy
+    ents = (load_yaml(MAIN_CFG, {}) or {}).get("entities", {}) or {}
+    return (ents.get("sensor_current_electricity_price", "") or "").strip()
+
+def _elec_current_price():
+    """float | None: fixed -> fixed_price_value; dynamic -> Sensorwert"""
+    mode = str(_elec_get_var("pricing_mode", "") or "").lower()
+    sensor_id = _elec_resolve_price_sensor()
+    if mode not in ("fixed", "dynamic"):
+        mode = "dynamic" if sensor_id else "fixed"
+
+    if mode == "fixed":
+        return float(_elec_get_var("fixed_price_value", 0.0) or 0.0)
+
+    # dynamic -> Sensor lesen
+    sid = sensor_id
+    val = get_sensor_value(sid) if sid else None
+    try:
+        return float(val) if val is not None else None
+    except (ValueError, TypeError):
+        return None
+
+def _elec_currency_symbol():
+    c = str(_elec_get_var("currency", "EUR") or "EUR").upper()
+    return "€" if c == "EUR" else c  # simpel: EUR -> €, sonst Code
 
 # ---------- resolver für Sensor-IDs (rückwärtskompatibel) ----------
 def resolve_sensor_id(kind: str) -> str:

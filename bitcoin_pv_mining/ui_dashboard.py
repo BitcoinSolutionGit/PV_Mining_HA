@@ -22,6 +22,26 @@ def resolve_sensor_id(kind: str) -> str:
         return (m.get(key) or "").strip()
     return _mget(DASHB_OVR, kind) or _mget(DASHB_DEF, kind)
 
+def _dot(color):
+    return html.Span("", style={
+        "display": "inline-block", "width": "10px", "height": "10px",
+        "borderRadius": "50%", "backgroundColor": color, "marginRight": "8px",
+        "verticalAlign": "middle"
+    })
+
+def _price_color(v):
+    if v is None:
+        return "#888888"
+    if v < 0.15:
+        return "#27ae60"  # grün
+    if v <= 0.25:
+        return "#f1c40f"  # gelb
+    return "#e74c3c"      # rot
+
+def _fmt_price(v):
+    # 3 Nachkommastellen, mit Komma statt Punkt (AT/DE-Style)
+    return f"{v:.3f}".replace(".", ",")
+
 # ------------------------------
 # Farben
 # ------------------------------
@@ -194,6 +214,19 @@ def register_callbacks(app):
         hashrate_str = f"Hashrate: {hashrate:,.2f} TH/s".replace(",", "X").replace(".", ",").replace("X", ".") if hashrate else "–"
         return price_str, hashrate_str
 
+    @app.callback(
+        Output("elec-price", "children"),
+        Input("pv-update", "n_intervals")  # alle 10s aktualisieren
+    )
+    def update_electricity_price(_):
+        v = _elec_current_price()
+        sym = _elec_currency_symbol()
+        color = _price_color(v)
+        if v is None:
+            text = "Strompreis: –"
+        else:
+            text = f"Strompreis: {_fmt_price(v)} {sym}/kWh"
+        return html.Span([_dot(color), text])
 # ------------------------------
 # Layout
 # ------------------------------
@@ -211,6 +244,7 @@ def layout():
 
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
         html.Div([
+            html.Div(id="elec-price", style={"textAlign": "center", "fontWeight": "bold"}),
             html.Div(id="btc-price", style={"textAlign": "center", "fontWeight": "bold"}),
             html.Div(id="btc-hashrate", style={"textAlign": "center", "fontWeight": "bold"})
         ], style={"display": "flex", "justifyContent": "center", "gap": "40px", "marginTop": "20px"}),
