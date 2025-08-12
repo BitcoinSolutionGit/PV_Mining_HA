@@ -1,2 +1,10 @@
 electricity:
-  current_electricity_price:
+  mapping:
+    current_electricity_price:
+  variables:
+    fixed_price_activated:
+    fixed_price_value:
+    dynamic_price_activated:
+    dynamic_price_value:
+    network_fee_down_value:
+    network_fee_up_value:
