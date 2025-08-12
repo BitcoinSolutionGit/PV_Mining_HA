@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V3.0.15" />
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V3.0.15">
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -59,7 +61,7 @@
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "electricity__test",
+    "git-widget-placeholder": "master",
     "last_opened_file_path": "D:/__Phyton/BitcoinSolution_PV_Mining_HomeAssistant",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
