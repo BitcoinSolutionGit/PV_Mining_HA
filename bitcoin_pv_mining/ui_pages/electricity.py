@@ -2,144 +2,13 @@ import os
 import dash
 from dash import html, dcc
 from dash.dependencies import Input, Output, State
-from services.ha_sensors import list_all_sensors, get_sensor_value
-from services.utils import load_yaml, save_yaml
+from services.ha_sensors import list_all_sensors
+from services.electricity_store import resolve_sensor_id, set_mapping, get_var as elec_get_var, set_vars as elec_set_vars
 
 CONFIG_DIR = "/config/pv_mining_addon"
 ELEC_DEF = os.path.join(CONFIG_DIR, "electricity.yaml")
 ELEC_OVR = os.path.join(CONFIG_DIR, "electricity.local.yaml")
 MAIN_CFG = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
-
-# ---------- helpers: nested get/set ----------
-def _get_path(data: dict, path: str):
-    cur = data or {}
-    for k in path.split("."):
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(k)
-        if cur is None:
-            return None
-    return cur
-
-def _ensure_path(data: dict, path: str) -> dict:
-    cur = data
-    for k in path.split("."):
-        cur = cur.setdefault(k, {})
-    return cur
-
-def _elec_get_var(key, default=None):
-    """electricity.variables[key] aus .local, dann .yaml"""
-    v = _get_path(load_yaml(ELEC_OVR, {}) or {}, f"electricity.variables.{key}")
-    if v is None:
-        v = _get_path(load_yaml(ELEC_DEF, {}) or {}, f"electricity.variables.{key}")
-    return default if v is None else v
-
-def _elec_resolve_price_sensor():
-    """electricity.mapping.current_electricity_price (local>def), sonst legacy entities.*"""
-    # mapping unter electricity.*
-    for path in (ELEC_OVR, ELEC_DEF):
-        m = _get_path(load_yaml(path, {}) or {}, "electricity.mapping") or {}
-        sid = (m.get("current_electricity_price") or "").strip() if isinstance(m, dict) else ""
-        if sid:
-            return sid
-    # legacy
-    ents = (load_yaml(MAIN_CFG, {}) or {}).get("entities", {}) or {}
-    return (ents.get("sensor_current_electricity_price", "") or "").strip()
-
-def _elec_current_price():
-    """float | None: fixed -> fixed_price_value; dynamic -> Sensorwert"""
-    mode = str(_elec_get_var("pricing_mode", "") or "").lower()
-    sensor_id = _elec_resolve_price_sensor()
-    if mode not in ("fixed", "dynamic"):
-        mode = "dynamic" if sensor_id else "fixed"
-
-    if mode == "fixed":
-        return float(_elec_get_var("fixed_price_value", 0.0) or 0.0)
-
-    # dynamic -> Sensor lesen
-    sid = sensor_id
-    val = get_sensor_value(sid) if sid else None
-    try:
-        return float(val) if val is not None else None
-    except (ValueError, TypeError):
-        return None
-
-def _elec_currency_symbol():
-    c = str(_elec_get_var("currency", "EUR") or "EUR").upper()
-    return "€" if c == "EUR" else c  # simpel: EUR -> €, sonst Code
-
-# ---------- resolver für Sensor-IDs (rückwärtskompatibel) ----------
-def resolve_sensor_id(kind: str) -> str:
-    """
-    Priorität:
-    1) electricity.local.yaml -> electricity.mapping[kind]
-    2) electricity.yaml       -> electricity.mapping[kind]
-    3) (Legacy) *.yaml        -> top-level mapping[kind]
-    4) (Electricity-legacy)   -> electricity.price_sensor / electricity.current_electricity_price
-    5) pv_mining_local_config.yaml -> entities[<fallback_key>]
-    """
-    # 1/2: nested electricity.mapping
-    for path_file in (ELEC_OVR, ELEC_DEF):
-        m = _get_path(load_yaml(path_file, {}) or {}, "electricity.mapping")
-        if isinstance(m, dict):
-            v = m.get(kind)
-            if isinstance(v, str) and v.strip():
-                return v.strip()
-
-    # 3: top-level mapping (alte Struktur, z.B. wie sensors.yaml)
-    for path_file in (ELEC_OVR, ELEC_DEF):
-        m = _get_path(load_yaml(path_file, {}) or {}, "mapping")
-        if isinstance(m, dict):
-            v = m.get(kind)
-            if isinstance(v, str) and v.strip():
-                return v.strip()
-
-    # 4: electricity-Block (Electricity-spezifische Legacy-Felder)
-    if kind == "current_electricity_price":
-        for key in ("electricity.price_sensor", "electricity.current_electricity_price"):
-            for path_file in (ELEC_OVR, ELEC_DEF):
-                v = _get_path(load_yaml(path_file, {}) or {}, key)
-                if isinstance(v, str) and v.strip():
-                    return v.strip()
-
-    # 5: Legacy-Fallback
-    cfg = load_yaml(MAIN_CFG, {}) or {}
-    ents = cfg.get("entities", {}) or {}
-    fallback_keys = {
-        "current_electricity_price": "sensor_current_electricity_price",
-    }
-    return (ents.get(fallback_keys.get(kind, ""), "") or "").strip()
-
-def set_mapping(kind: str, sensor_id: str):
-    """Schreibt nach electricity.local.yaml -> electricity.mapping[kind] + Legacy-Spiegelung."""
-    ovr = load_yaml(ELEC_OVR, {}) or {}
-    elec = ovr.setdefault("electricity", {})
-    mapping = elec.setdefault("mapping", {})
-    mapping[kind] = (sensor_id or "").strip()
-    save_yaml(ELEC_OVR, ovr)
-
-    # Legacy-Spiegelung (nur für current_electricity_price nötig)
-    if kind == "current_electricity_price":
-        cfg = load_yaml(MAIN_CFG, {}) or {}
-        cfg.setdefault("entities", {})
-        cfg["entities"]["sensor_current_electricity_price"] = (sensor_id or "").strip()
-        save_yaml(MAIN_CFG, cfg)
-
-# ---------- variables read/write ----------
-def _get_var(key: str, default=None):
-    # local überschreibt base
-    val = _get_path(load_yaml(ELEC_OVR, {}) or {}, f"electricity.variables.{key}")
-    if val is None:
-        val = _get_path(load_yaml(ELEC_DEF, {}) or {}, f"electricity.variables.{key}")
-    return default if val is None else val
-
-def _set_vars(**pairs):
-    ovr = load_yaml(ELEC_OVR, {}) or {}
-    vars_block = _ensure_path(ovr, "electricity.variables")
-    for k, v in pairs.items():
-        if v is not None:
-            vars_block[k] = v
-    save_yaml(ELEC_OVR, ovr)
 
 # ---------- layout ----------
 def layout():
@@ -148,7 +17,7 @@ def layout():
     sensor_val = resolve_sensor_id("current_electricity_price")
 
     # pricing_mode: "fixed" | "dynamic"
-    pricing_mode = (_get_var("pricing_mode", None) or "").lower()
+    pricing_mode = (elec_get_var("pricing_mode", None) or "").lower()
     if pricing_mode not in ("fixed", "dynamic"):
         # Default: wenn Sensor zugeordnet -> dynamic, sonst fixed
         pricing_mode = "dynamic" if sensor_val else "fixed"
@@ -156,9 +25,9 @@ def layout():
     fixed_active = (pricing_mode == "fixed")
     dyn_active = (pricing_mode == "dynamic")
 
-    fixed_price_value = float(_get_var("fixed_price_value", 0.0) or 0.0)
-    fee_down = float(_get_var("network_fee_down_value", 0.0) or 0.0)  # Bezug
-    fee_up   = float(_get_var("network_fee_up_value", 0.0) or 0.0)    # Einspeisung
+    fixed_price_value = float(elec_get_var("fixed_price_value", 0.0) or 0.0)
+    fee_down = float(elec_get_var("network_fee_down_value", 0.0) or 0.0)  # Bezug
+    fee_up   = float(elec_get_var("network_fee_up_value", 0.0) or 0.0)    # Einspeisung
 
     return html.Div([
         html.H2("Configure your electricity values"),
@@ -310,7 +179,7 @@ def register_callbacks(app):
         set_mapping("current_electricity_price", sensor_id or "")
 
         # Variablen speichern
-        _set_vars(
+        elec_set_vars(
             pricing_mode=pricing_mode,
             fixed_price_value=float(fixed_price or 0.0),
             network_fee_down_value=float(fee_down or 0.0),

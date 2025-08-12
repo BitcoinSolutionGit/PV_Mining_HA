@@ -1,10 +1,14 @@
 import os
 import yaml
+import traceback
+import plotly.graph_objects as go
+
 from dash import html, dcc
 from dash.dependencies import Input, Output
-import plotly.graph_objects as go
+
 from services.ha_sensors import get_sensor_value
-from services.utils import load_yaml  # nutzt deine utils.py
+from services.utils import load_yaml
+from services.electricity_store import current_price, currency_symbol, price_color
 
 CONFIG_DIR = "/config/pv_mining_addon"
 DASHB_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
@@ -28,15 +32,6 @@ def _dot(color):
         "borderRadius": "50%", "backgroundColor": color, "marginRight": "8px",
         "verticalAlign": "middle"
     })
-
-def _price_color(v):
-    if v is None:
-        return "#888888"
-    if v < 0.15:
-        return "#27ae60"  # grün
-    if v <= 0.25:
-        return "#f1c40f"  # gelb
-    return "#e74c3c"      # rot
 
 def _fmt_price(v):
     # 3 Nachkommastellen, mit Komma statt Punkt (AT/DE-Style)
@@ -219,14 +214,16 @@ def register_callbacks(app):
         Input("pv-update", "n_intervals")  # alle 10s aktualisieren
     )
     def update_electricity_price(_):
-        v = _elec_current_price()
-        sym = _elec_currency_symbol()
-        color = _price_color(v)
+        v = current_price()
+        sym = currency_symbol()
+        color = price_color(v)
         if v is None:
             text = "Strompreis: –"
         else:
             text = f"Strompreis: {_fmt_price(v)} {sym}/kWh"
         return html.Span([_dot(color), text])
+
+
 # ------------------------------
 # Layout
 # ------------------------------
