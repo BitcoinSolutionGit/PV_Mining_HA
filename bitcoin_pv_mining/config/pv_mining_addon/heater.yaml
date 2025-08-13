@@ -7,3 +7,5 @@ heater:
     wanted_water_temperature: 60
     power_unit: kW
     heat_unit: "°C"
+    manual_override: false
+    manual_override_percent: 0
