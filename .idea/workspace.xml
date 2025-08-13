@@ -4,7 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V3.0.28" />
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V3.0.29">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/ui_dashboard.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/ui_dashboard.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -126,15 +129,7 @@
       <workItem from="1755015533484" duration="4721000" />
       <workItem from="1755035190867" duration="16000" />
       <workItem from="1755063163085" duration="1842000" />
-      <workItem from="1755073944505" duration="8540000" />
-    </task>
-    <task id="LOCAL-00138" summary="Dashboard Tests 34">
-      <option name="closed" value="true" />
-      <created>1754552315240</created>
-      <option name="number" value="00138" />
-      <option name="presentableId" value="LOCAL-00138" />
-      <option name="project" value="LOCAL" />
-      <updated>1754552315240</updated>
+      <workItem from="1755073944505" duration="11169000" />
     </task>
     <task id="LOCAL-00139" summary="Dashboard Tests 35">
       <option name="closed" value="true" />
@@ -520,14 +515,21 @@
       <option name="project" value="LOCAL" />
       <updated>1755082263210</updated>
     </task>
-    <option name="localTasksCounter" value="187" />
+    <task id="LOCAL-00187" summary="V3.0.29">
+      <option name="closed" value="true" />
+      <created>1755082837326</created>
+      <option name="number" value="00187" />
+      <option name="presentableId" value="LOCAL-00187" />
+      <option name="project" value="LOCAL" />
+      <updated>1755082837326</updated>
+    </task>
+    <option name="localTasksCounter" value="188" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="V3.0.4" />
     <MESSAGE value="V3.0.5" />
     <MESSAGE value="V3.0.6" />
     <MESSAGE value="V3.0.7" />
@@ -552,7 +554,8 @@
     <MESSAGE value="V3.0.26" />
     <MESSAGE value="V3.0.27" />
     <MESSAGE value="V3.0.28" />
-    <option name="LAST_COMMIT_MESSAGE" value="V3.0.28" />
+    <MESSAGE value="V3.0.29" />
+    <option name="LAST_COMMIT_MESSAGE" value="V3.0.29" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$main.coverage" NAME="main Coverage Results" MODIFIED="1755075989952" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />

@@ -48,6 +48,15 @@ def _fmt_temp(v, unit="°C"):
         v = v + 273.15
     return f"{v:.2f} {unit}"
 
+def _fmt_kw(v):
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        x = 0.0
+    # Komma-Format gewünscht? -> die nächste Zeile einkommentieren:
+    # return f"{x:.2f} kW".replace(".", ",")
+    return f"{x:.2f} kW"
+
 # ------------------------------
 # Farben
 # ------------------------------
@@ -128,13 +137,13 @@ def register_callbacks(app):
 
         # --- Nodes ---
         node_labels = [
-            f"Energy Inflow<br>PV: {pv_pct}%<br>Grid: {grid_pct}%",  # 0
-            "Miners",  # 1
-            "Battery",  # 2
-            "Water Heater",  # 3
-            "Wallbox",  # 4
-            "House usage",  # 5
-            "Grid Feed-in"  # 6
+            f"Energy Inflow<br>Load: {_fmt_kw(inflow)}<br>PV: {pv_pct}%<br>Grid: {grid_pct}%",  # 0
+            f"Miners<br>Load: {_fmt_kw(miners_val)}",  # 1
+            f"Battery<br>Load: {_fmt_kw(battery_val)}",  # 2
+            f"Water Heater<br>Load: {_fmt_kw(heater_kw)}",  # 3
+            f"Wallbox<br>Load: {_fmt_kw(wallbox_val)}",  # 4
+            f"House usage<br>Load: {_fmt_kw(house_vis)}",  # 5
+            f"Grid Feed-in<br>Load: {_fmt_kw(feed_val)}"  # 6
         ]
         node_colors = [
             COLORS["inflow"],
