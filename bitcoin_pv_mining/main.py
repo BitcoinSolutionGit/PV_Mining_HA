@@ -14,10 +14,13 @@ from services.btc_api import update_btc_data_periodically
 from services.license import verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
 from services.utils import get_addon_version
 
-from ui_pages.miners import layout as miners_layout
-from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
-from ui_pages.electricity import layout as electricity_layout, register_callbacks as reg_electricity
 
+from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
+from ui_pages.miners import layout as miners_layout
+from ui_pages.electricity import layout as electricity_layout, register_callbacks as reg_electricity
+from ui_pages.battery import layout as battery_layout
+from ui_pages.heater import layout as heater_layout
+from ui_pages.wallbox import layout as wallbox_layout
 
 
 # beim Start
@@ -156,14 +159,20 @@ def toggle_premium_button(data):
     Output("btn-sensors", "className"),
     Output("btn-miners", "className"),
     Output("btn-electricity", "className"),
+    Output("btn-battery", "className"),
+    Output("btn-heater", "className"),
+    Output("btn-wallbox", "className"),
     Input("btn-dashboard", "n_clicks"),
     Input("btn-sensors", "n_clicks"),
     Input("btn-miners", "n_clicks"),
     Input("btn-electricity", "n_clicks"),
+    Input("btn-battery", "n_clicks"),
+    Input("btn-heater", "n_clicks"),
+    Input("btn-wallbox", "n_clicks"),
     Input("premium-enabled", "data"),
     prevent_initial_call=True
 )
-def switch_tabs(n1, n2,n3, n4, premium_data):
+def switch_tabs(n1, n2,n3, n4, n5, n6, n7, premium_data):
     enabled = bool((premium_data or {}).get("enabled"))
     ctx = dash.callback_context
     if not ctx.triggered:
@@ -174,9 +183,15 @@ def switch_tabs(n1, n2,n3, n4, premium_data):
     if btn == "btn-sensors":
         target = "sensors"
     elif btn == "btn-miners":
-        target = "miners" if enabled else "dashboard"  # Premium required
+        target = "miners"
     elif btn == "btn-electricity":
         target = "electricity"
+    elif btn == "btn-battery":
+        target = "battery" if enabled else "dashboard"  # Premium required
+    elif btn == "btn-heater":
+        target = "heater" if enabled else "dashboard"  # Premium required
+    elif btn == "btn-wallbox":
+        target = "wallbox" if enabled else "dashboard"  # Premium required
 
     return (
         target,
@@ -184,6 +199,9 @@ def switch_tabs(n1, n2,n3, n4, premium_data):
         "custom-tab custom-tab-selected" if target == "sensors" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "miners" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "electricity" else "custom-tab",
+        "custom-tab custom-tab-selected" if target == "battery" else "custom-tab",
+        "custom-tab custom-tab-selected" if target == "heater" else "custom-tab",
+        "custom-tab custom-tab-selected" if target == "wallbox" else "custom-tab",
     )
 
 def premium_upsell():
@@ -195,7 +213,7 @@ def premium_upsell():
 
 
 @dash.callback(
-    Output("btn-miners", "className", allow_duplicate=True),
+    Output("btn-battery", "className", allow_duplicate=True),
     Input("premium-enabled", "data"),
     Input("active-tab", "data"),
     prevent_initial_call="initial_duplicate"
@@ -203,9 +221,37 @@ def premium_upsell():
 def style_miners_button(premium_data, active_tab):
     enabled = bool((premium_data or {}).get("enabled"))
     classes = ["custom-tab"]
-    if active_tab == "miners":
+    if active_tab == "battery":
         classes.append("custom-tab-selected")
-    classes.append("miner-premium-ok" if enabled else "miner-premium-locked")
+    classes.append("battery-premium-ok" if enabled else "battery-premium-locked")
+    return " ".join(classes)
+
+@dash.callback(
+    Output("btn-heater", "className", allow_duplicate=True),
+    Input("premium-enabled", "data"),
+    Input("active-tab", "data"),
+    prevent_initial_call="initial_duplicate"
+)
+def style_miners_button(premium_data, active_tab):
+    enabled = bool((premium_data or {}).get("enabled"))
+    classes = ["custom-tab"]
+    if active_tab == "heater":
+        classes.append("custom-tab-selected")
+    classes.append("heater-premium-ok" if enabled else "heater-premium-locked")
+    return " ".join(classes)
+
+@dash.callback(
+    Output("btn-wallbox", "className", allow_duplicate=True),
+    Input("premium-enabled", "data"),
+    Input("active-tab", "data"),
+    prevent_initial_call="initial_duplicate"
+)
+def style_miners_button(premium_data, active_tab):
+    enabled = bool((premium_data or {}).get("enabled"))
+    classes = ["custom-tab"]
+    if active_tab == "wallbox":
+        classes.append("custom-tab-selected")
+    classes.append("wallbox-premium-ok" if enabled else "wallbox-premium-locked")
     return " ".join(classes)
 
 
@@ -224,13 +270,21 @@ def render_tab(tab, premium_data):
         return miners_layout() if enabled else premium_upsell()
     if tab == "electricity":
         return electricity_layout()
+    if tab == "battery":
+        return battery_layout()
+    if tab == "heater":
+        return heater_layout()
+    if tab == "wallbox":
+        return wallbox_layout()
     return dashboard_layout()
 
 
 register_callbacks(app)     # Dashboard
 reg_sensors(app)            # Sensors
-#reg_miners(app)             # Sensors
 reg_electricity (app)       # electricity
+#reg_battery(app)            # battery
+#reg_heater(app)             # heater
+#reg_wallbox(app)            # wallbox
 
 
 app.index_string = '''
@@ -312,12 +366,24 @@ app.index_string = '''
             .premium-btn-locked:hover {
                 filter: brightness(1.05);
             }
-            /* --- Miners-Button: Rahmenfarbe nach Premium-Status --- */
-            .custom-tab.miner-premium-ok { border-color: #27ae60 !important; }
-            .custom-tab.miner-premium-locked { border-color: #e74c3c !important; }
+            /* --- Battery-Button: Rahmenfarbe nach Premium-Status --- */
+            .custom-tab.battery-premium-ok { border-color: #27ae60 !important; }
+            .custom-tab.battery-premium-locked { border-color: #e74c3c !important; }
             /* Wenn der Tab ausgewählt ist, überschreibt diese Regel die Standardauswahlfarbe */
-            .custom-tab.miner-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
-            .custom-tab.miner-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
+            .custom-tab.battery-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
+            .custom-tab.battery-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
+            /* --- heater-Button: Rahmenfarbe nach Premium-Status --- */
+            .custom-tab.heater-premium-ok { border-color: #27ae60 !important; }
+            .custom-tab.heater-premium-locked { border-color: #e74c3c !important; }
+            /* Wenn der Tab ausgewählt ist, überschreibt diese Regel die Standardauswahlfarbe */
+            .custom-tab.heater-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
+            .custom-tab.heater-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
+            /* --- Wallbox-Button: Rahmenfarbe nach Premium-Status --- */
+            .custom-tab.wallbox-premium-ok { border-color: #27ae60 !important; }
+            .custom-tab.wallbox-premium-locked { border-color: #e74c3c !important; }
+            /* Wenn der Tab ausgewählt ist, überschreibt diese Regel die Standardauswahlfarbe */
+            .custom-tab.wallbox-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
+            .custom-tab.wallbox-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
         </style>
     </head>
     <body>
@@ -343,6 +409,9 @@ app.layout = html.Div([
         html.Button("Sensors", id="btn-sensors", n_clicks=0, className="custom-tab", **{"data-tab": "sensors"}),
         html.Button("Miners", id="btn-miners", n_clicks=0, className="custom-tab", **{"data-tab": "miners"}),
         html.Button("Electricity", id="btn-electricity", n_clicks=0, className="custom-tab", **{"data-tab": "electricity"}),
+        html.Button("Battery", id="btn-battery", n_clicks=0, className="custom-tab", **{"data-tab": "battery"}),
+        html.Button("Water Heater", id="btn-heater", n_clicks=0, className="custom-tab", **{"data-tab": "heater"}),
+        html.Button("Wall-Box", id="btn-wallbox", n_clicks=0, className="custom-tab", **{"data-tab": "wallbox"}),
 
         # Spacer + Premium-Button ganz rechts
         html.Div(style={"flex": "1"}),
