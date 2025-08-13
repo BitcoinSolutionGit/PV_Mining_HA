@@ -74,3 +74,27 @@ def list_all_sensors():
     except Exception as e:
         print(f"[ERROR] sensor list unreadable: {e}; using fallback.")
         return _fallback_sensor_candidates()
+
+
+#----------for heater -------------------
+# --- NEW: generic entity listing + input_number helper ---
+
+def _ha_token_headers():
+    token = os.getenv("SUPERVISOR_TOKEN")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+def list_entities_by_domain(domain: str) -> list[str]:
+    """
+    Liest alle States aus Home Assistant und filtert nach entity_id Prefix z.B. 'input_number.'.
+    Läuft im Add-on via Supervisor-Proxy.
+    """
+    try:
+        r = requests.get("http://supervisor/core/api/states", headers=_ha_token_headers(), timeout=5)
+        r.raise_for_status()
+        return sorted([s["entity_id"] for s in r.json() if isinstance(s, dict) and str(s.get("entity_id","")).startswith(domain + ".")])
+    except Exception as e:
+        print(f"[ha_sensors] list_entities_by_domain({domain}) failed: {e}", flush=True)
+        return []
+
+def list_all_input_numbers() -> list[str]:
+    return list_entities_by_domain("input_number")

@@ -23,30 +23,28 @@ def _ensure_path(data: dict, path: str) -> dict:
         cur = cur.setdefault(k, {})
     return cur
 
-# ---------- mapping ----------
-def resolve_sensor_id(kind: str) -> str:
-    # 1) heater.mapping (local > default)
+# ---------- mapping (nun: input_numbers) ----------
+def resolve_entity_id(kind: str) -> str:
+    # heater.mapping (local > default)
     for path_file in (HEAT_OVR, HEAT_DEF):
         m = _get_path(load_yaml(path_file, {}) or {}, "heater.mapping")
         if isinstance(m, dict):
             v = m.get(kind)
             if isinstance(v, str) and v.strip():
                 return v.strip()
-
-    # 2) legacy top-level mapping (falls vorhanden)
+    # Legacy top-level mapping (optional)
     for path_file in (HEAT_OVR, HEAT_DEF):
         m = _get_path(load_yaml(path_file, {}) or {}, "mapping")
         if isinstance(m, dict):
             v = m.get(kind)
             if isinstance(v, str) and v.strip():
                 return v.strip()
-
-    # 3) Fallback MAIN_CFG.entities (optional/legacy keys)
+    # MAIN_CFG-Fallback (optional)
     cfg = load_yaml(MAIN_CFG, {}) or {}
     ents = cfg.get("entities", {}) or {}
     fb = {
-        "sensor_water_temperature": "sensor_water_temperature",
-        "slider_water_heater_percent": "input_number_water_heater_percent",
+        "input_warmwasser_cache": "input_number_warmwasser_cache",
+        "input_heizstab_cache":  "input_number_heizstab_cache",
     }
     return (ents.get(fb.get(kind, ""), "") or "").strip()
 
@@ -57,17 +55,16 @@ def set_mapping(kind: str, entity_id: str):
     mapping[kind] = (entity_id or "").strip()
     save_yaml(HEAT_OVR, ovr)
 
-    # optionaler Legacy-Mirror ins MAIN_CFG (unschädlich)
-    if kind in ("sensor_water_temperature", "slider_water_heater_percent"):
-        cfg = load_yaml(MAIN_CFG, {}) or {}
-        ents = cfg.setdefault("entities", {})
-        if kind == "sensor_water_temperature":
-            ents["sensor_water_temperature"] = (entity_id or "").strip()
-        if kind == "slider_water_heater_percent":
-            ents["input_number_water_heater_percent"] = (entity_id or "").strip()
-        save_yaml(MAIN_CFG, cfg)
+    # optionaler Mirror in MAIN_CFG
+    cfg = load_yaml(MAIN_CFG, {}) or {}
+    ents = cfg.setdefault("entities", {})
+    if kind == "input_warmwasser_cache":
+        ents["input_number_warmwasser_cache"] = (entity_id or "").strip()
+    if kind == "input_heizstab_cache":
+        ents["input_number_heizstab_cache"] = (entity_id or "").strip()
+    save_yaml(MAIN_CFG, cfg)
 
-# ---------- variables ----------
+# ---------- variables (ohne Cache-Felder) ----------
 def get_var(key: str, default=None):
     v = _get_path(load_yaml(HEAT_OVR, {}) or {}, f"heater.variables.{key}")
     if v is None:

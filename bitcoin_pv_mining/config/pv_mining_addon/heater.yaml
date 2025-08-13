@@ -1,10 +1,8 @@
 heater:
   mapping:
-    sensor_water_temperature:
-    slider_water_heater_percent:
+    input_warmwasser_cache:
+    input_heizstab_cache:
   variables:
-    cache_water_temperature:
-    cache_water_heater_percent:
     max_power_heater:
     wanted_water_temperature: 60
     power_unit: kW
