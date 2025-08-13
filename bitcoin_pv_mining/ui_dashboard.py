@@ -57,6 +57,7 @@ COLORS = {
     "battery": "#8E44AD",
     "heater": "#3399FF",
     "wallbox": "#33CC66",
+    "grid_feed": "#FF3333",
     "load": "#A0A0A0",
     "inactive": "#DDDDDD"
 }
@@ -73,9 +74,11 @@ def register_callbacks(app):
         # --- Eingänge holen ---
         pv_id   = resolve_sensor_id("pv_production")
         grid_id = resolve_sensor_id("grid_consumption")
+        feed_id = resolve_sensor_id("grid_feed_in")
 
         pv_val   = float(get_sensor_value(pv_id)   or 0)
         grid_val = float(get_sensor_value(grid_id) or 0)
+        feed_val = float(get_sensor_value(feed_id) or 0)
         inflow   = max(pv_val + grid_val, 0.0)
 
         # Prozentanzeige
@@ -96,7 +99,8 @@ def register_callbacks(app):
             "Battery",          # 2
             "Water Heater",     # 3
             "Wallbox",          # 4
-            "House usage"       # 5
+            "House usage",      # 5
+            "Grid Feed-in"      # 6
         ]
         node_colors = [
             COLORS["inflow"],
@@ -104,7 +108,8 @@ def register_callbacks(app):
             COLORS["battery"] if flags.get("battery_active") else COLORS["inactive"],
             COLORS["heater"] if flags.get("heater_active") else COLORS["inactive"],
             COLORS["wallbox"] if flags.get("wallbox_active") else COLORS["inactive"],
-            COLORS["load"]
+            COLORS["load"],
+            COLORS["grid_feed"]
         ]
 
         # Aktive Ziele ermitteln (mind. Load)
@@ -113,9 +118,10 @@ def register_callbacks(app):
         if flags.get("battery_active"): targets.append(2)
         if flags.get("heater_active"):  targets.append(3)
         if flags.get("wallbox_active"): targets.append(4)
-        # Load immer als Fallback-Ziel
         if 5 not in targets:
-            targets.append(5)
+            targets.append(5) # Load immer als Fallback-Ziel
+        if feed_val > 0:
+            targets.append(6) # Node-ID für Grid Feed-in
 
         # Gleichmäßig verteilen (einfach & robust)
         n = len(targets) if inflow > 0 else 1
@@ -133,7 +139,17 @@ def register_callbacks(app):
             3: ("#3399FF" if flags.get("heater_active")  else "#DDDDDD"),
             4: ("#33CC66" if flags.get("wallbox_active") else "#DDDDDD"),
             5: "#A0A0A0",
+            6: "#FF3333"
         }
+
+        # # Beispiel: Verbrauchswerte definieren (hier Dummy; musst du aus deinen HA-Quellen holen)
+        # miners_val = ...  # kW aktuell an Miner
+        # battery_val = ...  # kW Batterie laden
+        # heater_val = ...
+        # wallbox_val = ...
+        # load_val = ...
+        # # load_val ggf. als Rest: inflow - sum(anderen Werte)
+        # # feed_val haben wir schon
 
         for t in targets:
             link_source.append(0)      # always from inflow node
@@ -259,15 +275,15 @@ def layout():
         html.Div([
             dcc.Graph(id="pv-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
             dcc.Graph(id="grid-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
-            dcc.Graph(id="feed-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
-            html.Div(id="dashboard-water-temp", style={"textAlign": "center", "fontWeight": "bold"})
+            dcc.Graph(id="feed-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"})
         ], style={"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
 
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
         html.Div([
             html.Div(id="elec-price", style={"textAlign": "center", "fontWeight": "bold"}),
             html.Div(id="btc-price", style={"textAlign": "center", "fontWeight": "bold"}),
-            html.Div(id="btc-hashrate", style={"textAlign": "center", "fontWeight": "bold"})
+            html.Div(id="btc-hashrate", style={"textAlign": "center", "fontWeight": "bold"}),
+            html.Div(id="dashboard-water-temp", style={"textAlign": "center", "fontWeight": "bold"})
         ], style={"display": "flex", "justifyContent": "center", "gap": "40px", "marginTop": "20px"}),
         dcc.Interval(id="btc-refresh", interval=60_000, n_intervals=0)
     ])
