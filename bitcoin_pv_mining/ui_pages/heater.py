@@ -2,11 +2,8 @@ import dash
 from dash import html, dcc
 from dash.dependencies import Input, Output, State
 
-from services.ha_sensors import list_all_input_numbers
-from services.heater_store import (
-    resolve_entity_id, set_mapping,
-    get_var as heat_get_var, set_vars as heat_set_vars
-)
+from services.ha_sensors import list_all_input_numbers, get_sensor_value
+from services.heater_store import resolve_entity_id, set_mapping, get_var as heat_get_var, set_vars as heat_set_vars
 
 def _num(value, default=None):
     try:
@@ -15,6 +12,13 @@ def _num(value, default=None):
         return float(value)
     except (TypeError, ValueError):
         return default
+
+def _fmt_temp(v: float | None, unit: str) -> str:                            # NEW: Formatter
+    if v is None:
+        return "–"
+    if unit == "K":
+        v = v + 273.15
+    return f"{v:.2f} {unit}"
 
 # ---------- layout ----------
 def layout():
@@ -86,7 +90,17 @@ def layout():
         ], style={"marginBottom": "16px"}),
 
         html.Button("Save", id="heater-save", className="custom-tab"),
-        html.Div(id="heater-save-status", style={"marginTop": "10px", "color": "green"})
+        html.Div(id="heater-save-status", style={"marginTop": "10px", "color": "green"}),
+
+        html.Hr(),
+
+        # NEW: Live-Temperaturanzeige
+        dcc.Interval(id="heater-refresh", interval=10_000, n_intervals=0),
+        html.Div([
+            html.Label("Aktuelle Wassertemperatur"),
+            html.Div(id="heater-current-temp",
+                     style={"fontWeight": "bold", "marginTop": "6px"})
+        ], style={"marginTop": "10px"})
     ])
 
 # ---------- callbacks ----------
@@ -116,3 +130,21 @@ def register_callbacks(app):
             heat_unit=(heat_unit or "°C"),
         )
         return "Heater settings saved!"
+
+    # NEW: Poll alle 10s + sofort bei Auswahl/Einheitenwechsel
+    @app.callback(
+        Output("heater-current-temp", "children"),
+        Input("heater-refresh", "n_intervals"),
+        Input("heater-input-warmwasser", "value"),
+        Input("heater-heat-unit", "value"),
+        prevent_initial_call=False
+    )
+    def update_current_temp(_tick, warmwasser_entity, unit):
+        if not warmwasser_entity:
+            return "–"
+        try:
+            raw = get_sensor_value(warmwasser_entity)
+            val_c = _num(raw, None)           # Wert in °C erwartet (aus input_number)
+            return _fmt_temp(val_c, unit or "°C")
+        except Exception as e:
+            return f"–"

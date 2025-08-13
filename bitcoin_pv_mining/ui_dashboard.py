@@ -9,6 +9,7 @@ from dash.dependencies import Input, Output
 from services.ha_sensors import get_sensor_value
 from services.utils import load_yaml
 from services.electricity_store import current_price, currency_symbol, price_color
+from services.heater_store import resolve_entity_id as heater_resolve_entity, get_var as heat_get_var
 
 CONFIG_DIR = "/config/pv_mining_addon"
 DASHB_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
@@ -36,6 +37,16 @@ def _dot(color):
 def _fmt_price(v):
     # 3 Nachkommastellen, mit Komma statt Punkt (AT/DE-Style)
     return f"{v:.3f}".replace(".", ",")
+
+
+def _fmt_temp(v, unit="°C"):
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return "–"
+    if unit == "K":
+        v = v + 273.15
+    return f"{v:.2f} {unit}"
 
 # ------------------------------
 # Farben
@@ -223,6 +234,18 @@ def register_callbacks(app):
             text = f"Strompreis: {_fmt_price(v)} {sym}/kWh"
         return html.Span([_dot(color), text])
 
+    @app.callback(
+        Output("dashboard-water-temp", "children"),
+        Input("pv-update", "n_intervals")  # alle 10s
+    )
+    def update_dashboard_water_temp(_):
+        entity_id = heater_resolve_entity("input_warmwasser_cache")
+        if not entity_id:
+            return "Water Temp: –"
+        val = get_sensor_value(entity_id)
+        unit = heat_get_var("heat_unit", "°C")  # aus heater_store.yaml lesen
+        return f"Water Temp: {_fmt_temp(val, unit)}"
+
 
 # ------------------------------
 # Layout
@@ -236,7 +259,8 @@ def layout():
         html.Div([
             dcc.Graph(id="pv-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
             dcc.Graph(id="grid-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
-            dcc.Graph(id="feed-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"})
+            dcc.Graph(id="feed-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+            html.Div(id="dashboard-water-temp", style={"textAlign": "center", "fontWeight": "bold"})
         ], style={"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
 
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
