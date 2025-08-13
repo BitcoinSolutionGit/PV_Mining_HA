@@ -71,14 +71,14 @@ def register_callbacks(app):
         Input("pv-update", "n_intervals")
     )
     def update_sankey(_):
-        # --- Helpers ---
+        # --- helpers ---
         def _f(x):
             try:
                 return float(x)
             except (TypeError, ValueError):
                 return 0.0
 
-        # --- Eingänge / Werte ---
+        # --- Eingänge ---
         pv_id = resolve_sensor_id("pv_production")
         grid_id = resolve_sensor_id("grid_consumption")
         feed_id = resolve_sensor_id("grid_feed_in")
@@ -89,43 +89,52 @@ def register_callbacks(app):
 
         inflow = max(pv_val + grid_val, 0.0)
 
-        # Prozentanteile für Node-Label
         pv_pct = round((pv_val / inflow) * 100, 1) if inflow > 0 else 0.0
         grid_pct = round((grid_val / inflow) * 100, 1) if inflow > 0 else 0.0
 
-        # Feature-Flags (für Farben der optionalen Nodes)
+        # Flags nur für Farbe/Style (Nodes bleiben sichtbar)
         config = load_yaml(os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml"), {})
         flags = config.get("feature_flags", {}) or {}
 
-        # --- Heater (echte Leistung aus Prozent x MaxPower) ---
+        # --- Heater exakt wie UI: max_power * (%/100), Units sauber ---
         heizstab_entity = heater_resolve_entity("input_heizstab_cache")
-        heater_pct = _f(get_sensor_value(heizstab_entity)) if heizstab_entity else 0.0
-        heater_max = _f(heat_get_var("max_power_heater", 0.0))
-        heater_unit = (heat_get_var("power_unit", "kW") or "kW").lower()
-        heater_kw = heater_max * (heater_pct / 100.0)
-        if heater_unit in ("w", "watt"):
-            heater_kw /= 1000.0
-        # Negative vermeiden
+        pct_val = _f(get_sensor_value(heizstab_entity)) if heizstab_entity else 0.0
+        pct = min(max(pct_val, 0.0), 100.0)  # clamp 0..100
+
+        max_power = _f(heat_get_var("max_power_heater", 0.0))
+        unit = str(heat_get_var("power_unit", "kW") or "kW").strip().lower()
+
+        # Normiere auf kW
+        if unit in ("w", "watt"):
+            max_power_kw = max_power / 1000.0
+        else:
+            # "kw", "kilowatt", oder alles andere (inkl. kwh) behandeln wir als kW
+            max_power_kw = max_power
+
+        heater_kw = max_power_kw * (pct / 100.0)
         heater_kw = max(heater_kw, 0.0)
 
-        # --- House-Load (real) aus Grid minus bekannter Last (Heater) ---
-        house_real = max(grid_val - heater_kw, 0.0)
+        # --- Hauslast realistisch: PV + Grid - Feed ---
+        house_total = max(pv_val + grid_val - feed_val, 0.0)
 
-        # Verteilung damit „lebt“:
-        miners_val = 0.10 * house_real
-        battery_val = 0.10 * house_real
-        wallbox_val = 0.10 * house_real
-        house_vis = 0.70 * house_real  # sichtbarer House usage
+        # Alles außer dem Heater (restliche Hausverbraucher)
+        other_house = max(house_total - heater_kw, 0.0)
+
+        # Sichtbare/abgeleitete Ströme
+        miners_val = 0.10 * other_house
+        battery_val = 0.10 * other_house
+        wallbox_val = 0.10 * other_house
+        house_vis = 0.70 * other_house  # sichtbarer House usage
 
         # --- Nodes ---
         node_labels = [
-            f"Energy Inflow<br>PV: {pv_pct}%<br>Grid: {grid_pct}%",     # 0
-            "Miners",                                                   # 1
-            "Battery",                                                  # 2
-            "Water Heater",                                             # 3
-            "Wallbox",                                                  # 4
-            "House usage",                                              # 5
-            "Grid Feed-in"                                              # 6
+            f"Energy Inflow<br>PV: {pv_pct}%<br>Grid: {grid_pct}%",  # 0
+            "Miners",  # 1
+            "Battery",  # 2
+            "Water Heater",  # 3
+            "Wallbox",  # 4
+            "House usage",  # 5
+            "Grid Feed-in"  # 6
         ]
         node_colors = [
             COLORS["inflow"],
@@ -137,16 +146,9 @@ def register_callbacks(app):
             COLORS["grid_feed"]
         ]
 
-        # --- Links aus realen Werten aufbauen ---
+        # --- Links ---
         link_source, link_target, link_value, link_color = [], [], [], []
-        color_map = {
-            1: node_colors[1],
-            2: node_colors[2],
-            3: node_colors[3],
-            4: node_colors[4],
-            5: node_colors[5],
-            6: node_colors[6],
-        }
+        color_map = {i: node_colors[i] for i in range(len(node_colors))}
 
         def _add(target_idx, val_kw):
             v = max(_f(val_kw), 0.0)
@@ -159,35 +161,10 @@ def register_callbacks(app):
 
         _add(3, heater_kw)  # Water Heater (echt)
         _add(6, feed_val)  # Grid Feed-in (echt)
-        _add(1, miners_val)  # 10 % vom House real
-        _add(2, battery_val)  # 10 %
-        _add(4, wallbox_val)  # 10 %
-        _add(5, house_vis)  # 70 %
-
-        # # Beispiel: Verbrauchswerte definieren (hier Dummy; musst du aus deinen HA-Quellen holen)
-        # miners_val = ...  # kW aktuell an Miner
-        # battery_val = ...  # kW Batterie laden
-        # heater_val = ...
-        # wallbox_val = ...
-        # load_val = ...
-        # # load_val ggf. als Rest: inflow - sum(anderen Werte)
-        # # feed_val haben wir schon
-
-        def _add(target_idx, val_kw):
-            v = max(_f(val_kw), 0.0)
-            if v <= 0:
-                return
-            link_source.append(0)
-            link_target.append(target_idx)
-            link_value.append(v)
-            link_color.append(color_map[target_idx])
-
-        _add(3, heater_kw)  # Water Heater (echt)
-        _add(6, feed_val)  # Grid Feed-in (echt)
-        _add(1, miners_val)  # 10 % vom House real
-        _add(2, battery_val)  # 10 %
-        _add(4, wallbox_val)  # 10 %
-        _add(5, house_vis)  # 70 %
+        _add(1, miners_val)  # 10 % Other-House
+        _add(2, battery_val)  # 10 % Other-House
+        _add(4, wallbox_val)  # 10 % Other-House
+        _add(5, house_vis)  # 70 % Other-House
 
         fig = go.Figure(data=[go.Sankey(
             node=dict(
@@ -213,7 +190,6 @@ def register_callbacks(app):
         )
         fig.update_traces(hoverlabel=dict(bgcolor="white"))
         return fig
-
 
     @app.callback(
         Output("pv-gauge", "figure"),
