@@ -71,76 +71,98 @@ def register_callbacks(app):
         Input("pv-update", "n_intervals")
     )
     def update_sankey(_):
-        # --- Eingänge holen ---
-        pv_id   = resolve_sensor_id("pv_production")
+        # --- Helpers ---
+        def _f(x):
+            try:
+                return float(x)
+            except (TypeError, ValueError):
+                return 0.0
+
+        # --- Eingänge / Werte ---
+        pv_id = resolve_sensor_id("pv_production")
         grid_id = resolve_sensor_id("grid_consumption")
         feed_id = resolve_sensor_id("grid_feed_in")
 
-        pv_val   = float(get_sensor_value(pv_id)   or 0)
-        grid_val = float(get_sensor_value(grid_id) or 0)
-        feed_val = float(get_sensor_value(feed_id) or 0)
-        inflow   = max(pv_val + grid_val, 0.0)
+        pv_val = _f(get_sensor_value(pv_id))
+        grid_val = _f(get_sensor_value(grid_id))
+        feed_val = _f(get_sensor_value(feed_id))
 
-        # Prozentanzeige
-        if inflow > 0:
-            pv_pct   = round(pv_val   / inflow * 100, 1)
-            grid_pct = round(grid_val / inflow * 100, 1)
-        else:
-            pv_pct = grid_pct = 0.0
+        inflow = max(pv_val + grid_val, 0.0)
 
-        # Feature-Flags
+        # Prozentanteile für Node-Label
+        pv_pct = round((pv_val / inflow) * 100, 1) if inflow > 0 else 0.0
+        grid_pct = round((grid_val / inflow) * 100, 1) if inflow > 0 else 0.0
+
+        # Feature-Flags (für Farben der optionalen Nodes)
         config = load_yaml(os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml"), {})
-        flags  = config.get("feature_flags", {}) or {}
+        flags = config.get("feature_flags", {}) or {}
 
-        # Nodes
+        # --- Heater (echte Leistung aus Prozent x MaxPower) ---
+        heizstab_entity = heater_resolve_entity("input_heizstab_cache")
+        heater_pct = _f(get_sensor_value(heizstab_entity)) if heizstab_entity else 0.0
+        heater_max = _f(heat_get_var("max_power_heater", 0.0))
+        heater_unit = (heat_get_var("power_unit", "kW") or "kW").lower()
+        heater_kw = heater_max * (heater_pct / 100.0)
+        if heater_unit in ("w", "watt"):
+            heater_kw /= 1000.0
+        # Negative vermeiden
+        heater_kw = max(heater_kw, 0.0)
+
+        # --- House-Load (real) aus Grid minus bekannter Last (Heater) ---
+        house_real = max(grid_val - heater_kw, 0.0)
+
+        # Verteilung damit „lebt“:
+        miners_val = 0.10 * house_real
+        battery_val = 0.10 * house_real
+        wallbox_val = 0.10 * house_real
+        house_vis = 0.70 * house_real  # sichtbarer House usage
+
+        # --- Nodes ---
         node_labels = [
-            f"Energy Inflow<br>PV: {pv_pct}%<br>Grid: {grid_pct}%",  # 0
-            "Miners",           # 1
-            "Battery",          # 2
-            "Water Heater",     # 3
-            "Wallbox",          # 4
-            "House usage",      # 5
-            "Grid Feed-in"      # 6
+            f"Energy Inflow<br>PV: {pv_pct}%<br>Grid: {grid_pct}%",     # 0
+            "Miners",                                                   # 1
+            "Battery",                                                  # 2
+            "Water Heater",                                             # 3
+            "Wallbox",                                                  # 4
+            "House usage",                                              # 5
+            "Grid Feed-in"                                              # 6
         ]
         node_colors = [
             COLORS["inflow"],
-            COLORS["miners"] if flags.get("miners_active") else COLORS["inactive"],
-            COLORS["battery"] if flags.get("battery_active") else COLORS["inactive"],
-            COLORS["heater"] if flags.get("heater_active") else COLORS["inactive"],
-            COLORS["wallbox"] if flags.get("wallbox_active") else COLORS["inactive"],
+            COLORS["miners"] if flags.get("miners_active", True) else COLORS["inactive"],
+            COLORS["battery"] if flags.get("battery_active", True) else COLORS["inactive"],
+            COLORS["heater"] if flags.get("heater_active", True) else COLORS["inactive"],
+            COLORS["wallbox"] if flags.get("wallbox_active", True) else COLORS["inactive"],
             COLORS["load"],
             COLORS["grid_feed"]
         ]
 
-        # Aktive Ziele ermitteln (mind. Load)
-        targets = []
-        if flags.get("miners_active"): targets.append(1)
-        if flags.get("battery_active"): targets.append(2)
-        if flags.get("heater_active"):  targets.append(3)
-        if flags.get("wallbox_active"): targets.append(4)
-        if 5 not in targets:
-            targets.append(5) # Load immer als Fallback-Ziel
-        if feed_val > 0:
-            targets.append(6) # Node-ID für Grid Feed-in
-
-        # Gleichmäßig verteilen (einfach & robust)
-        n = len(targets) if inflow > 0 else 1
-        per = inflow / n
-
-        # Links aufbauen
-        link_source = []
-        link_target = []
-        link_value  = []
-        link_color  = []
-
+        # --- Links aus realen Werten aufbauen ---
+        link_source, link_target, link_value, link_color = [], [], [], []
         color_map = {
-            1: ("#FF9900" if flags.get("miners_active") else "#DDDDDD"),
-            2: ("#8E44AD" if flags.get("battery_active") else "#DDDDDD"),
-            3: ("#3399FF" if flags.get("heater_active")  else "#DDDDDD"),
-            4: ("#33CC66" if flags.get("wallbox_active") else "#DDDDDD"),
-            5: "#A0A0A0",
-            6: "#FF3333"
+            1: node_colors[1],
+            2: node_colors[2],
+            3: node_colors[3],
+            4: node_colors[4],
+            5: node_colors[5],
+            6: node_colors[6],
         }
+
+        def _add(target_idx, val_kw):
+            v = max(_f(val_kw), 0.0)
+            if v <= 0:
+                return
+            link_source.append(0)
+            link_target.append(target_idx)
+            link_value.append(v)
+            link_color.append(color_map[target_idx])
+
+        _add(3, heater_kw)  # Water Heater (echt)
+        _add(6, feed_val)  # Grid Feed-in (echt)
+        _add(1, miners_val)  # 10 % vom House real
+        _add(2, battery_val)  # 10 %
+        _add(4, wallbox_val)  # 10 %
+        _add(5, house_vis)  # 70 %
 
         # # Beispiel: Verbrauchswerte definieren (hier Dummy; musst du aus deinen HA-Quellen holen)
         # miners_val = ...  # kW aktuell an Miner
@@ -151,11 +173,21 @@ def register_callbacks(app):
         # # load_val ggf. als Rest: inflow - sum(anderen Werte)
         # # feed_val haben wir schon
 
-        for t in targets:
-            link_source.append(0)      # always from inflow node
-            link_target.append(t)
-            link_value.append(per)
-            link_color.append(color_map[t])
+        def _add(target_idx, val_kw):
+            v = max(_f(val_kw), 0.0)
+            if v <= 0:
+                return
+            link_source.append(0)
+            link_target.append(target_idx)
+            link_value.append(v)
+            link_color.append(color_map[target_idx])
+
+        _add(3, heater_kw)  # Water Heater (echt)
+        _add(6, feed_val)  # Grid Feed-in (echt)
+        _add(1, miners_val)  # 10 % vom House real
+        _add(2, battery_val)  # 10 %
+        _add(4, wallbox_val)  # 10 %
+        _add(5, house_vis)  # 70 %
 
         fig = go.Figure(data=[go.Sankey(
             node=dict(
@@ -179,9 +211,7 @@ def register_callbacks(app):
             paper_bgcolor='white',
             margin=dict(l=20, r=20, t=40, b=20)
         )
-
         fig.update_traces(hoverlabel=dict(bgcolor="white"))
-
         return fig
 
 
