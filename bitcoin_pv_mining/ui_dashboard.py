@@ -292,14 +292,14 @@ def layout():
             dcc.Graph(id="grid-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
             dcc.Graph(id="feed-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"})
         ], style={"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
-
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
+
         html.Div([
-            html.Div(id="elec-price", style={"textAlign": "center", "fontWeight": "bold"}),
-            html.Div(id="btc-price", style={"textAlign": "center", "fontWeight": "bold"}),
-            html.Div(id="btc-hashrate", style={"textAlign": "center", "fontWeight": "bold"}),
-            html.Div(id="dashboard-water-temp", style={"textAlign": "center", "fontWeight": "bold"})
-        ], style={"display": "flex", "justifyContent": "center", "gap": "40px", "marginTop": "20px"}),
+            html.Div(id="elec-price", className="footer-stat"),
+            html.Div(id="dashboard-water-temp", className="footer-stat"),
+            html.Div(id="btc-price", className="footer-stat"),
+            html.Div(id="btc-hashrate", className="footer-stat"),
+        ], className="footer-stats"),
         dcc.Interval(id="btc-refresh", interval=60_000, n_intervals=0)
     ])
 

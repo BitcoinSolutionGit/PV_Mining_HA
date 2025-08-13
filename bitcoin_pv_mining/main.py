@@ -384,6 +384,24 @@ app.index_string = '''
             /* Wenn der Tab ausgewählt ist, überschreibt diese Regel die Standardauswahlfarbe */
             .custom-tab.wallbox-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
             .custom-tab.wallbox-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
+            
+            /* Footer (Desktop = eine Zeile, Mobile = 2 Spalten) */
+            .footer-stats {
+              display: flex;
+              flex-wrap: wrap;
+              justify-content: center;
+              gap: 40px;
+              margin-top: 20px;
+              width: 100%;
+            }
+            .footer-stat {
+              font-weight: bold;
+              text-align: center;
+            }
+            @media (max-width: 680px) {
+              .footer-stats { gap: 12px; }
+              .footer-stat { flex: 0 0 calc(50% - 12px); }
+            }
         </style>
     </head>
     <body>
