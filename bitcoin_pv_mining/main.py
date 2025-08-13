@@ -19,7 +19,7 @@ from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg
 from ui_pages.miners import layout as miners_layout
 from ui_pages.electricity import layout as electricity_layout, register_callbacks as reg_electricity
 from ui_pages.battery import layout as battery_layout
-from ui_pages.heater import layout as heater_layout
+from ui_pages.heater import layout as heater_layout, register_callbacks as reg_heater
 from ui_pages.wallbox import layout as wallbox_layout
 
 
@@ -283,7 +283,7 @@ register_callbacks(app)     # Dashboard
 reg_sensors(app)            # Sensors
 reg_electricity (app)       # electricity
 #reg_battery(app)            # battery
-#reg_heater(app)             # heater
+reg_heater(app)             # heater
 #reg_wallbox(app)            # wallbox
 
 
