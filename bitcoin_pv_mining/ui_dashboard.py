@@ -137,13 +137,13 @@ def register_callbacks(app):
 
         # --- Nodes ---
         node_labels = [
-            f"Energy Inflow<br>Load: {_fmt_kw(inflow)}<br>PV: {pv_pct}%<br>Grid: {grid_pct}%",  # 0
-            f"Miners<br>Load: {_fmt_kw(miners_val)}",  # 1
-            f"Battery<br>Load: {_fmt_kw(battery_val)}",  # 2
-            f"Water Heater<br>Load: {_fmt_kw(heater_kw)}",  # 3
-            f"Wallbox<br>Load: {_fmt_kw(wallbox_val)}",  # 4
-            f"House usage<br>Load: {_fmt_kw(house_vis)}",  # 5
-            f"Grid Feed-in<br>Load: {_fmt_kw(feed_val)}"  # 6
+            f"Energy Inflow<br>{_fmt_kw(inflow)}<br>PV: {pv_pct}%<br>Grid: {grid_pct}%",  # 0
+            f"Miners<br>{_fmt_kw(miners_val)}",  # 1
+            f"Battery<br>{_fmt_kw(battery_val)}",  # 2
+            f"Water Heater<br>{_fmt_kw(heater_kw)}",  # 3
+            f"Wallbox<br>{_fmt_kw(wallbox_val)}",  # 4
+            f"House usage<br>{_fmt_kw(house_vis)}",  # 5
+            f"Grid Feed-in<br>{_fmt_kw(feed_val)}"  # 6
         ]
         node_colors = [
             COLORS["inflow"],
