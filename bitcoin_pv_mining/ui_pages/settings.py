@@ -31,8 +31,22 @@ def layout():
     fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
     eff_pv_cost = max((fi_val if mode=="fixed" else _num(get_sensor_value(fi_sens), 0.0)) - fee_up, 0.0) if policy=="feedin" else 0.0
 
+    cooling_enabled = bool(set_get("cooling_feature_enabled", False))
+
     return html.Div([
         html.H2("Settings"),
+
+        html.Fieldset([
+            html.Legend("Cooling Circuit"),
+            dcc.Checklist(
+                id="set-cooling-enabled",
+                options=[{"label": " Cooling circuit feature aktiv", "value": "on"}],
+                value=(["on"] if cooling_enabled else []),
+            ),
+            html.Div("Wenn aktiv, erscheint im Miners-Tab ein Cooling-Block. "
+                     "Miner mit „Cooling required“ dürfen nur einschalten, wenn Cooling läuft.",
+                     style={"opacity": 0.8, "marginTop": "6px"})
+        ], style={"border": "1px solid #ccc", "borderRadius": "8px", "padding": "10px", "marginBottom": "14px"}),
 
         html.Fieldset([
             html.Legend("PV-Kosten-Modell"),
@@ -154,9 +168,10 @@ def register_callbacks(app):
         State("set-btc-currency","value"),
         State("set-reward","value"),
         State("set-tax","value"),
+        State("set-cooling-enabled", "value"),
         prevent_initial_call=True
     )
-    def _save(n, policy, mode, val, sens, cur, reward, tax):
+    def _save(n, policy, mode, val, sens, cur, reward, tax, cool_enabled_val):
         if not n: return ""
         set_set(
             pv_cost_policy=(policy or "zero"),
@@ -166,5 +181,6 @@ def register_callbacks(app):
             btc_price_currency=(cur or "EUR"),
             block_reward_btc=_num(reward, 3.125),
             sell_tax_percent=_num(tax, 0.0),
+            cooling_feature_enabled=bool(cool_enabled_val and "on" in cool_enabled_val),
         )
         return "Saved."

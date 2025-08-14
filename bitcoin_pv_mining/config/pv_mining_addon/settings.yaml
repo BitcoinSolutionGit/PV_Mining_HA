@@ -14,3 +14,5 @@ settings:
   sell_tax_percent: 27.5
   btc_price_currency: USD
   fx_usd_to_eur: 0.93
+
+  cooling_feature_enabled: false

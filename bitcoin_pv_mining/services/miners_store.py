@@ -1,4 +1,4 @@
-# services/miners_store.py
+
 import os, uuid, time
 from services.utils import load_yaml, save_yaml
 
@@ -48,6 +48,7 @@ def add_miner(name: str = "") -> dict:
         "on": False,          # gewünschter Zustand (manual) / angezeigter Zustand (auto)
         "hashrate_ths": 100.0,
         "power_kw": 3.0,
+        "require_cooling": False,
         "created_at": int(time.time()),
     }
     miners.append(item)
@@ -65,3 +66,5 @@ def update_miner(mid: str, **changes):
 def delete_miner(mid: str):
     miners = [m for m in list_miners() if m.get("id") != mid]
     _save_all({"miners": {"list": miners}})
+
+

@@ -2,7 +2,7 @@ import math
 import dash
 import os
 from dash import no_update
-from dash import html, dcc
+from dash import html, dcc, callback_context
 from dash.dependencies import Input, Output, State, MATCH, ALL
 
 from services.btc_metrics import get_live_btc_price_eur, get_live_network_hashrate_ths, sats_per_th_per_hour
@@ -12,7 +12,7 @@ from services.electricity_store import current_price as elec_price, get_var as e
 from services.license import is_premium_enabled
 from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
-from services.settings_store import get_var as set_get
+from services.cooling_store import get_cooling, set_cooling
 
 
 import os
@@ -63,6 +63,49 @@ def _pv_cost_per_kwh():
         tarif = _num(set_get("feedin_price_value", 0.0), 0.0)
     return max(tarif - fee_up, 0.0)  # nicht negativ
 
+def _cool_card(c: dict, sym: str):
+    return html.Div([
+        html.Div([ html.Strong(c.get("name","Cooling circuit")) ],
+                 style={"display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"6px"}),
+
+        html.Div([
+            html.Div([ html.Label("Enabled"),
+                dcc.Checklist(id="cool-enabled", options=[{"label":" on","value":"on", "disabled": True}],
+                              value=["on"], inputStyle={"cursor": "not-allowed"},
+                              style={"opacity": 0.6},
+                              persistence=True, persistence_type="memory"
+                              ) ], style={"opacity": 0.6, "pointerEvents": "none"}),
+            html.Div([ html.Label("Mode (auto)"),
+                dcc.Checklist(id="cool-mode", options=[{"label":" on","value":"auto"}],
+                              value=(["auto"] if c.get("mode","manual")=="auto" else []),
+                              persistence=True, persistence_type="memory") ], style={"flex":"1","marginLeft":"10px"}),
+            html.Div([ html.Label("Power (on/off)"),
+                dcc.Checklist(id="cool-on", options=[{"label":" on","value":"on"}],
+                              value=(["on"] if c.get("on", False) else []),
+                              persistence=True, persistence_type="memory") ], style={"flex":"1","marginLeft":"10px"}),
+        ], style={"display":"flex","gap":"10px","marginTop":"6px"}),
+
+        html.Div([
+            html.Div([ html.Label("Cooling power (kW)"),
+                dcc.Input(id="cool-pwr", type="number", step=0.01,
+                          value=float(c.get("power_kw",0.0) or 0.0),
+                          style={"width":"160px"},
+                          persistence=True, persistence_type="memory") ], style={"flex":"1"}),
+        ], style={"display":"flex","gap":"10px","marginTop":"8px"}),
+
+        html.Div(id="cool-kpi", style={"marginTop":"8px", "fontWeight":"bold"}),
+
+        html.Button("Save", id="cool-save", className="custom-tab", style={"marginTop":"8px"}),
+        html.Span("  (Cooling must run, before Miner switches on)", style={"marginLeft":"8px","opacity":0.7})
+    ], style={"border":"2px solid #888","borderRadius":"8px","padding":"10px","background":"#fafafa"})
+
+def _miner_card_style(idx: int) -> dict:
+    base = {"borderRadius": "8px", "padding": "10px", "background": "#fafafa"}
+    if idx == 0:
+        # Miner 1: grauer Rahmen wie Cooling
+        return {**base, "border": "2px solid #888"}
+    # Miner 2..n: grüner Premium-Rahmen
+    return {**base, "border": "2px solid #27ae60"}
 
 # ---------- layout ----------
 def layout():
@@ -81,6 +124,10 @@ def layout():
     sat_th_h = sats_per_th_per_hour(reward, net_ths)
 
     sym = currency_symbol()
+
+    cooling_feature = bool(set_get("cooling_feature_enabled", False))
+    cooling = get_cooling() if cooling_feature else None
+
 
     return html.Div([
         html.H2("Miners"),
@@ -115,6 +162,9 @@ def layout():
             html.Button("Add miner", id="miners-add", className="custom-tab"),
             html.Span(id="miners-add-status", style={"marginLeft":"10px","color":"#e74c3c"})
         ], style={"margin":"10px 0"}),
+
+        (_cool_card(cooling, sym) if cooling_feature else html.Div()),
+        (html.Hr() if cooling_feature else html.Div()),
 
         dcc.Store(id="miners-data"),  # hält aktuelle Liste
         dcc.Store(id="miners-delete-target"),
@@ -165,7 +215,16 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str):
                 dcc.Checklist(id={"type": "m-on", "mid": mid}, options=[{"label": " on", "value": "on"}],
                               value=(["on"] if m.get("on", False) else []),
                               persistence=True, persistence_type="memory"),
-            ], style={"flex":"1","marginLeft":"10px"})
+            ], style={"flex":"1","marginLeft":"10px"}),
+            html.Div([
+                html.Label("Cooling required"),
+                dcc.Checklist(
+                    id={"type": "m-reqcool", "mid": mid},
+                    options=[{"label": " on", "value": "on"}],
+                    value=(["on"] if m.get("require_cooling", False) else []),
+                    persistence=True, persistence_type="memory"
+                )
+            ], style={"flex": "1", "marginLeft": "10px"}),
         ], style={"display":"flex","gap":"10px","marginTop":"6px"}),
 
         html.Div([
@@ -191,7 +250,7 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str):
         html.Div(id={"type":"m-kpi-profit","mid":mid}, style={"marginTop":"2px"}),
 
         html.Button("Save", id={"type":"m-save","mid":mid}, className="custom-tab", style={"marginTop":"8px"})
-    ], style=frame_style)
+    ], style=_miner_card_style(idx))
 
 # ---------- callbacks ----------
 def register_callbacks(app):
@@ -292,36 +351,37 @@ def register_callbacks(app):
     @app.callback(
         Output({"type": "m-mode", "mid": MATCH}, "options"),
         Output({"type": "m-mode", "mid": MATCH}, "value"),
-        Output({"type": "m-on", "mid": MATCH}, "options"),  # <— neu: per-option disabled
+        Output({"type": "m-on", "mid": MATCH}, "disabled"),
+        Output({"type": "m-on", "mid": MATCH}, "style"),
         Output({"type": "m-name", "mid": MATCH}, "disabled"),
         Output({"type": "m-hash", "mid": MATCH}, "disabled"),
         Output({"type": "m-pwr", "mid": MATCH}, "disabled"),
         Input({"type": "m-enabled", "mid": MATCH}, "value"),
         Input({"type": "m-mode", "mid": MATCH}, "value"),
-        State({"type": "m-on", "mid": MATCH}, "value"),  # nur um den aktuellen Wert zu behalten
+        Input({"type": "m-reqcool", "mid": MATCH}, "value"),
+        Input("cool-enabled", "value"),  # existiert nur, wenn Feature aktiv (ok dank suppress_callback_exceptions)
+        Input("cool-on", "value"),
     )
-    def _apply_enable_and_mode(enabled_val, mode_val, on_val):
+    def _apply_enable_mode_with_cooling(enabled_val, mode_val, reqcool_val, cool_en_val, cool_on_val):
         enabled = bool(enabled_val and "on" in enabled_val)
         mode_auto = bool(mode_val and "auto" in mode_val)
+        require_cooling = bool(reqcool_val and "on" in reqcool_val)
 
-        # Mode-Options (einfacher 1-Schalter)
-        mode_opts = [{"label": " on", "value": "auto"}]
-        mode_val_out = ["auto"] if mode_auto else []
+        cooling_feature = bool(set_get("cooling_feature_enabled", False))
+        cooling_enabled = bool(cool_en_val and "on" in cool_en_val) if cooling_feature else False
+        cooling_on = bool(cool_on_val and "on" in cool_on_val) if cooling_feature else False
 
-        # On/Off: in Auto ODER wenn Miner disabled => Option disabled
-        on_disabled = (not enabled) or mode_auto
-        on_opts = [{"label": " on", "value": "on", "disabled": on_disabled}]
+        lock_on = (not enabled) or mode_auto or (
+                    cooling_feature and require_cooling and (not cooling_enabled or not cooling_on))
+        on_style = {"opacity": 0.6, "pointerEvents": "none"} if lock_on else {}
 
         inputs_disabled = not enabled
-
-        return (
-            mode_opts, mode_val_out,
-            on_opts,  # <— macht den Toggle wirklich read-only
-            inputs_disabled, inputs_disabled, inputs_disabled
-        )
+        opts = [{"label": " on", "value": "auto"}]
+        val = ["auto"] if mode_auto else []
+        return opts, val, lock_on, on_style, inputs_disabled, inputs_disabled, inputs_disabled
 
     # 8) Save pro Miner (ALL statt MATCH)
-    from dash import callback_context
+
 
     @app.callback(
         Output("miners-data", "data", allow_duplicate=True),
@@ -333,9 +393,10 @@ def register_callbacks(app):
         State({"type": "m-on", "mid": ALL}, "value"),
         State({"type": "m-hash", "mid": ALL}, "value"),
         State({"type": "m-pwr", "mid": ALL}, "value"),
+        State({"type": "m-reqcool", "mid": ALL}, "value"),
         prevent_initial_call=True
     )
-    def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals, ths_vals, pkw_vals):
+    def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals, ths_vals, pkw_vals, reqcool_vals):
         # Welcher Save-Button hat ausgelöst?
         trg = callback_context.triggered_id
         if not trg:
@@ -353,6 +414,7 @@ def register_callbacks(app):
         enable = bool(enabled_vals[idx] and "on" in enabled_vals[idx]) if idx < len(enabled_vals) else False
         mode = "auto" if (idx < len(mode_vals) and mode_vals[idx] and "auto" in mode_vals[idx]) else "manual"
         on = bool(on_vals[idx] and "on" in on_vals[idx]) if idx < len(on_vals) else False
+        reqc = bool(reqcool_vals[idx] and "on" in reqcool_vals[idx]) if idx < len(reqcool_vals) else False
 
         def _num(x, d=0.0):
             try:
@@ -370,7 +432,8 @@ def register_callbacks(app):
                      mode=mode,
                      on=on,
                      hashrate_ths=ths,
-                     power_kw=pkw)
+                     power_kw=pkw,
+                     require_cooling=reqc)
 
         # Liste neu laden
         return list_miners()
@@ -386,8 +449,9 @@ def register_callbacks(app):
         State({"type": "m-enabled", "mid": MATCH}, "value"),
         State({"type": "m-mode", "mid": MATCH}, "value"),
         State({"type": "m-on", "mid": MATCH}, "value"),
+        State({"type": "m-reqcool", "mid": MATCH}, "value"),
     )
-    def _recalc(_tick, ths, pkw, enabled_val, mode_val, on_val):
+    def _recalc(_tick, ths, pkw, enabled_val, mode_val, on_val, reqcool_val):
         def _num(x, d=0.0):
             try:
                 return float(x)
@@ -437,10 +501,20 @@ def register_callbacks(app):
         # Mischpreis (€/kWh): PV gratis (0), Grid kostet (base+fee_down)
         blended_eur_per_kwh = pv_share * pv_cost  + grid_share * (base + fee_down)
 
+        require_cooling = bool(reqcool_val and "on" in reqcool_val)
+        cool_share = 0.0
+        if bool(set_get("cooling_feature_enabled", False)) and require_cooling:
+            c = get_cooling()
+            cool_pkw = float(c.get("power_kw", 0.0) or 0.0)
+            cooling_cost_h = cool_pkw * blended_eur_per_kwh
+            active = [m for m in list_miners() if m.get("enabled") and m.get("on") and m.get("require_cooling")]
+            n = max(len(active), 1)  # fair teilen; mind. 1
+            cool_share = cooling_cost_h / n
+
         # Kosten/h
         cost_eur_h = pkw * blended_eur_per_kwh
-
-        profit = after_tax - cost_eur_h
+        total_cost_h = cost_eur_h + cool_share
+        profit = after_tax - total_cost_h
         profitable = profit > 0.0
 
         def _money(v):
@@ -463,9 +537,96 @@ def register_callbacks(app):
             f"{mix_txt}"
             f": {_money(cost_eur_h)} {currency_symbol()}/h",
             html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
+            f"  (+ Cooling-Anteil: {_money(cool_share)} {currency_symbol()}/h)" if cool_share > 0 else "" ")",
+            html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
             f"Δ = {_money(profit)} {currency_symbol()}/h",
         ])
         # eur_txt = f"Einnahmen: {_money(after_tax)} € /h  |  Kosten: {_money(cost_eur_h)} € /h  |  Δ = {_money(profit)} € /h"
         prof_txt = html.Span([_dot("#27ae60" if profitable else "#e74c3c"),
                               "profitable" if profitable else "not profitable"])
         return sat_txt, eur_txt, prof_txt
+
+    # 10) KPI-Renderer + Cooling-Callbacks
+    @app.callback(
+        Output("cool-on", "disabled"),
+        Output("cool-on", "style"),
+        Input("cool-enabled", "value"),
+        Input("cool-mode", "value"),
+    )
+    def _cool_disable(enabled_val, mode_val):
+        enabled = bool(enabled_val and "on" in enabled_val)
+        auto    = bool(mode_val and "auto" in mode_val)
+        locked  = (not enabled) or auto
+        style   = {"opacity": 0.6, "pointerEvents": "none"} if locked else {}
+        return locked, style
+
+    @app.callback(
+        Output("cool-kpi", "children"),
+        Input("cool-save", "n_clicks"),
+        State("cool-enabled","value"),
+        State("cool-mode","value"),
+        State("cool-on","value"),
+        State("cool-pwr","value"),
+        prevent_initial_call=True
+    )
+    def _cool_save(n, en_val, mode_val, on_val, pkw):
+        if not n: raise dash.exceptions.PreventUpdate
+        set_cooling(
+            enabled=True,
+            mode=("auto" if (mode_val and "auto" in mode_val) else "manual"),
+            on=bool(on_val and "on" in on_val),
+            power_kw=float(pkw or 0.0)
+        )
+        return _cool_kpi_render(float(pkw or 0.0))
+
+    @app.callback(
+        Output("cool-kpi", "children", allow_duplicate=True),
+        Input("miners-refresh", "n_intervals"),
+        State("cool-pwr","value"),
+        prevent_initial_call=True
+    )
+    def _cool_tick(_n, pkw):
+        return _cool_kpi_render(float(pkw or 0.0))
+
+    def _cool_kpi_render(power_kw: float):
+        def _f(x):
+            try: return float(x)
+            except: return 0.0
+        pv_id   = _dash_resolve("pv_production")
+        grid_id = _dash_resolve("grid_consumption")
+        pv   = _f(get_sensor_value(pv_id))
+        grid = _f(get_sensor_value(grid_id))
+        inflow = max(pv + grid, 0.0)
+        if inflow > 0:
+            pv_share   = max(min(pv/inflow, 1.0), 0.0)
+            grid_share = max(min(grid/inflow, 1.0), 0.0)
+        else:
+            pv_share, grid_share = 0.0, 1.0
+
+        from services.electricity_store import current_price as elec_price, get_var as elec_get, currency_symbol
+        base = elec_price() or 0.0
+        def _num(x, d=0.0):
+            try: return float(x)
+            except: return d
+        fee_down = _num(elec_get("network_fee_down_value", 0.0), 0.0)
+
+        from services.settings_store import get_var as set_get
+        fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
+        # PV-Kosten nach Policy
+        if (set_get("pv_cost_policy","zero") or "zero").lower() == "feedin":
+            mode = (set_get("feedin_price_mode","fixed") or "fixed").lower()
+            if mode == "sensor":
+                sens = set_get("feedin_price_sensor","") or ""
+                tarif = _num(get_sensor_value(sens) if sens else 0.0, 0.0)
+            else:
+                tarif = _num(set_get("feedin_price_value",0.0),0.0)
+            if 3.0 <= tarif < 1000.0:  # ct/kWh → €/kWh
+                tarif /= 100.0
+            pv_cost = max(tarif - fee_up, 0.0)
+        else:
+            pv_cost = 0.0
+
+        blended = pv_share * pv_cost + grid_share * (base + fee_down)
+        cost = power_kw * blended
+        cs = currency_symbol()
+        return f"Cooling-Costs: {cost:.2f} {cs}/h  (Mix PV {pv_share*100:.0f}% / Grid {grid_share*100:.0f}%)"
