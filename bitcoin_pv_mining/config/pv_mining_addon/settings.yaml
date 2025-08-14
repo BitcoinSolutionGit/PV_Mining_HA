@@ -1,0 +1,5 @@
+settings:
+  btc_price_eur: 60000         # optional live überschrieben
+  network_hashrate_ths: 6.0e8  # 600 EH/s = 600_000_000 TH/s
+  block_reward_btc: 3.125      # seit Halving 2024
+  sell_tax_percent: 27.5       # KEST (anpassbar)
