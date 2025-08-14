@@ -1,5 +1,16 @@
 settings:
-  btc_price_eur: 60000         # optional live überschrieben
-  network_hashrate_ths: 6.0e8  # 600 EH/s = 600_000_000 TH/s
-  block_reward_btc: 3.125      # seit Halving 2024
-  sell_tax_percent: 27.5       # KEST (anpassbar)
+  # PV-Kosten-Modell:
+  #  - zero   => PV = 0 €/kWh (bisher)
+  #  - feedin => PV = Einspeisetarif - network_fee_up (nicht negativ)
+  pv_cost_policy: zero
+
+  # Falls 'feedin':
+  feedin_price_mode: fixed     # fixed | sensor
+  feedin_price_value: 0.10     # €/kWh  (wenn fixed)
+  feedin_price_sensor: ""      # z.B. sensor.einspeisetarif
+
+  # BTC-Ökonomie (ein Teil existiert ggf. schon)
+  block_reward_btc: 3.125
+  sell_tax_percent: 27.5
+  btc_price_currency: USD
+  fx_usd_to_eur: 0.93

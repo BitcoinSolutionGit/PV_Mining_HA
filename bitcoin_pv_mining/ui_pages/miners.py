@@ -1,14 +1,30 @@
-# ui_pages/miners.py
 import math
 import dash
+import os
 from dash import no_update
 from dash import html, dcc
 from dash.dependencies import Input, Output, State, MATCH, ALL
 
+from services.btc_metrics import get_live_btc_price_eur, get_live_network_hashrate_ths, sats_per_th_per_hour
 from services.miners_store import list_miners, add_miner, update_miner, delete_miner
 from services.settings_store import get_var as set_get, set_vars as set_set
 from services.electricity_store import current_price as elec_price, get_var as elec_get, currency_symbol
 from services.license import is_premium_enabled
+from services.utils import load_yaml
+from services.ha_sensors import get_sensor_value
+from services.settings_store import get_var as set_get
+
+
+import os
+CONFIG_DIR = "/config/pv_mining_addon"
+SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
+SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
+
+def _dash_resolve(kind: str) -> str:
+    def _mget(path, key):
+        m = (load_yaml(path, {}).get("mapping", {}) or {})
+        return (m.get(key) or "").strip()
+    return _mget(SENS_OVR, kind) or _mget(SENS_DEF, kind)
 
 # ---------- helpers ----------
 def _num(x, default=0.0):
@@ -32,6 +48,21 @@ def _money(v):
         return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
         return "–"
+
+def _pv_cost_per_kwh():
+    # policy: zero | feedin
+    policy = (set_get("pv_cost_policy", "zero") or "zero").lower()
+    if policy != "feedin":
+        return 0.0
+    mode = (set_get("feedin_price_mode", "fixed") or "fixed").lower()
+    fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
+    if mode == "sensor":
+        sens = set_get("feedin_price_sensor", "") or ""
+        tarif = _num(get_sensor_value(sens) if sens else 0.0, 0.0)
+    else:
+        tarif = _num(set_get("feedin_price_value", 0.0), 0.0)
+    return max(tarif - fee_up, 0.0)  # nicht negativ
+
 
 # ---------- layout ----------
 def layout():
@@ -261,27 +292,33 @@ def register_callbacks(app):
     @app.callback(
         Output({"type": "m-mode", "mid": MATCH}, "options"),
         Output({"type": "m-mode", "mid": MATCH}, "value"),
-        Output({"type": "m-on", "mid": MATCH}, "disabled"),
+        Output({"type": "m-on", "mid": MATCH}, "options"),  # <— neu: per-option disabled
         Output({"type": "m-name", "mid": MATCH}, "disabled"),
         Output({"type": "m-hash", "mid": MATCH}, "disabled"),
         Output({"type": "m-pwr", "mid": MATCH}, "disabled"),
         Input({"type": "m-enabled", "mid": MATCH}, "value"),
         Input({"type": "m-mode", "mid": MATCH}, "value"),
+        State({"type": "m-on", "mid": MATCH}, "value"),  # nur um den aktuellen Wert zu behalten
     )
-    def _apply_enable_and_mode(enabled_val, mode_val):
+    def _apply_enable_and_mode(enabled_val, mode_val, on_val):
         enabled = bool(enabled_val and "on" in enabled_val)
         mode_auto = bool(mode_val and "auto" in mode_val)
 
-        # on/off ist read-only, wenn auto aktiv ODER miner disabled
+        # Mode-Options (einfacher 1-Schalter)
+        mode_opts = [{"label": " on", "value": "auto"}]
+        mode_val_out = ["auto"] if mode_auto else []
+
+        # On/Off: in Auto ODER wenn Miner disabled => Option disabled
         on_disabled = (not enabled) or mode_auto
-        # alle Inputs disabled, wenn nicht enabled
+        on_opts = [{"label": " on", "value": "on", "disabled": on_disabled}]
+
         inputs_disabled = not enabled
 
-        # Optionen/Value für "Mode" (wir spiegeln den aktuellen Zustand zurück)
-        opts = [{"label": " on", "value": "auto"}]
-        val = ["auto"] if mode_auto else []
-
-        return opts, val, on_disabled, inputs_disabled, inputs_disabled, inputs_disabled
+        return (
+            mode_opts, mode_val_out,
+            on_opts,  # <— macht den Toggle wirklich read-only
+            inputs_disabled, inputs_disabled, inputs_disabled
+        )
 
     # 8) Save pro Miner (ALL statt MATCH)
     from dash import callback_context
@@ -340,47 +377,95 @@ def register_callbacks(app):
 
     # 9) KPIs je Miner live berechnen (alle 10s + bei Eingaben)
     @app.callback(
-        Output({"type":"m-kpi-satthh","mid":MATCH}, "children"),
-        Output({"type":"m-kpi-eurh","mid":MATCH}, "children"),
-        Output({"type":"m-kpi-profit","mid":MATCH}, "children"),
-        Input("miners-refresh","n_intervals"),
-        Input({"type":"m-hash","mid":MATCH}, "value"),
-        Input({"type":"m-pwr","mid":MATCH}, "value"),
-        State({"type":"m-enabled","mid":MATCH}, "value"),
-        State({"type":"m-mode","mid":MATCH}, "value"),
-        State({"type":"m-on","mid":MATCH}, "value"),
+        Output({"type": "m-kpi-satthh", "mid": MATCH}, "children"),
+        Output({"type": "m-kpi-eurh", "mid": MATCH}, "children"),
+        Output({"type": "m-kpi-profit", "mid": MATCH}, "children"),
+        Input("miners-refresh", "n_intervals"),
+        Input({"type": "m-hash", "mid": MATCH}, "value"),
+        Input({"type": "m-pwr", "mid": MATCH}, "value"),
+        State({"type": "m-enabled", "mid": MATCH}, "value"),
+        State({"type": "m-mode", "mid": MATCH}, "value"),
+        State({"type": "m-on", "mid": MATCH}, "value"),
     )
     def _recalc(_tick, ths, pkw, enabled_val, mode_val, on_val):
-        # globale ökonomische Parameter
-        btc_eur = _num(set_get("btc_price_eur", 0.0))
-        net_ths = _num(set_get("network_hashrate_ths", 0.0))
-        reward  = _num(set_get("block_reward_btc", 3.125))
-        tax_pct = _num(set_get("sell_tax_percent", 0.0))
+        def _num(x, d=0.0):
+            try:
+                return float(x)
+            except (TypeError, ValueError):
+                return d
+
+        # --- Live BTC & Hashrate ---
+        btc_eur = get_live_btc_price_eur(fallback=_num(set_get("btc_price_eur", 0.0)))
+        net_ths = get_live_network_hashrate_ths(fallback=_num(set_get("network_hashrate_ths", 0.0)))
+        reward = _num(set_get("block_reward_btc", 3.125), 3.125)  # Halving 2024
+        tax_pct = _num(set_get("sell_tax_percent", 0.0), 0.0)
+
         sat_th_h = sats_per_th_per_hour(reward, net_ths)
 
-        # Elektrizitätskosten inkl. Netzgebühr (Bezug)
+        # --- Stromkosten (€/kWh) inkl. Netzgebühr Bezug ---
         base = elec_price() or 0.0
-        fee  = _num(elec_get("network_fee_down_value", 0.0), 0.0)
-        eur_per_kwh = base + fee
+        fee_down = _num(elec_get("network_fee_down_value", 0.0), 0.0)
+        eur_per_kwh = base + fee_down
 
         ths = _num(ths, 0.0)
         pkw = _num(pkw, 0.0)
 
         # Einnahmen/h
-        sats_per_h = sat_th_h * ths                   # [sat/h]
-        eur_per_sat = btc_eur / 1e8 if btc_eur>0 else 0.0
+        sats_per_h = sat_th_h * ths  # [sat/h]
+        eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
         revenue_eur_h = sats_per_h * eur_per_sat
-        after_tax = revenue_eur_h * (1.0 - _clamp01(tax_pct/100.0))
+        after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
+
+        # --- Mischkosten nach aktuellem Inflow (PV vs Grid) ---
+        pv_id = _dash_resolve("pv_production")
+        grid_id = _dash_resolve("grid_consumption")
+        pv_val = _num(get_sensor_value(pv_id), 0.0)
+        grid_val = _num(get_sensor_value(grid_id), 0.0)
+        inflow = max(pv_val + grid_val, 0.0)
+        if inflow > 0:
+            pv_share = max(min(pv_val / inflow, 1.0), 0.0)
+            grid_share = max(min(grid_val / inflow, 1.0), 0.0)
+        else:
+            # konservativ annehmen: alles Grid
+            pv_share, grid_share = 0.0, 1.0
+
+        # Preisbestandteile
+        base = elec_price() or 0.0
+        fee_down = _num(elec_get("network_fee_down_value", 0.0), 0.0)
+        pv_cost = _pv_cost_per_kwh()
+
+        # Mischpreis (€/kWh): PV gratis (0), Grid kostet (base+fee_down)
+        blended_eur_per_kwh = pv_share * pv_cost  + grid_share * (base + fee_down)
 
         # Kosten/h
-        cost_eur_h = pkw * eur_per_kwh
+        cost_eur_h = pkw * blended_eur_per_kwh
 
         profit = after_tax - cost_eur_h
         profitable = profit > 0.0
 
-        sat_txt = f"SAT/TH/h: {sat_th_h:,.2f}".replace(",", "X").replace(".", ",").replace("X",".")
-        eur_txt = f"Einnahmen: {_money(after_tax)} {currency_symbol()}/h  |  Kosten: {_money(cost_eur_h)} {currency_symbol()}/h  |  Δ = {_money(profit)} {currency_symbol()}/h"
-        prof_txt = html.Span([_dot("#27ae60" if profitable else "#e74c3c"), "Rentabel" if profitable else "Nicht rentabel"])
+        def _money(v):
+            try:
+                return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except Exception:
+                return "–"
 
-        # UI-Disable wird in separaten Callbacks gehandhabt; hier nur Anzeige
+        def _fmt_int(x):
+            try:
+                return f"{x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except Exception:
+                return "0"
+
+        sat_txt = f"SAT/h: {_fmt_int(sats_per_h)}"
+        mix_txt = f"Cost at PV {pv_share * 100:.0f}% / Grid {grid_share * 100:.0f}%"
+        eur_txt = html.Span([
+            f"Revenue: {_money(after_tax)} {currency_symbol()}/h",
+            html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
+            f"{mix_txt}"
+            f": {_money(cost_eur_h)} {currency_symbol()}/h",
+            html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
+            f"Δ = {_money(profit)} {currency_symbol()}/h",
+        ])
+        # eur_txt = f"Einnahmen: {_money(after_tax)} € /h  |  Kosten: {_money(cost_eur_h)} € /h  |  Δ = {_money(profit)} € /h"
+        prof_txt = html.Span([_dot("#27ae60" if profitable else "#e74c3c"),
+                              "profitable" if profitable else "not profitable"])
         return sat_txt, eur_txt, prof_txt

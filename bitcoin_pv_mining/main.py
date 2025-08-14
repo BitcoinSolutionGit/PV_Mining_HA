@@ -21,6 +21,8 @@ from ui_pages.electricity import layout as electricity_layout, register_callback
 from ui_pages.battery import layout as battery_layout
 from ui_pages.heater import layout as heater_layout, register_callbacks as reg_heater
 from ui_pages.wallbox import layout as wallbox_layout
+from ui_pages.settings import layout as settings_layout, register_callbacks as reg_settings
+
 
 
 # beim Start
@@ -162,6 +164,7 @@ def toggle_premium_button(data):
     Output("btn-battery", "className"),
     Output("btn-heater", "className"),
     Output("btn-wallbox", "className"),
+    Output("btn-settings","className"),
     Input("btn-dashboard", "n_clicks"),
     Input("btn-sensors", "n_clicks"),
     Input("btn-miners", "n_clicks"),
@@ -169,10 +172,11 @@ def toggle_premium_button(data):
     Input("btn-battery", "n_clicks"),
     Input("btn-heater", "n_clicks"),
     Input("btn-wallbox", "n_clicks"),
+    Input("btn-settings","n_clicks"),
     Input("premium-enabled", "data"),
     prevent_initial_call=True
 )
-def switch_tabs(n1, n2,n3, n4, n5, n6, n7, premium_data):
+def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, premium_data):
     enabled = bool((premium_data or {}).get("enabled"))
     ctx = dash.callback_context
     if not ctx.triggered:
@@ -189,9 +193,11 @@ def switch_tabs(n1, n2,n3, n4, n5, n6, n7, premium_data):
     elif btn == "btn-battery":
         target = "battery" if enabled else "dashboard"  # Premium required
     elif btn == "btn-heater":
-        target = "heater" if enabled else "dashboard"  # Premium required
+        target = "heater" if enabled else "dashboard"   # Premium required
     elif btn == "btn-wallbox":
         target = "wallbox" if enabled else "dashboard"  # Premium required
+    elif btn == "btn-settings":
+        target = "settings"
 
     return (
         target,
@@ -202,6 +208,7 @@ def switch_tabs(n1, n2,n3, n4, n5, n6, n7, premium_data):
         "custom-tab custom-tab-selected" if target == "battery" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "heater" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "wallbox" else "custom-tab",
+        "custom-tab custom-tab-selected" if target == "settings" else "custom-tab",
     )
 
 def premium_upsell():
@@ -276,6 +283,8 @@ def render_tab(tab, premium_data):
         return heater_layout()
     if tab == "wallbox":
         return wallbox_layout()
+    if tab == "settings":
+        return settings_layout()
     return dashboard_layout()
 
 
@@ -286,6 +295,7 @@ reg_miners(app)             # miners
 #reg_battery(app)            # battery
 reg_heater(app)             # heater
 #reg_wallbox(app)            # wallbox
+reg_settings(app)           # settings
 
 
 app.index_string = '''
@@ -431,6 +441,8 @@ app.layout = html.Div([
         html.Button("Battery", id="btn-battery", n_clicks=0, className="custom-tab", **{"data-tab": "battery"}),
         html.Button("Water Heater", id="btn-heater", n_clicks=0, className="custom-tab", **{"data-tab": "heater"}),
         html.Button("Wall-Box", id="btn-wallbox", n_clicks=0, className="custom-tab", **{"data-tab": "wallbox"}),
+        html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab":"settings"}),
+
 
         # Spacer + Premium-Button ganz rechts
         html.Div(style={"flex": "1"}),
