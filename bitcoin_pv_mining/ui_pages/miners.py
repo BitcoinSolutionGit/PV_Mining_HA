@@ -537,71 +537,69 @@ def register_callbacks(app):
             except (TypeError, ValueError):
                 return d
 
-        # --- Live BTC & Hashrate ---
+        # --- Live BTC & Netzwerk ---
         btc_eur = get_live_btc_price_eur(fallback=_num(set_get("btc_price_eur", 0.0)))
         net_ths = get_live_network_hashrate_ths(fallback=_num(set_get("network_hashrate_ths", 0.0)))
-        reward = _num(set_get("block_reward_btc", 3.125), 3.125)  # Halving 2024
+        reward = _num(set_get("block_reward_btc", 3.125), 3.125)
         tax_pct = _num(set_get("sell_tax_percent", 0.0), 0.0)
 
         sat_th_h = sats_per_th_per_hour(reward, net_ths)
-
-        # --- Stromkosten (€/kWh) inkl. Netzgebühr Bezug ---
-        base = elec_price() or 0.0
-        fee_down = _num(elec_get("network_fee_down_value", 0.0), 0.0)
-        eur_per_kwh = base + fee_down
 
         ths = _num(ths, 0.0)
         pkw = _num(pkw, 0.0)
 
         # Einnahmen/h
-        sats_per_h = sat_th_h * ths  # [sat/h]
+        sats_per_h = sat_th_h * ths
         eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
         revenue_eur_h = sats_per_h * eur_per_sat
         after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
 
-        # --- Mischkosten nach aktuellem Inflow (PV vs Grid) ---
+        # --- Inkrementeller PV/Grid-Mix für diesen Miner ---
         pv_id = _dash_resolve("pv_production")
         grid_id = _dash_resolve("grid_consumption")
+        feed_id = _dash_resolve("grid_feed_in")
+
         pv_val = _num(get_sensor_value(pv_id), 0.0)
         grid_val = _num(get_sensor_value(grid_id), 0.0)
-        inflow = max(pv_val + grid_val, 0.0)
-        if inflow > 0:
-            pv_share = max(min(pv_val / inflow, 1.0), 0.0)
-            grid_share = max(min(grid_val / inflow, 1.0), 0.0)
-        else:
-            # konservativ annehmen: alles Grid
-            pv_share, grid_share = 0.0, 1.0
+        feed_val = max(_num(get_sensor_value(feed_id), 0.0), 0.0)  # >=0
 
-        # Preisbestandteile
         base = elec_price() or 0.0
         fee_down = _num(elec_get("network_fee_down_value", 0.0), 0.0)
         pv_cost = _pv_cost_per_kwh()
 
-        # Mischpreis (€/kWh): PV gratis (0), Grid kostet (base+fee_down)
-        blended_eur_per_kwh = pv_share * pv_cost  + grid_share * (base + fee_down)
-
+        # Cooling-Setup
+        cooling_feature = bool(set_get("cooling_feature_enabled", False))
         require_cooling = bool(reqcool_val and "on" in reqcool_val)
+        c = get_cooling() if cooling_feature else {}
+        cooling_kw_cfg = float((c or {}).get("power_kw") or 0.0)
+        cooling_is_on = bool((c or {}).get("on"))
+
+        # Zusätzliche Last ΔP: Miner + ggf. Cooling, falls dieser Miner Cooling neu starten würde
+        delta_kw = pkw + (cooling_kw_cfg if (cooling_feature and require_cooling and not cooling_is_on) else 0.0)
+
+        if delta_kw > 0.0:
+            pv_share_add = max(min(feed_val / delta_kw, 1.0), 0.0)
+        else:
+            pv_share_add = 0.0
+        grid_share_add = 1.0 - pv_share_add
+
+        blended_eur_per_kwh = pv_share_add * pv_cost + grid_share_add * (base + fee_down)
+
+        # Cooling-Kostenanteil fair teilen (aktive cooling-Miner + dieser Miner)
         cool_share = 0.0
-        if bool(set_get("cooling_feature_enabled", False)) and require_cooling:
-            c = get_cooling()
-            cool_pkw = float(c.get("power_kw", 0.0) or 0.0)
-            cooling_cost_h = cool_pkw * blended_eur_per_kwh
+        if cooling_feature and require_cooling and cooling_kw_cfg > 0.0:
             active = [m for m in list_miners() if m.get("enabled") and m.get("on") and m.get("require_cooling")]
-            n = max(len(active), 1)  # fair teilen; mind. 1
-            cool_share = cooling_cost_h / n
+            n_future = len(active) + 1  # inkl. diesem Miner
+            cool_share = (cooling_kw_cfg * blended_eur_per_kwh) / max(n_future, 1)
 
         # Kosten/h
         cost_eur_h = pkw * blended_eur_per_kwh
         total_cost_h = cost_eur_h + cool_share
+
         profit = after_tax - total_cost_h
         profitable = profit > 0.0
 
-        def _money(v):
-            try:
-                return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            except Exception:
-                return "–"
-
+        # ---------- Ausgabe ----------
         def _fmt_int(x):
             try:
                 return f"{x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -609,13 +607,14 @@ def register_callbacks(app):
                 return "0"
 
         sat_txt = f"SAT/h: {_fmt_int(sats_per_h)}"
-        mix_txt = f"Cost at PV {pv_share * 100:.0f}% / Grid {grid_share * 100:.0f}%"
+
         parts = [
             f"Revenue: {_money(after_tax)} {currency_symbol()}/h",
             html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
-            f"Cost at PV {pv_share * 100:.0f}% / Grid {grid_share * 100:.0f}%: {_money(cost_eur_h)} {currency_symbol()}/h",
+            f"Cost at PV {pv_share_add * 100:.0f}% / Grid {grid_share_add * 100:.0f}%: "
+            f"{_money(cost_eur_h)} {currency_symbol()}/h",
         ]
-        if cool_share > 0:
+        if cool_share > 0.0:
             parts += [
                 html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
                 f"(+ Cooling share: {_money(cool_share)} {currency_symbol()}/h)",
@@ -626,9 +625,33 @@ def register_callbacks(app):
         ]
         eur_txt = html.Span(parts)
 
-        # eur_txt = f"Einnahmen: {_money(after_tax)} € /h  |  Kosten: {_money(cost_eur_h)} € /h  |  Δ = {_money(profit)} € /h"
-        prof_txt = html.Span([_dot("#27ae60" if profitable else "#e74c3c"),
-                              "profitable" if profitable else "not profitable"])
+        # Break-even Gridpreis bei aktuellem PV-Mix
+        be_line = ""
+        if pkw > 0.0:
+            # "Äquivalente" kW inkl. anteiligem Cooling, wenn dieser Miner Cooling braucht
+            if cooling_feature and require_cooling and cooling_kw_cfg > 0.0:
+                active = [m for m in list_miners() if m.get("enabled") and m.get("on") and m.get("require_cooling")]
+                n_future = len(active) + 1
+                equiv_kw = pkw + (cooling_kw_cfg / max(n_future, 1))
+            else:
+                equiv_kw = pkw
+
+            if equiv_kw > 0.0:
+                blended_be = after_tax / equiv_kw  # benötigter €/kWh
+                if grid_share_add <= 1e-6:
+                    be_line = "Break-even grid price: n/a (PV fully covers incremental load)"
+                else:
+                    base_be = (blended_be - pv_share_add * pv_cost) / grid_share_add - fee_down
+                    base_be = max(base_be, 0.0)
+                    be_line = f"Break-even grid price at current PV mix: {_money(base_be)} €/kWh"
+
+        prof_txt = html.Div([
+            html.Span([_dot("#27ae60" if profitable else "#e74c3c"),
+                       "profitable" if profitable else "not profitable"]),
+            html.Br(),
+            html.Span(be_line, style={"opacity": 0.8})
+        ])
+
         return sat_txt, eur_txt, prof_txt
 
     # 10) KPI-Renderer + Cooling-Callbacks
