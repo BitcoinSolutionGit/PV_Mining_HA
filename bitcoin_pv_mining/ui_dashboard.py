@@ -344,7 +344,16 @@ def register_callbacks(app):
 # ------------------------------
 def layout():
     return html.Div([
-        html.H1("PV-mining dashboard"),
+        html.H1([
+            "PV-mining dashboard — by ",
+            html.A(
+                "BitcoinSolution.at",
+                href="https://www.bitcoinsolution.at",
+                target="_blank",
+                rel="noopener noreferrer",
+                style={"textDecoration": "none"}  # optional: Link ohne Unterstreichung
+            )
+        ]),
 
         dcc.Graph(id="sankey-diagram", figure=go.Figure()),
 
