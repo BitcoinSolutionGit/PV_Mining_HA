@@ -1,6 +1,10 @@
 # services/ha_entities.py
 import os, requests
 
+_HA = "http://supervisor/core/api"
+_HDR = {"Authorization": f"Bearer {os.getenv('SUPERVISOR_TOKEN')}",
+        "Content-Type": "application/json"}
+
 def _ha_headers():
     token = os.getenv("SUPERVISOR_TOKEN") or ""
     return {"Authorization": f"Bearer {token}"}
@@ -39,3 +43,50 @@ def list_actions() -> list[dict]:
         label_prefix = "Script" if dom == "script" else "Switch"
         opts.append({"label": f"{label_prefix} • {ent}", "value": ent})
     return opts
+
+def call_action(entity_id: str, turn_on: bool = True) -> bool:
+    """Ruft den passenden HA-Service für switch/script/… auf."""
+    if not entity_id:
+        return False
+    domain = entity_id.split(".", 1)[0]
+    # Service-Mapping
+    if domain == "script":
+        svc = "script/turn_on"  # scripts haben nur turn_on
+    elif domain in ("switch", "input_boolean", "light"):
+        svc = f"{domain}/{'turn_on' if turn_on else 'turn_off'}"
+    elif domain == "button":
+        svc = "button/press"
+    else:
+        # generisch versuchen
+        svc = f"homeassistant/{'turn_on' if turn_on else 'turn_off'}"
+
+    url = f"{_HA}/services/{svc}"
+    try:
+        r = requests.post(url, headers=_HDR, json={"entity_id": entity_id}, timeout=5)
+        return r.status_code in (200, 201)
+    except Exception:
+        return False
+
+def get_entity_state(entity_id: str):
+    """Rohzustand der Entity (string)."""
+    if not entity_id:
+        return None
+    try:
+        r = requests.get(f"{_HA}/states/{entity_id}", headers=_HDR, timeout=5)
+        if r.status_code == 200:
+            return (r.json() or {}).get("state")
+    except Exception:
+        pass
+    return None
+
+def is_on_like(state) -> bool:
+    """'on'-Logik für bool/switch/sensor (Zahlen > 0)."""
+    if state is None:
+        return False
+    s = str(state).strip().lower()
+    if s in ("on", "true", "open", "home", "heat", "cool"):
+        return True
+    try:
+        return float(s) > 0.0
+    except Exception:
+        return False

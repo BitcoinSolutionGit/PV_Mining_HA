@@ -1,6 +1,7 @@
 import math
 import dash
 import os
+import time
 from dash import no_update
 from dash import html, dcc, callback_context
 from dash.dependencies import Input, Output, State, MATCH, ALL
@@ -13,12 +14,20 @@ from services.license import is_premium_enabled
 from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 from services.cooling_store import get_cooling, set_cooling
-from services.ha_entities import list_actions
+from services.ha_entities import list_actions, call_action, get_entity_state, is_on_like
 
 
 CONFIG_DIR = "/config/pv_mining_addon"
 SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
 SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
+
+def _now(): return time.time()
+
+def _ampel(color, text):
+    return html.Span([
+        html.Span("", style={"display":"inline-block","width":"10px","height":"10px","borderRadius":"50%","backgroundColor":color,"marginRight":"6px","verticalAlign":"middle"}),
+        text
+    ])
 
 def _dash_resolve(kind: str) -> str:
     def _mget(path, key):
@@ -34,11 +43,6 @@ def _num(x, default=0.0):
 def _clamp01(x):
     x = _num(x, 0.0)
     return 1.0 if x > 1.0 else (0.0 if x < 0.0 else x)
-
-def sats_per_th_per_hour(block_reward_btc: float, network_hashrate_ths: float) -> float:
-    # 6 Blöcke/h * Reward / Netzhashrate
-    if network_hashrate_ths <= 0: return 0.0
-    return block_reward_btc * 6.0 * 1e8 / network_hashrate_ths
 
 def _dot(color):
     return html.Span("", style={"display":"inline-block","width":"10px","height":"10px","borderRadius":"50%","backgroundColor":color,"marginRight":"8px","verticalAlign":"middle"})
@@ -125,6 +129,24 @@ def _cool_card(c: dict, sym: str, ha_actions: list[dict]):
             ], style={"flex": "1", "minWidth":"240px","marginLeft": "10px"}),
         ], style={"display":"flex","gap":"10px","marginTop":"8px","flexWrap":"wrap"}),
 
+        html.Div([
+            html.Label("Ready/State entity  (True = running)"),
+            dcc.Dropdown(
+                id="cool-ready-entity",
+                options=ha_actions,
+                # du kannst hier alle Entities listen; wenn du nur scripts/switches drin hast, liefere zusätzlich Sensors/Binarys mit list_actions()
+                value=c.get("ready_entity", "") or None,
+                placeholder="Select entity that signals 'running'…",
+                persistence=True, persistence_type="memory"
+            )
+        ], style={"flex": "1"}),
+        html.Div([
+            html.Label("Timeout (s)"),
+            dcc.Input(id="cool-ready-timeout", type="number", step=1, min=5,
+                      value=int(c.get("ready_timeout_s", 60) or 60),
+                      style={"width": "120px"})
+        ], style={"marginLeft": "10px"}),
+
         # Leistung
         html.Div([
             html.Div([ html.Label("Cooling power (kW)"),
@@ -135,6 +157,7 @@ def _cool_card(c: dict, sym: str, ha_actions: list[dict]):
         ], style={"display":"flex","gap":"10px","marginTop":"8px"}),
 
         html.Div(id="cool-kpi", style={"marginTop":"8px", "fontWeight":"bold"}),
+        html.Div(id="cool-ampel", style={"marginTop": "6px"}),
 
         html.Button("Save", id="cool-save", className="custom-tab", style={"marginTop":"8px"}),
         html.Span("  (Cooling must run before any miner switches on)", style={"marginLeft":"8px","opacity":0.7}),
@@ -221,7 +244,10 @@ def layout():
         dcc.Interval(id="miners-once", interval=1, n_intervals=0, max_intervals=1),
 
         # Nur für Live-KPIs (NICHT mehr zum Neu-Laden der Daten verwenden)
-        dcc.Interval(id="miners-refresh", interval=10_000, n_intervals=0)
+        dcc.Interval(id="miners-refresh", interval=10_000, n_intervals=0),
+
+        dcc.Store(id="orchestrator", data={"cooling": {"state": "off", "until": 0}, "miners": {}}),
+
     ])
 
 # ---------- render helpers ----------
@@ -307,6 +333,23 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
                     persistence=True, persistence_type="memory"
                 )
             ], style={"flex": "1", "marginLeft": "10px"}),
+            html.Div([
+                html.Label("Ready/State entity (True = running)"),
+                dcc.Dropdown(
+                    id={"type": "m-ready-entity", "mid": mid},
+                    options=ha_actions,
+                    value=m.get("ready_entity", "") or None,
+                    placeholder="Select entity that signals 'ON'…",
+                    persistence=True, persistence_type="memory"
+                )
+            ], style={"flex": "1"}),
+            html.Div([
+                html.Label("Timeout (s)"),
+                dcc.Input(id={"type": "m-ready-timeout", "mid": mid}, type="number", step=1, min=5,
+                          value=int(m.get("ready_timeout_s", 60) or 60),
+                          style={"width": "120px"})
+            ], style={"marginLeft": "10px"})
+
         ], style={"display": "flex", "gap": "10px", "marginTop": "8px"}),
 
         html.Hr(),
@@ -322,6 +365,72 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
 # ---------- callbacks ----------
 def register_callbacks(app):
     sym = currency_symbol()
+
+    @dash.callback(
+        Output("orchestrator", "data"),
+        Output("cool-ampel", "children"),
+        Input("miners-refresh", "n_intervals"),
+        State("orchestrator", "data"),
+        State("cool-ready-entity", "value"),
+        State("cool-ready-timeout", "value"),
+        prevent_initial_call=False
+    )
+    def _engine_tick(_n, data, ready_val, timeout_val):
+        data = data or {"cooling": {"state": "off", "until": 0}, "miners": {}}
+        cool = get_cooling() or {}
+
+        # UI hat Vorrang; sonst Store; sonst Defaults
+        ready_ent = (ready_val or cool.get("ready_entity") or "").strip()
+        try:
+            timeout_s = int(timeout_val or cool.get("ready_timeout_s") or 60)
+        except Exception:
+            timeout_s = 60
+
+        need_cooling = any(
+            m.get("enabled") and m.get("mode") == "auto" and m.get("on") and m.get("require_cooling") for m in
+            list_miners())
+        ready_ent = (cool.get("ready_entity") or "").strip()
+        timeout_s = int(cool.get("ready_timeout_s") or 60)
+
+        st = data["cooling"].get("state", "off")
+        until = float(data["cooling"].get("until", 0))
+
+        def ready():
+            if ready_ent:
+                return is_on_like(get_entity_state(ready_ent))
+            return _now() >= until  # fallback: Zeitablauf
+
+        # Sollwert: an, wenn mind. ein auto-ON Miner Cooling braucht; sonst aus
+        want_on = need_cooling or bool(cool.get("on"))
+
+        if want_on:
+            if st in ("off", "stopping"):
+                call_action(cool.get("action_on_entity", ""), True)
+                data["cooling"] = {"state": "starting", "until": _now() + timeout_s}
+            elif st == "starting":
+                data["cooling"]["state"] = "waiting"
+            elif st == "waiting":
+                if ready():
+                    data["cooling"]["state"] = "on"
+            # on bleibt on
+        else:
+            if st in ("on", "waiting"):
+                call_action(cool.get("action_off_entity", ""), False)
+                data["cooling"] = {"state": "stopping", "until": _now() + timeout_s}
+            elif st == "stopping":
+                if not ready():  # ready() false = aus
+                    data["cooling"]["state"] = "off"
+
+        # Ampel rendern
+        ampel = {
+            "off": _ampel("#e74c3c", "Cooling off"),
+            "starting": _ampel("#f1c40f", "Cooling starting…"),
+            "waiting": _ampel("#f39c12", "Cooling waiting for ready…"),
+            "on": _ampel("#27ae60", "Cooling on"),
+            "stopping": _ampel("#f39c12", "Cooling stopping…"),
+        }[data["cooling"]["state"]]
+
+        return data, ampel
 
     # 0) initial miners-data füllen
     @app.callback(
@@ -422,7 +531,6 @@ def register_callbacks(app):
     @app.callback(
         Output({"type": "m-mode", "mid": MATCH}, "options"),
         Output({"type": "m-mode", "mid": MATCH}, "value"),
-        Output({"type": "m-on", "mid": MATCH}, "disabled"),
         Output({"type": "m-on", "mid": MATCH}, "style"),
         Output({"type": "m-name", "mid": MATCH}, "disabled"),
         Output({"type": "m-hash", "mid": MATCH}, "disabled"),
@@ -451,7 +559,7 @@ def register_callbacks(app):
         inputs_disabled = not enabled
         opts = [{"label": " on", "value": "auto"}]
         val = ["auto"] if mode_auto else []
-        return opts, val, lock_on, on_style, inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled
+        return opts, val, on_style, inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled
 
     # 8) Save pro Miner (ALL statt MATCH)
 
@@ -469,9 +577,12 @@ def register_callbacks(app):
         State({"type": "m-reqcool", "mid": ALL}, "value"),
         State({"type": "m-act-on", "mid": ALL}, "value"),
         State({"type": "m-act-off", "mid": ALL}, "value"),
+        State({"type": "m-ready-entity", "mid": ALL}, "value"),
+        State({"type": "m-ready-timeout", "mid": ALL}, "value"),
         prevent_initial_call=True
     )
-    def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals, ths_vals, pkw_vals, reqcool_vals, act_on_vals, act_off_vals):
+    def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals, ths_vals, pkw_vals,
+                    reqcool_vals, act_on_vals, act_off_vals, ready_vals, rto_vals):
         # Welcher Save-Button hat ausgelöst?
         trg = callback_context.triggered_id
         if not trg:
@@ -502,17 +613,21 @@ def register_callbacks(app):
         ths = _num(ths_vals[idx] if idx < len(ths_vals) else 0.0, 0.0)
         pkw = _num(pkw_vals[idx] if idx < len(pkw_vals) else 0.0, 0.0)
 
+        ready_ent = (ready_vals[idx] if idx < len(ready_vals) else None) or ""
+        ready_to = int((rto_vals[idx] if idx < len(rto_vals) else 60) or 60)
+
         # Speichern
-        update_miner(mid,
-                     name=name or "",
-                     enabled=enable,
-                     mode=mode,
-                     on=on,
-                     hashrate_ths=ths,
-                     power_kw=pkw,
-                     require_cooling=reqc,
-                     action_on_entity=act_on,
-                     action_off_entity=act_off)
+        try:
+            update_miner(mid,
+                         name=name or "", enabled=enable, mode=mode, on=on,
+                         hashrate_ths=ths, power_kw=pkw, require_cooling=reqc,
+                         action_on_entity=act_on, action_off_entity=act_off,
+                         ready_entity=ready_ent, ready_timeout_s=ready_to)
+        except TypeError:
+            update_miner(mid,
+                         name=name or "", enabled=enable, mode=mode, on=on,
+                         hashrate_ths=ths, power_kw=pkw, require_cooling=reqc,
+                         action_on_entity=act_on, action_off_entity=act_off)
 
         # Liste neu laden
         return list_miners()
@@ -668,7 +783,6 @@ def register_callbacks(app):
     from services.miners_store import list_miners
 
     @app.callback(
-        Output("cool-on", "disabled"),
         Output("cool-on", "style"),
         Output("cool-on", "value"),  # ggf. automatisch auf ["on"] zurücksetzen
         Output("cool-lock-note", "children"),
@@ -687,7 +801,6 @@ def register_callbacks(app):
 
         locked = mode_auto or active_required
         style = {"opacity": 0.6, "pointerEvents": "none"} if locked else {}
-
         # Wenn gesperrt und aktuell "off", sofort visuell und logisch auf "on" zurücksetzen
         value_out = ["on"] if (locked and (cur_on != ["on"])) else no_update
 
@@ -697,7 +810,7 @@ def register_callbacks(app):
         elif mode_auto:
             note = "Cooling is in Auto mode and cannot be switched off manually here."
 
-        return locked, style, value_out, note
+        return style, value_out, note
 
     @app.callback(
         Output("cool-kpi", "children"),
@@ -707,9 +820,11 @@ def register_callbacks(app):
         State("cool-pwr", "value"),
         State("cool-act-on", "value"),
         State("cool-act-off", "value"),
+        State("cool-ready-entity", "value"),
+        State("cool-ready-timeout", "value"),
         prevent_initial_call=True
     )
-    def _cool_save(n, mode_val, on_val, pkw, act_on, act_off):
+    def _cool_save(n, mode_val, on_val, pkw, act_on, act_off, ready_ent, ready_to):
         if not n:
             raise dash.exceptions.PreventUpdate
 
@@ -724,15 +839,27 @@ def register_callbacks(app):
         # Wenn gesperrt -> ON erzwingen, egal was im UI steht
         force_on = mode_auto or active_required
 
-        set_cooling(
-            enabled=True,  # Enabled ist bei dir ohnehin read-only immer ON
-            mode=("auto" if mode_auto else "manual"),
-            on=(True if force_on else bool(on_val and "on" in on_val)),
-            power_kw=float(pkw or 0.0),
-            action_on_entity=(act_on or ""),
-            action_off_entity=(act_off or "")
-        )
-
+        try:
+            set_cooling(
+                enabled=True,
+                mode=("auto" if mode_auto else "manual"),
+                on=(True if force_on else bool(on_val and "on" in on_val)),
+                power_kw=float(pkw or 0.0),
+                action_on_entity=(act_on or ""),
+                action_off_entity=(act_off or ""),
+                ready_entity=(ready_ent or ""),
+                ready_timeout_s=int(ready_to or 60),
+            )
+        except TypeError:
+            # alte Signatur – ohne Ready/Timeout speichern
+            set_cooling(
+                enabled=True,
+                mode=("auto" if mode_auto else "manual"),
+                on=(True if force_on else bool(on_val and "on" in on_val)),
+                power_kw=float(pkw or 0.0),
+                action_on_entity=(act_on or ""),
+                action_off_entity=(act_off or "")
+            )
         return _cool_kpi_render(float(pkw or 0.0))
 
     @app.callback(
