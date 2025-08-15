@@ -1,0 +1,16 @@
+.prio-item{
+  font-size: 16px;
+  line-height: 1.35;
+  padding: 8px 10px;
+  margin: 6px 0;
+  background: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  cursor: grab;
+}
+.prio-item:active { cursor: grabbing; }
+.prio-item.dragging { opacity: .6; }
+.prio-item.dragover { background:#f0f0f0; border-color:#bbb; }
