@@ -49,6 +49,8 @@ def add_miner(name: str = "") -> dict:
         "hashrate_ths": 100.0,
         "power_kw": 3.0,
         "require_cooling": False,
+        "action_on_entity": "",
+        "action_off_entity": "",
         "created_at": int(time.time()),
     }
     miners.append(item)

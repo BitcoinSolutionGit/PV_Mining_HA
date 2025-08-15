@@ -12,6 +12,8 @@ _DEFAULT = {
     "mode": "manual",  # "manual" | "auto"
     "on": False,
     "power_kw": 0.5,
+    "action_on_entity": "",
+    "action_off_entity": "",
     "created_at": int(time.time()),
 }
 

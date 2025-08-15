@@ -13,9 +13,9 @@ from services.license import is_premium_enabled
 from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 from services.cooling_store import get_cooling, set_cooling
+from services.ha_entities import list_actions
 
 
-import os
 CONFIG_DIR = "/config/pv_mining_addon"
 SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
 SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
@@ -63,28 +63,69 @@ def _pv_cost_per_kwh():
         tarif = _num(set_get("feedin_price_value", 0.0), 0.0)
     return max(tarif - fee_up, 0.0)  # nicht negativ
 
-def _cool_card(c: dict, sym: str):
+def _cool_card(c: dict, sym: str, ha_actions: list[dict]):
     return html.Div([
         html.Div([ html.Strong(c.get("name","Cooling circuit")) ],
                  style={"display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"6px"}),
 
+        # Erste Zeile: Enabled (read only), Mode, Power (on/off)
         html.Div([
             html.Div([ html.Label("Enabled"),
-                dcc.Checklist(id="cool-enabled", options=[{"label":" on","value":"on", "disabled": True}],
-                              value=["on"], inputStyle={"cursor": "not-allowed"},
-                              style={"opacity": 0.7},
-                              persistence=True, persistence_type="memory"
-                              ) ], style={"opacity": 0.7, "pointerEvents": "none"}),
-            html.Div([ html.Label("Mode (auto)"),
-                dcc.Checklist(id="cool-mode", options=[{"label":" on","value":"auto"}],
-                              value=(["auto"] if c.get("mode","manual")=="auto" else []),
-                              persistence=True, persistence_type="memory") ], style={"flex":"1","marginLeft":"10px"}),
-            html.Div([ html.Label("Power (on/off)"),
-                dcc.Checklist(id="cool-on", options=[{"label":" on","value":"on"}],
-                              value=(["on"] if c.get("on", False) else []),
-                              persistence=True, persistence_type="memory") ], style={"flex":"1","marginLeft":"10px"}),
-        ], style={"display":"flex","gap":"10px","marginTop":"6px"}),
+                dcc.Checklist(
+                    id="cool-enabled",
+                    options=[{"label":" on","value":"on","disabled":True}],
+                    value=["on"],
+                    inputStyle={"cursor": "not-allowed"},
+                    style={"opacity": 0.7},
+                    persistence=True, persistence_type="memory"
+                )
+            ], style={"opacity": 0.7, "pointerEvents": "none"}),
 
+            html.Div([ html.Label("Mode (auto)"),
+                dcc.Checklist(
+                    id="cool-mode",
+                    options=[{"label":" on","value":"auto"}],
+                    value=(["auto"] if c.get("mode","manual")=="auto" else []),
+                    persistence=True, persistence_type="memory"
+                )
+            ], style={"flex":"1","marginLeft":"10px"}),
+
+            html.Div([ html.Label("Power (on/off)"),
+                dcc.Checklist(
+                    id="cool-on",
+                    options=[{"label":" on","value":"on"}],
+                    value=(["on"] if c.get("on", False) else []),
+                    persistence=True, persistence_type="memory"
+                )
+            ], style={"flex":"1","marginLeft":"10px"}),
+        ], style={"display":"flex","gap":"10px","marginTop":"6px","flexWrap":"wrap"}),
+
+        # Zweite Zeile: Aktionen (Script/Switch)
+        html.Div([
+            html.Div([
+                html.Label("Power ON action"),
+                dcc.Dropdown(
+                    id="cool-act-on",
+                    options=ha_actions,
+                    value=c.get("action_on_entity", "") or None,
+                    placeholder="Select script or switch…",
+                    persistence=True, persistence_type="memory"
+                )
+            ], style={"flex": "1", "minWidth":"240px"}),
+
+            html.Div([
+                html.Label("Power OFF action"),
+                dcc.Dropdown(
+                    id="cool-act-off",
+                    options=ha_actions,
+                    value=c.get("action_off_entity", "") or None,
+                    placeholder="Select script or switch…",
+                    persistence=True, persistence_type="memory"
+                )
+            ], style={"flex": "1", "minWidth":"240px","marginLeft": "10px"}),
+        ], style={"display":"flex","gap":"10px","marginTop":"8px","flexWrap":"wrap"}),
+
+        # Leistung
         html.Div([
             html.Div([ html.Label("Cooling power (kW)"),
                 dcc.Input(id="cool-pwr", type="number", step=0.01,
@@ -96,11 +137,11 @@ def _cool_card(c: dict, sym: str):
         html.Div(id="cool-kpi", style={"marginTop":"8px", "fontWeight":"bold"}),
 
         html.Button("Save", id="cool-save", className="custom-tab", style={"marginTop":"8px"}),
-        html.Span("  (Cooling must run, before Miner switches on)", style={"marginLeft":"8px","opacity":0.7}),
+        html.Span("  (Cooling must run before any miner switches on)", style={"marginLeft":"8px","opacity":0.7}),
 
         html.Div(id="cool-lock-note", style={"marginTop": "6px", "opacity": 0.75})
-
     ], style={"border":"2px solid #888","borderRadius":"8px","padding":"10px","background":"#fafafa"})
+
 
 def _miner_card_style(idx: int) -> dict:
     base = {"borderRadius": "8px", "padding": "10px", "background": "#fafafa"}
@@ -127,10 +168,10 @@ def layout():
     sat_th_h = sats_per_th_per_hour(reward, net_ths)
 
     sym = currency_symbol()
+    ha_actions = list_actions()
 
     cooling_feature = bool(set_get("cooling_feature_enabled", False))
     cooling = get_cooling() if cooling_feature else None
-
 
     return html.Div([
         html.H2("Miners"),
@@ -166,7 +207,7 @@ def layout():
             html.Span(id="miners-add-status", style={"marginLeft":"10px","color":"#e74c3c"})
         ], style={"margin":"10px 0"}),
 
-        (_cool_card(cooling, sym) if cooling_feature else html.Div()),
+        (_cool_card(cooling, sym, ha_actions) if cooling_feature else html.Div()),
         (html.Hr() if cooling_feature else html.Div()),
 
         dcc.Store(id="miners-data"),  # hält aktuelle Liste
@@ -184,7 +225,7 @@ def layout():
     ])
 
 # ---------- render helpers ----------
-def _miner_card(m: dict, idx: int, premium_on: bool, sym: str):
+def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[dict]):
     mid = m["id"]
     is_free = (idx == 0)  # erster Miner gratis
     frame_style = {} if is_free else {"border":"2px solid #27ae60","borderRadius":"8px","padding":"10px"}
@@ -245,6 +286,29 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str):
             ], style={"flex":"1","marginLeft":"10px"}),
         ], style={"display":"flex","gap":"10px","marginTop":"8px"}),
 
+        html.Div([
+            html.Div([
+                html.Label("Power ON action"),
+                dcc.Dropdown(
+                    id={"type": "m-act-on", "mid": m["id"]},
+                    options=ha_actions,
+                    value=m.get("action_on_entity", "") or None,
+                    placeholder="Select script or switch…",
+                    persistence=True, persistence_type="memory"
+                )
+            ], style={"flex": "1"}),
+            html.Div([
+                html.Label("Power OFF action"),
+                dcc.Dropdown(
+                    id={"type": "m-act-off", "mid": m["id"]},
+                    options=ha_actions,
+                    value=m.get("action_off_entity", "") or None,
+                    placeholder="Select script or switch…",
+                    persistence=True, persistence_type="memory"
+                )
+            ], style={"flex": "1", "marginLeft": "10px"}),
+        ], style={"display": "flex", "gap": "10px", "marginTop": "8px"}),
+
         html.Hr(),
 
         # live KPIs
@@ -276,7 +340,11 @@ def register_callbacks(app):
     def _render(miners):
         prem = is_premium_enabled()
         miners = miners or []
-        return [_miner_card(m, i, prem, sym) for i, m in enumerate(miners)]
+        try:
+            ha_actions = list_actions()  # <- HIER holen (scripts + switches)
+        except Exception:
+            ha_actions = []
+        return [_miner_card(m, i, prem, sym, ha_actions) for i, m in enumerate(miners)]
 
     # 2) Global settings speichern
     @app.callback(
@@ -359,6 +427,8 @@ def register_callbacks(app):
         Output({"type": "m-name", "mid": MATCH}, "disabled"),
         Output({"type": "m-hash", "mid": MATCH}, "disabled"),
         Output({"type": "m-pwr", "mid": MATCH}, "disabled"),
+        Output({"type": "m-act-on", "mid": MATCH}, "disabled"),
+        Output({"type": "m-act-off", "mid": MATCH}, "disabled"),
         Input({"type": "m-enabled", "mid": MATCH}, "value"),
         Input({"type": "m-mode", "mid": MATCH}, "value"),
         Input({"type": "m-reqcool", "mid": MATCH}, "value"),
@@ -381,7 +451,7 @@ def register_callbacks(app):
         inputs_disabled = not enabled
         opts = [{"label": " on", "value": "auto"}]
         val = ["auto"] if mode_auto else []
-        return opts, val, lock_on, on_style, inputs_disabled, inputs_disabled, inputs_disabled
+        return opts, val, lock_on, on_style, inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled
 
     # 8) Save pro Miner (ALL statt MATCH)
 
@@ -389,7 +459,7 @@ def register_callbacks(app):
     @app.callback(
         Output("miners-data", "data", allow_duplicate=True),
         Input({"type": "m-save", "mid": ALL}, "n_clicks"),
-        State({"type": "m-save", "mid": ALL}, "id"),  # zum Zuordnen (gleiche Reihenfolge!)
+        State({"type": "m-save", "mid": ALL}, "id"),
         State({"type": "m-name", "mid": ALL}, "value"),
         State({"type": "m-enabled", "mid": ALL}, "value"),
         State({"type": "m-mode", "mid": ALL}, "value"),
@@ -397,9 +467,11 @@ def register_callbacks(app):
         State({"type": "m-hash", "mid": ALL}, "value"),
         State({"type": "m-pwr", "mid": ALL}, "value"),
         State({"type": "m-reqcool", "mid": ALL}, "value"),
+        State({"type": "m-act-on", "mid": ALL}, "value"),
+        State({"type": "m-act-off", "mid": ALL}, "value"),
         prevent_initial_call=True
     )
-    def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals, ths_vals, pkw_vals, reqcool_vals):
+    def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals, ths_vals, pkw_vals, reqcool_vals, act_on_vals, act_off_vals):
         # Welcher Save-Button hat ausgelöst?
         trg = callback_context.triggered_id
         if not trg:
@@ -418,6 +490,8 @@ def register_callbacks(app):
         mode = "auto" if (idx < len(mode_vals) and mode_vals[idx] and "auto" in mode_vals[idx]) else "manual"
         on = bool(on_vals[idx] and "on" in on_vals[idx]) if idx < len(on_vals) else False
         reqc = bool(reqcool_vals[idx] and "on" in reqcool_vals[idx]) if idx < len(reqcool_vals) else False
+        act_on = (act_on_vals[idx] if idx < len(act_on_vals) else None) or ""
+        act_off = (act_off_vals[idx] if idx < len(act_off_vals) else None) or ""
 
         def _num(x, d=0.0):
             try:
@@ -436,7 +510,9 @@ def register_callbacks(app):
                      on=on,
                      hashrate_ths=ths,
                      power_kw=pkw,
-                     require_cooling=reqc)
+                     require_cooling=reqc,
+                     action_on_entity=act_on,
+                     action_off_entity=act_off)
 
         # Liste neu laden
         return list_miners()
@@ -534,16 +610,22 @@ def register_callbacks(app):
 
         sat_txt = f"SAT/h: {_fmt_int(sats_per_h)}"
         mix_txt = f"Cost at PV {pv_share * 100:.0f}% / Grid {grid_share * 100:.0f}%"
-        eur_txt = html.Span([
+        parts = [
             f"Revenue: {_money(after_tax)} {currency_symbol()}/h",
             html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
-            f"{mix_txt}"
-            f": {_money(cost_eur_h)} {currency_symbol()}/h",
-            html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
-            f"  (+ Cooling-Anteil: {_money(cool_share)} {currency_symbol()}/h)" if cool_share > 0 else "" ")",
+            f"Cost at PV {pv_share * 100:.0f}% / Grid {grid_share * 100:.0f}%: {_money(cost_eur_h)} {currency_symbol()}/h",
+        ]
+        if cool_share > 0:
+            parts += [
+                html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
+                f"(+ Cooling share: {_money(cool_share)} {currency_symbol()}/h)",
+            ]
+        parts += [
             html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
             f"Δ = {_money(profit)} {currency_symbol()}/h",
-        ])
+        ]
+        eur_txt = html.Span(parts)
+
         # eur_txt = f"Einnahmen: {_money(after_tax)} € /h  |  Kosten: {_money(cost_eur_h)} € /h  |  Δ = {_money(profit)} € /h"
         prof_txt = html.Span([_dot("#27ae60" if profitable else "#e74c3c"),
                               "profitable" if profitable else "not profitable"])
@@ -591,9 +673,11 @@ def register_callbacks(app):
         State("cool-mode", "value"),
         State("cool-on", "value"),
         State("cool-pwr", "value"),
+        State("cool-act-on", "value"),
+        State("cool-act-off", "value"),
         prevent_initial_call=True
     )
-    def _cool_save(n, mode_val, on_val, pkw):
+    def _cool_save(n, mode_val, on_val, pkw, act_on, act_off):
         if not n:
             raise dash.exceptions.PreventUpdate
 
@@ -612,7 +696,9 @@ def register_callbacks(app):
             enabled=True,  # Enabled ist bei dir ohnehin read-only immer ON
             mode=("auto" if mode_auto else "manual"),
             on=(True if force_on else bool(on_val and "on" in on_val)),
-            power_kw=float(pkw or 0.0)
+            power_kw=float(pkw or 0.0),
+            action_on_entity=(act_on or ""),
+            action_off_entity=(act_off or "")
         )
 
         return _cool_kpi_render(float(pkw or 0.0))
