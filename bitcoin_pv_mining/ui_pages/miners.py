@@ -72,9 +72,9 @@ def _cool_card(c: dict, sym: str):
             html.Div([ html.Label("Enabled"),
                 dcc.Checklist(id="cool-enabled", options=[{"label":" on","value":"on", "disabled": True}],
                               value=["on"], inputStyle={"cursor": "not-allowed"},
-                              style={"opacity": 0.6},
+                              style={"opacity": 0.7},
                               persistence=True, persistence_type="memory"
-                              ) ], style={"opacity": 0.6, "pointerEvents": "none"}),
+                              ) ], style={"opacity": 0.7, "pointerEvents": "none"}),
             html.Div([ html.Label("Mode (auto)"),
                 dcc.Checklist(id="cool-mode", options=[{"label":" on","value":"auto"}],
                               value=(["auto"] if c.get("mode","manual")=="auto" else []),
@@ -96,7 +96,10 @@ def _cool_card(c: dict, sym: str):
         html.Div(id="cool-kpi", style={"marginTop":"8px", "fontWeight":"bold"}),
 
         html.Button("Save", id="cool-save", className="custom-tab", style={"marginTop":"8px"}),
-        html.Span("  (Cooling must run, before Miner switches on)", style={"marginLeft":"8px","opacity":0.7})
+        html.Span("  (Cooling must run, before Miner switches on)", style={"marginLeft":"8px","opacity":0.7}),
+
+        html.Div(id="cool-lock-note", style={"marginTop": "6px", "opacity": 0.75})
+
     ], style={"border":"2px solid #888","borderRadius":"8px","padding":"10px","background":"#fafafa"})
 
 def _miner_card_style(idx: int) -> dict:
@@ -547,36 +550,71 @@ def register_callbacks(app):
         return sat_txt, eur_txt, prof_txt
 
     # 10) KPI-Renderer + Cooling-Callbacks
+    from dash import no_update
+    from services.miners_store import list_miners
+
     @app.callback(
         Output("cool-on", "disabled"),
         Output("cool-on", "style"),
-        Input("cool-enabled", "value"),
+        Output("cool-on", "value"),  # ggf. automatisch auf ["on"] zurücksetzen
+        Output("cool-lock-note", "children"),
         Input("cool-mode", "value"),
+        Input("miners-refresh", "n_intervals"),  # regelmäßig prüfen
+        State("cool-on", "value"),
     )
-    def _cool_disable(enabled_val, mode_val):
-        enabled = bool(enabled_val and "on" in enabled_val)
-        auto    = bool(mode_val and "auto" in mode_val)
-        locked  = (not enabled) or auto
-        style   = {"opacity": 0.6, "pointerEvents": "none"} if locked else {}
-        return locked, style
+    def _cool_disable(mode_val, _tick, cur_on):
+        mode_auto = bool(mode_val and "auto" in mode_val)
+
+        # Läuft irgendein Miner, der Cooling benötigt?
+        active_required = any(
+            m.get("enabled") and m.get("on") and m.get("require_cooling")
+            for m in list_miners()
+        )
+
+        locked = mode_auto or active_required
+        style = {"opacity": 0.6, "pointerEvents": "none"} if locked else {}
+
+        # Wenn gesperrt und aktuell "off", sofort visuell und logisch auf "on" zurücksetzen
+        value_out = ["on"] if (locked and (cur_on != ["on"])) else no_update
+
+        note = ""
+        if active_required:
+            note = "Cooling cannot be turned off while miners with 'Cooling required' are running."
+        elif mode_auto:
+            note = "Cooling is in Auto mode and cannot be switched off manually here."
+
+        return locked, style, value_out, note
 
     @app.callback(
         Output("cool-kpi", "children"),
         Input("cool-save", "n_clicks"),
-        State("cool-enabled","value"),
-        State("cool-mode","value"),
-        State("cool-on","value"),
-        State("cool-pwr","value"),
+        State("cool-mode", "value"),
+        State("cool-on", "value"),
+        State("cool-pwr", "value"),
         prevent_initial_call=True
     )
-    def _cool_save(n, en_val, mode_val, on_val, pkw):
-        if not n: raise dash.exceptions.PreventUpdate
+    def _cool_save(n, mode_val, on_val, pkw):
+        if not n:
+            raise dash.exceptions.PreventUpdate
+
+        mode_auto = bool(mode_val and "auto" in mode_val)
+
+        # Läuft irgendein cooling-pflichtiger Miner?
+        active_required = any(
+            m.get("enabled") and m.get("on") and m.get("require_cooling")
+            for m in list_miners()
+        )
+
+        # Wenn gesperrt -> ON erzwingen, egal was im UI steht
+        force_on = mode_auto or active_required
+
         set_cooling(
-            enabled=True,
-            mode=("auto" if (mode_val and "auto" in mode_val) else "manual"),
-            on=bool(on_val and "on" in on_val),
+            enabled=True,  # Enabled ist bei dir ohnehin read-only immer ON
+            mode=("auto" if mode_auto else "manual"),
+            on=(True if force_on else bool(on_val and "on" in on_val)),
             power_kw=float(pkw or 0.0)
         )
+
         return _cool_kpi_render(float(pkw or 0.0))
 
     @app.callback(

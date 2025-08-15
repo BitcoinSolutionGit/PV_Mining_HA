@@ -40,32 +40,32 @@ def layout():
             html.Legend("Cooling Circuit"),
             dcc.Checklist(
                 id="set-cooling-enabled",
-                options=[{"label": " Cooling circuit feature aktiv", "value": "on"}],
+                options=[{"label": " Cooling circuit feature activ", "value": "on"}],
                 value=(["on"] if cooling_enabled else []),
             ),
-            html.Div("Wenn aktiv, erscheint im Miners-Tab ein Cooling-Block. "
-                     "Miner mit „Cooling required“ dürfen nur einschalten, wenn Cooling läuft.",
+            html.Div("If enabled, a Cooling block appears in the Miners tab. "
+                     "Miners with 'Cooling required' can only be turned on when Cooling is running.",
                      style={"opacity": 0.8, "marginTop": "6px"})
         ], style={"border": "1px solid #ccc", "borderRadius": "8px", "padding": "10px", "marginBottom": "14px"}),
 
         html.Fieldset([
-            html.Legend("PV-Kosten-Modell"),
+            html.Legend("PV-cost-model"),
             dcc.RadioItems(
                 id="set-pv-policy",
                 options=[
                     {"label": " PV = 0 €/kWh", "value": "zero"},
-                    {"label": " PV = Einspeisetarif − Netzgebühr (up)", "value": "feedin"},
+                    {"label": " PV = Feed-in tariff − network-fee (up)", "value": "feedin"},
                 ],
                 value=policy,
                 labelStyle={"display":"block", "marginBottom":"6px"}
             ),
 
             html.Div([
-                html.Label("Quelle Einspeisetarif"),
+                html.Label("Source for Feed-in tariff"),
                 dcc.RadioItems(
                     id="set-feedin-mode",
                     options=[
-                        {"label":" Fixwert", "value":"fixed"},
+                        {"label":" fixed Value", "value":"fixed"},
                         {"label":" Sensor",  "value":"sensor"},
                     ],
                     value=mode,
@@ -74,23 +74,23 @@ def layout():
             ], id="row-feed-mode", style={"marginTop":"6px", "display": ("block" if policy=="feedin" else "none")}),
 
             html.Div([
-                html.Label("Einspeisetarif (€/kWh)"),
+                html.Label("Feed-in tariff (€/kWh)"),
                 dcc.Input(id="set-feedin-value", type="number", step=0.000001, value=fi_val, style={"width":"220px"}),
             ], id="row-feed-fixed", style={"marginTop":"6px", "display": ("block" if (policy=="feedin" and mode=="fixed") else "none")}),
 
             html.Div([
-                html.Label("Einspeisetarif-Sensor"),
-                dcc.Dropdown(id="set-feedin-sensor", options=sensors, value=fi_sens or None, placeholder="Sensor wählen..."),
+                html.Label("Feed-in tariff-Sensor"),
+                dcc.Dropdown(id="set-feedin-sensor", options=sensors, value=fi_sens or None, placeholder="select Sensor..."),
             ], id="row-feed-sensor", style={"marginTop":"6px", "display": ("block" if (policy=="feedin" and mode=="sensor") else "none")}),
 
             html.Div(id="set-pv-effective", style={"marginTop":"8px", "fontWeight":"bold", "opacity":0.9},
-                     children=f"Aktuell angenommene PV-Kosten: {eff_pv_cost:.4f} €/kWh"),
+                     children=f"current assumed PV-costs: {eff_pv_cost:.4f} €/kWh"),
         ], style={"border":"1px solid #ccc", "borderRadius":"8px", "padding":"10px", "marginBottom":"14px"}),
 
         html.Fieldset([
-            html.Legend("Bitcoin-Ökonomie"),
+            html.Legend("Bitcoin-economics"),
             html.Div([
-                html.Label("BTC-Preis-Währung"),
+                html.Label("BTC-Price-Currency"),
                 dcc.Dropdown(
                     id="set-btc-currency",
                     options=[{"label":"EUR", "value":"EUR"}, {"label":"USD", "value":"USD"}],
@@ -103,7 +103,7 @@ def layout():
                 dcc.Input(id="set-reward", type="number", step=0.0001, value=reward, style={"width":"120px"}),
 
                 html.Span("  "),
-                html.Label("Steuer KEST %", style={"marginLeft":"16px"}),
+                html.Label("Tax rate %", style={"marginLeft":"16px"}),
                 dcc.Input(id="set-tax", type="number", step=0.1, value=tax_pct, style={"width":"100px"}),
             ], style={"display":"flex","flexWrap":"wrap","gap":"10px","alignItems":"center"})
         ], style={"border":"1px solid #ccc", "borderRadius":"8px", "padding":"10px"}),
@@ -144,7 +144,7 @@ def register_callbacks(app):
             eff   = max(tarif - fee_up, 0.0)
         else:
             eff = 0.0
-        return f"Aktuell angenommene PV-Kosten: {eff:.4f} €/kWh"
+        return f"Currently assumed PV-Costs: {eff:.4f} €/kWh"
 
     # FX-Text (nur Info)
     @app.callback(
