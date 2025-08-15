@@ -222,20 +222,23 @@ def register_callbacks(app):
 
         # Figure
         fig = go.Figure(data=[go.Sankey(
+            valueformat=".3f",  # <<< HIERHER
+            valuesuffix=" kW",  # <<< UND HIER
             node=dict(
                 label=node_labels,
                 pad=30,
                 thickness=25,
                 line=dict(color="black", width=0.5),
                 color=node_colors,
+                # x=node_x if all(v is not None for v in node_x) else None,
+                # y=node_y if all(v is not None for v in node_y) else None,
             ),
             link=dict(
                 source=link_source,
                 target=link_target,
                 value=link_value,
-                color=link_color,
-                valueformat=".3f",  # <<< keine SI-Präfixe mehr (keine „m“)
-                valuesuffix=" kW"
+                color=link_color
+                # KEIN valueformat/valuesuffix hier
             )
         )])
 
