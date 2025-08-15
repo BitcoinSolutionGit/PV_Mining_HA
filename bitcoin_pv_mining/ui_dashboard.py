@@ -140,7 +140,7 @@ def register_callbacks(app):
             elif SHOW_INACTIVE_REMINDERS:
                 miner_entries.append({"name": name, "kw": GHOST_KW, "color": COLORS["inactive"], "ghost": True})
 
-        # ---- Weitere Lasten (Heater/Wallbox/Battery) ----
+        # ---- Weitere Lasten ----
         heater_kw = _heater_power_kw()
         wallbox_kw = _wallbox_power_kw()
         battery_kw = _battery_power_kw()
@@ -161,14 +161,16 @@ def register_callbacks(app):
         )
         house_kw = max(inflow - known_real, 0.0)
 
-        # ---- Node/Link-Builder ----
-        node_labels, node_colors = [], []
+        # ---- Node/Link-Builder mit festen Positionen ----
+        node_labels, node_colors, node_x, node_y = [], [], [], []
         link_source, link_target, link_value, link_color = [], [], [], []
 
-        def add_node(label, color):
+        def add_node(label, color, x=None, y=None):
             idx = len(node_labels)
             node_labels.append(label)
             node_colors.append(color)
+            node_x.append(x if x is not None else 0.9)  # Standard rechts
+            node_y.append(y if y is not None else 0.5)
             return idx
 
         def add_link(s, t, v, color):
@@ -177,23 +179,62 @@ def register_callbacks(app):
             link_value.append(max(float(v or 0.0), 0.0))
             link_color.append(color)
 
-        # Inflow
+        # Konstanten für Spalten
+        X_INFLOW = 0.05
+        X_OUTPUT = 0.90
+
+        # Inflow links zentriert
         inflow_idx = add_node(
             f"Energy Inflow<br>{_fmt_kw(inflow)}<br>PV: {pv_pct}% · Grid: {grid_pct}%",
-            COLORS["inflow"]
+            COLORS["inflow"], x=X_INFLOW, y=0.5
         )
 
-        # Miner
-        for me in miner_entries:
-            idx = add_node(f"{me['name']}<br>{_fmt_kw(me['kw'])}", me["color"])
-            add_link(inflow_idx, idx, me["kw"], me["color"])
+        # Rechts: Ziel-Positionen (y) festlegen
+        y_feed = 0.05
+        y_cool = 0.18
+        y_miners_start, y_miners_end = 0.30, 0.62  # Bereich für Miner (oberhalb der restlichen Verbraucher)
+        y_heater = 0.70
+        y_wallbox = 0.80
+        y_battery = 0.90
+        y_house = 0.50
+
+        # Grid Feed-in
+        feed_is_active = feed_val > 0.0
+        feed_kw_eff = feed_val if feed_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
+        if feed_is_active or SHOW_INACTIVE_REMINDERS:
+            feed_color = COLORS["grid_feed"] if feed_is_active else COLORS["inactive"]
+            feed_idx = add_node(f"Grid Feed-in<br>{_fmt_kw(feed_val)}", feed_color, x=X_OUTPUT, y=y_feed)
+            add_link(inflow_idx, feed_idx, feed_kw_eff, feed_color)
+
+        # Cooling (falls Feature aktiv) – **oberhalb der Miner**
+        if cooling_feature:
+            cooling_is_active = cooling_kw > 0.0
+            cooling_kw_eff = cooling_kw if cooling_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
+            if cooling_is_active or SHOW_INACTIVE_REMINDERS:
+                cooling_color = COLORS["cooling"] if cooling_is_active else COLORS["inactive"]
+                cooling_idx = add_node(f"Cooling circuit<br>{_fmt_kw(cooling_kw)}", cooling_color, x=X_OUTPUT, y=y_cool)
+                add_link(inflow_idx, cooling_idx, cooling_kw_eff, cooling_color)
+
+        # Miner – im reservierten Band unter Cooling
+        n_miners = len(miner_entries)
+        if n_miners > 0:
+            # Schritt so wählen, dass alles zwischen start & end bleibt
+            if n_miners == 1:
+                positions = [(y_miners_start + y_miners_end) / 2.0]
+            else:
+                span = max(0.0, y_miners_end - y_miners_start)
+                step = span / (n_miners - 1)
+                positions = [y_miners_start + i * step for i in range(n_miners)]
+            for (me, y_pos) in zip(miner_entries, positions):
+                idx = add_node(f"{me['name']}<br>{_fmt_kw(me['kw'])}", me["color"], x=X_OUTPUT, y=y_pos)
+                add_link(inflow_idx, idx, me["kw"], me["color"])
 
         # Heater
         heater_is_active = heater_kw > 0.0
         heater_kw_eff = heater_kw if heater_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
         if heater_is_active or SHOW_INACTIVE_REMINDERS:
             heater_color = COLORS["heater"] if heater_is_active else COLORS["inactive"]
-            heater_idx = add_node(f"Water Heater<br>{_fmt_kw(heater_kw)}", heater_color)
+            heater_idx = add_node(f"Water Heater<br>{_fmt_kw(heater_kw)}", heater_color, x=X_OUTPUT, y=y_heater)
             add_link(inflow_idx, heater_idx, heater_kw_eff, heater_color)
 
         # Wallbox
@@ -201,7 +242,7 @@ def register_callbacks(app):
         wallbox_kw_eff = wallbox_kw if wallbox_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
         if wallbox_is_active or SHOW_INACTIVE_REMINDERS:
             wallbox_color = COLORS["wallbox"] if wallbox_is_active else COLORS["inactive"]
-            wallbox_idx = add_node(f"Wallbox<br>{_fmt_kw(wallbox_kw)}", wallbox_color)
+            wallbox_idx = add_node(f"Wallbox<br>{_fmt_kw(wallbox_kw)}", wallbox_color, x=X_OUTPUT, y=y_wallbox)
             add_link(inflow_idx, wallbox_idx, wallbox_kw_eff, wallbox_color)
 
         # Battery
@@ -209,28 +250,11 @@ def register_callbacks(app):
         battery_kw_eff = battery_kw if battery_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
         if battery_is_active or SHOW_INACTIVE_REMINDERS:
             battery_color = COLORS["battery"] if battery_is_active else COLORS["inactive"]
-            battery_idx = add_node(f"Battery<br>{_fmt_kw(battery_kw)}", battery_color)
+            battery_idx = add_node(f"Battery<br>{_fmt_kw(battery_kw)}", battery_color, x=X_OUTPUT, y=y_battery)
             add_link(inflow_idx, battery_idx, battery_kw_eff, battery_color)
 
-        # Grid Feed-in
-        feed_is_active = feed_val > 0.0
-        feed_kw_eff = feed_val if feed_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
-        if feed_is_active or SHOW_INACTIVE_REMINDERS:
-            feed_color = COLORS["grid_feed"] if feed_is_active else COLORS["inactive"]
-            feed_idx = add_node(f"Grid Feed-in<br>{_fmt_kw(feed_val)}", feed_color)
-            add_link(inflow_idx, feed_idx, feed_kw_eff, feed_color)
-
-        # Cooling (nur wenn Feature aktiv)
-        if cooling_feature:
-            cooling_is_active = cooling_kw > 0.0
-            cooling_kw_eff = cooling_kw if cooling_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
-            if cooling_is_active or SHOW_INACTIVE_REMINDERS:
-                cooling_color = COLORS["cooling"] if cooling_is_active else COLORS["inactive"]
-                cooling_idx = add_node(f"Cooling circuit<br>{_fmt_kw(cooling_kw)}", cooling_color)
-                add_link(inflow_idx, cooling_idx, cooling_kw_eff, cooling_color)
-
         # House usage (kein Ghost)
-        house_idx = add_node(f"House usage<br>{_fmt_kw(house_kw)}", COLORS["load"])
+        house_idx = add_node(f"House usage<br>{_fmt_kw(house_kw)}", COLORS["load"], x=X_OUTPUT, y=y_house)
         add_link(inflow_idx, house_idx, house_kw, COLORS["load"])
 
         # Figure
@@ -241,7 +265,8 @@ def register_callbacks(app):
                 label=node_labels,
                 pad=30, thickness=25,
                 line=dict(color="black", width=0.5),
-                color=node_colors
+                color=node_colors,
+                x=node_x, y=node_y  # <<< feste Positionen aktivieren
             ),
             link=dict(
                 source=link_source,
