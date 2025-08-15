@@ -11,6 +11,8 @@ from services.utils import load_yaml
 from services.electricity_store import current_price, currency_symbol, price_color
 from services.heater_store import resolve_entity_id as heater_resolve_entity, get_var as heat_get_var
 from services.miners_store import list_miners
+from services.cooling_store import get_cooling
+from services.settings_store import get_var as set_get
 
 
 
@@ -23,12 +25,6 @@ CONFIG_PATH = MAIN_CFG  # für load_config()
 
 SHOW_INACTIVE_REMINDERS = True   # 1W-“Erinnerung” für inaktive Lasten
 GHOST_KW = 0.001                 # 1 Watt in kW
-
-def _fmt_kw(v):
-    try:
-        return f"{float(v):.2f}".replace(".", ",")
-    except Exception:
-        return "–"
 
 def _heater_power_kw():
     try:
@@ -46,8 +42,6 @@ def _wallbox_power_kw():
 def _battery_power_kw():
     # bei dir später aus Store/Sensor – vorerst 0 = inaktiv → Ghost
     return 0.0
-
-
 
 # ------------------------------
 # Sensor-Resolver
@@ -94,6 +88,7 @@ def _fmt_kw(v):
 # ------------------------------
 COLORS = {
     "inflow": "#FFD700",
+    "cooling": "#5DADE2",
     "miners":  "#FF9900",
     "battery": "#8E44AD",
     "heater": "#3399FF",
@@ -127,7 +122,7 @@ def register_callbacks(app):
             pv_pct = round(pv_val / inflow * 100, 1)
             grid_pct = round(grid_val / inflow * 100, 1)
 
-        # ---- dynamische Miner ----
+        # ---- Miner dynamisch ----
         try:
             miners = list_miners()
         except Exception:
@@ -145,43 +140,52 @@ def register_callbacks(app):
             elif SHOW_INACTIVE_REMINDERS:
                 miner_entries.append({"name": name, "kw": GHOST_KW, "color": COLORS["inactive"], "ghost": True})
 
-        # ---- weitere Lasten (Heater/Wallbox/Battery) ----
+        # ---- Weitere Lasten (Heater/Wallbox/Battery) ----
         heater_kw = _heater_power_kw()
         wallbox_kw = _wallbox_power_kw()
         battery_kw = _battery_power_kw()
 
+        # ---- Cooling circuit (nur wenn Feature aktiv) ----
+        cooling_kw = 0.0
+        cooling_feature = bool(set_get("cooling_feature_enabled", False))
+        cooling = get_cooling() if cooling_feature else None
+        if cooling_feature and cooling:
+            cooling_kw = float(cooling.get("power_kw") or 0.0) if bool(cooling.get("on")) else 0.0
+
         # ---- House usage = Rest (ohne Ghosts) ----
-        known_real = sum_active_miners_kw + max(feed_val, 0.0) + heater_kw + wallbox_kw + battery_kw
+        known_real = (
+                sum_active_miners_kw
+                + max(feed_val, 0.0)
+                + heater_kw + wallbox_kw + battery_kw
+                + cooling_kw
+        )
         house_kw = max(inflow - known_real, 0.0)
 
         # ---- Node/Link-Builder ----
-        node_labels, node_colors, node_x, node_y = [], [], [], []
+        node_labels, node_colors = [], []
         link_source, link_target, link_value, link_color = [], [], [], []
 
-        def add_node(label, color, x=None, y=None):
+        def add_node(label, color):
             idx = len(node_labels)
             node_labels.append(label)
             node_colors.append(color)
-            node_x.append(x if x is not None else None)
-            node_y.append(y if y is not None else None)
             return idx
 
         def add_link(s, t, v, color):
-            link_source.append(s);
-            link_target.append(t);
-            link_value.append(max(v, 0.0));
+            link_source.append(s)
+            link_target.append(t)
+            link_value.append(max(float(v or 0.0), 0.0))
             link_color.append(color)
 
         # Inflow
         inflow_idx = add_node(
             f"Energy Inflow<br>{_fmt_kw(inflow)}<br>PV: {pv_pct}% · Grid: {grid_pct}%",
-            COLORS["inflow"], x=0.0, y=0.1
+            COLORS["inflow"]
         )
 
         # Miner
         for me in miner_entries:
-            y_pos = 0.9 if me.get("ghost") else None
-            idx = add_node(f"{me['name']}<br>{_fmt_kw(me['kw'])}", me["color"], x=0.6, y=y_pos)
+            idx = add_node(f"{me['name']}<br>{_fmt_kw(me['kw'])}", me["color"])
             add_link(inflow_idx, idx, me["kw"], me["color"])
 
         # Heater
@@ -189,7 +193,7 @@ def register_callbacks(app):
         heater_kw_eff = heater_kw if heater_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
         if heater_is_active or SHOW_INACTIVE_REMINDERS:
             heater_color = COLORS["heater"] if heater_is_active else COLORS["inactive"]
-            heater_idx = add_node(f"Water Heater<br>{_fmt_kw(heater_kw)}", heater_color, x=0.9, y=0.75)
+            heater_idx = add_node(f"Water Heater<br>{_fmt_kw(heater_kw)}", heater_color)
             add_link(inflow_idx, heater_idx, heater_kw_eff, heater_color)
 
         # Wallbox
@@ -197,7 +201,7 @@ def register_callbacks(app):
         wallbox_kw_eff = wallbox_kw if wallbox_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
         if wallbox_is_active or SHOW_INACTIVE_REMINDERS:
             wallbox_color = COLORS["wallbox"] if wallbox_is_active else COLORS["inactive"]
-            wallbox_idx = add_node(f"Wallbox<br>{_fmt_kw(wallbox_kw)}", wallbox_color, x=0.9, y=0.85)
+            wallbox_idx = add_node(f"Wallbox<br>{_fmt_kw(wallbox_kw)}", wallbox_color)
             add_link(inflow_idx, wallbox_idx, wallbox_kw_eff, wallbox_color)
 
         # Battery
@@ -205,40 +209,45 @@ def register_callbacks(app):
         battery_kw_eff = battery_kw if battery_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
         if battery_is_active or SHOW_INACTIVE_REMINDERS:
             battery_color = COLORS["battery"] if battery_is_active else COLORS["inactive"]
-            battery_idx = add_node(f"Battery<br>{_fmt_kw(battery_kw)}", battery_color, x=0.9, y=0.65)
+            battery_idx = add_node(f"Battery<br>{_fmt_kw(battery_kw)}", battery_color)
             add_link(inflow_idx, battery_idx, battery_kw_eff, battery_color)
 
         # Grid Feed-in
         feed_is_active = feed_val > 0.0
         feed_kw_eff = feed_val if feed_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
         if feed_is_active or SHOW_INACTIVE_REMINDERS:
-            feed_color = "#e74c3c" if feed_is_active else COLORS["inactive"]
-            feed_idx = add_node(f"Grid Feed-in<br>{_fmt_kw(feed_val)}", feed_color, x=0.9, y=0.15)
+            feed_color = COLORS["grid_feed"] if feed_is_active else COLORS["inactive"]
+            feed_idx = add_node(f"Grid Feed-in<br>{_fmt_kw(feed_val)}", feed_color)
             add_link(inflow_idx, feed_idx, feed_kw_eff, feed_color)
 
-        # House usage (kein Ghost nötig)
-        house_idx = add_node(f"House usage<br>{_fmt_kw(house_kw)}", COLORS["load"], x=0.9, y=0.5)
+        # Cooling (nur wenn Feature aktiv)
+        if cooling_feature:
+            cooling_is_active = cooling_kw > 0.0
+            cooling_kw_eff = cooling_kw if cooling_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
+            if cooling_is_active or SHOW_INACTIVE_REMINDERS:
+                cooling_color = COLORS["cooling"] if cooling_is_active else COLORS["inactive"]
+                cooling_idx = add_node(f"Cooling circuit<br>{_fmt_kw(cooling_kw)}", cooling_color)
+                add_link(inflow_idx, cooling_idx, cooling_kw_eff, cooling_color)
+
+        # House usage (kein Ghost)
+        house_idx = add_node(f"House usage<br>{_fmt_kw(house_kw)}", COLORS["load"])
         add_link(inflow_idx, house_idx, house_kw, COLORS["load"])
 
         # Figure
         fig = go.Figure(data=[go.Sankey(
-            valueformat=".3f",  # <<< HIERHER
-            valuesuffix=" kW",  # <<< UND HIER
+            valueformat=".3f",
+            valuesuffix=" kW",
             node=dict(
                 label=node_labels,
-                pad=30,
-                thickness=25,
+                pad=30, thickness=25,
                 line=dict(color="black", width=0.5),
-                color=node_colors,
-                # x=node_x if all(v is not None for v in node_x) else None,
-                # y=node_y if all(v is not None for v in node_y) else None,
+                color=node_colors
             ),
             link=dict(
                 source=link_source,
                 target=link_target,
                 value=link_value,
                 color=link_color
-                # KEIN valueformat/valuesuffix hier
             )
         )])
 
