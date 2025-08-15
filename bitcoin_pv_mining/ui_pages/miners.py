@@ -608,11 +608,20 @@ def register_callbacks(app):
 
         sat_txt = f"SAT/h: {_fmt_int(sats_per_h)}"
 
+        mix_txt = (
+            f"Cost at incremental mix (PV {pv_share_add * 100:.1f}% / "
+            f"Grid {grid_share_add * 100:.1f}%)"
+        )
+        mix_hint = html.Span(
+            f"  [feed-in {feed_val:.2f} kW · ΔP {delta_kw:.2f} kW]",
+            style={"opacity": 0.6, "marginLeft": "6px"}
+        )
+
         parts = [
             f"Revenue: {_money(after_tax)} {currency_symbol()}/h",
             html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
-            f"Cost at PV {pv_share_add * 100:.0f}% / Grid {grid_share_add * 100:.0f}%: "
-            f"{_money(cost_eur_h)} {currency_symbol()}/h",
+            f"{mix_txt}: {_money(cost_eur_h)} {currency_symbol()}/h",
+            mix_hint,
         ]
         if cool_share > 0.0:
             parts += [
