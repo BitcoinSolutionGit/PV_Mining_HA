@@ -27,6 +27,9 @@ def get_var(key: str, default=None):
     return default if v is None else v
 
 def set_vars(**pairs):
+    # Sicherstellen, dass der Ordner existiert:
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+
     ovr = load_yaml(SET_OVR, {}) or {}
     blk = _ensure(ovr, "settings")
     for k, v in pairs.items():

@@ -15,6 +15,7 @@ from services.miners_store import list_miners
 
 CONFIG_DIR = "/config/pv_mining_addon"
 PRIO_KEY = "priority_order"
+PRIO_KEY_JSON = "priority_order_json"
 DEFAULT_ORDER = ["cooling","miner_1","miner_2","heater","wallbox","battery","house","grid_feed"]
 
 PRIO_COLORS = {
@@ -77,6 +78,34 @@ def _prio_merge_with_stored(stored_ids, available):
     if "grid_feed" in avail_ids:
         order = [x for x in order if x != "grid_feed"] + ["grid_feed"]
     return order
+
+def _load_prio_ids():
+    # 1) native Liste?
+    raw = set_get(PRIO_KEY, None)
+    if isinstance(raw, list):
+        return raw
+    # 2) JSON-String (neuer, robuster Weg)
+    raw_json = set_get(PRIO_KEY_JSON, "")
+    if isinstance(raw_json, str) and raw_json.strip():
+        try:
+            val = json.loads(raw_json)
+            if isinstance(val, list):
+                return val
+        except Exception:
+            pass
+    return []
+
+def _save_prio_ids(ids):
+    # sicherheitshalber BEIDES schreiben
+    try:
+        set_set(**{PRIO_KEY: ids})
+    except Exception:
+        pass
+    try:
+        set_set(**{PRIO_KEY_JSON: json.dumps(ids)})
+    except Exception:
+        pass
+
 
 def _prio_row(item):
     return html.Div(
@@ -204,8 +233,10 @@ def layout():
         # Store bekommt initial gleich die gemergte Reihenfolge
         dcc.Store(
             id="prio-order",
-            data=_prio_merge_with_stored(set_get(PRIO_KEY) or [], _prio_available_items())
+            storage_type="local",  # <- bleibt im Browser erhalten
+            data=_prio_merge_with_stored(_load_prio_ids(), _prio_available_items())
         ),
+
         dcc.Input(id="prio-dnd-wire", type="text", value="", style={"display": "none"}),
         html.Div(id="prio-list", className="prio-list"),
 
@@ -307,7 +338,7 @@ def register_callbacks(app):
             available = _prio_available_items()
             base_ids = [a["id"] for a in available]
             order = _prio_merge_with_stored(base_ids, available)
-            set_set(**{PRIO_KEY: order})
+            _save_prio_ids(order)  # <- HIER
             return order, "Reset to default."
 
         if trig == "prio-dnd-wire":
@@ -317,7 +348,7 @@ def register_callbacks(app):
                     raise ValueError("wire not a list")
             except Exception:
                 raise PreventUpdate
-            set_set(**{PRIO_KEY: ids})  # persistent speichern
+            _save_prio_ids(ids)  # <- HIER
             return ids, "Priority saved!"
 
         raise PreventUpdate

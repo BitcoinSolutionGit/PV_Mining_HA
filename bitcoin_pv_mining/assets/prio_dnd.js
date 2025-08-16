@@ -1,8 +1,13 @@
 (function () {
-  function wire(list) {
-    if (!list || list.dataset.dndWired === "1") return;
-    list.dataset.dndWired = "1";
-    console.log("[prio_dnd] wired");
+  function attach() {
+    const list = document.getElementById("prio-list");
+    if (!list) return false;
+
+    // Doppelt anhängen verhindern
+    if (list.dataset.dndAttached === "1") return true;
+    list.dataset.dndAttached = "1";
+
+    console.log("[prio_dnd] attached on #prio-list");
 
     let dragEl = null;
 
@@ -10,10 +15,7 @@
       const item = e.target.closest(".prio-item");
       if (!item) return;
       dragEl = item;
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = "move";
-        try { e.dataTransfer.setData("text/plain", item.dataset.pid || ""); } catch (_) {}
-      }
+      e.dataTransfer && (e.dataTransfer.effectAllowed = "move");
       item.classList.add("dragging");
     });
 
@@ -32,25 +34,37 @@
       list.insertBefore(dragEl, after ? target.nextSibling : target);
     });
 
-    list.addEventListener("drop", function (e) {
+    // Drop auf dem Container ODER irgendwo innerhalb
+    document.addEventListener("drop", function (e) {
+      const container = e.target.closest("#prio-list");
+      if (!container) return;
       e.preventDefault();
-      const ids = Array.from(list.querySelectorAll(".prio-item")).map(el => el.dataset.pid);
-      const wireInput = document.getElementById("prio-dnd-wire");
-      if (wireInput) {
+
+      const ids = Array.from(container.querySelectorAll(".prio-item"))
+        .map(el => el.dataset.pid);
+
+      console.log("[prio_dnd] drop ->", ids);
+
+      const wire = document.getElementById("prio-dnd-wire");
+      if (wire) {
         const json = JSON.stringify(ids);
-        if (wireInput.value !== json) {
-          wireInput.value = json;
-          wireInput.dispatchEvent(new Event("input",  { bubbles: true }));
-          wireInput.dispatchEvent(new Event("change", { bubbles: true }));
+        if (wire.value !== json) {
+          wire.value = json;
+          wire.dispatchEvent(new Event("input",  { bubbles: true }));
+          wire.dispatchEvent(new Event("change", { bubbles: true }));
         }
       }
     });
+
+    return true;
   }
 
-  function scan() {
-    document.querySelectorAll("#prio-list").forEach(wire);
+  // 1) Sofort versuchen
+  if (!attach()) {
+    // 2) Später nochmal, wenn DOM vollständig ist
+    document.addEventListener("DOMContentLoaded", attach);
+    // 3) Und per MutationObserver, falls Tab dynamisch gerendert wird
+    const obs = new MutationObserver(() => attach());
+    obs.observe(document.documentElement, { childList: true, subtree: true });
   }
-
-  document.addEventListener("DOMContentLoaded", scan);
-  new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
 })();
