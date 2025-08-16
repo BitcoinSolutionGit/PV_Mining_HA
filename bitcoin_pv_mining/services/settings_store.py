@@ -6,6 +6,8 @@ CONFIG_DIR = "/config/pv_mining_addon"
 SET_DEF = os.path.join(CONFIG_DIR, "settings.yaml")
 SET_OVR = os.path.join(CONFIG_DIR, "settings.local.yaml")
 
+os.makedirs(CONFIG_DIR, exist_ok=True)
+
 def _get(data: dict, path: str, default=None):
     cur = data or {}
     for k in path.split("."):
@@ -28,7 +30,7 @@ def get_var(key: str, default=None):
 
 def set_vars(**pairs):
     # Sicherstellen, dass der Ordner existiert:
-    os.makedirs(CONFIG_DIR, exist_ok=True)
+    os.makedirs(os.path.dirname(SET_OVR), exist_ok=True)
 
     ovr = load_yaml(SET_OVR, {}) or {}
     blk = _ensure(ovr, "settings")

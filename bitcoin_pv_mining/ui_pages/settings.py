@@ -1,10 +1,9 @@
 # ui_pages/settings.py
-import os
-import dash
 import json
+import dash
 
-from dash import html, dcc, callback_context, no_update
-from dash.dependencies import Input, Output, State, ALL, MATCH
+from dash import html, dcc, callback_context
+from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from services.settings_store import get_var as set_get, set_vars as set_set
@@ -13,10 +12,8 @@ from services.ha_sensors import list_all_sensors, get_sensor_value
 from services.forex import usd_to_eur_rate
 from services.miners_store import list_miners
 
-CONFIG_DIR = "/config/pv_mining_addon"
-PRIO_KEY = "priority_order"
-PRIO_KEY_JSON = "priority_order_json"
-DEFAULT_ORDER = ["cooling","miner_1","miner_2","heater","wallbox","battery","house","grid_feed"]
+PRIO_KEY = "priority_order"               # Liste
+PRIO_KEY_JSON = "priority_order_json"     # JSON-Fallback
 
 PRIO_COLORS = {
     "inflow":    "#FFD700",
@@ -30,25 +27,27 @@ PRIO_COLORS = {
     "inactive":  "#DDDDDD",
 }
 
+# ---------- Helpers ----------
+
+def _num(x, d=0.0):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return d
+
 def _prio_available_items():
-    """Welche Verbraucher sind grundsätzlich verfügbar? -> Liste von {id,label,color}"""
     items = []
-    # Cooling (nur wenn Feature aktiv)
     if bool(set_get("cooling_feature_enabled", False)):
         items.append({"id": "cooling", "label": "Cooling circuit", "color": PRIO_COLORS["cooling"]})
-
-    # Miner dynamisch
     try:
-        for m in list_miners() or []:
+        for m in (list_miners() or []):
             items.append({
                 "id": f"miner:{m['id']}",
                 "label": m.get("name", "Miner"),
-                "color": PRIO_COLORS["miners"]
+                "color": PRIO_COLORS["miners"],
             })
     except Exception:
         pass
-
-    # Rest (immer zeigen – auch wenn (noch) nicht vorhanden)
     items += [
         {"id": "battery",   "label": "Battery",      "color": PRIO_COLORS["battery"]},
         {"id": "wallbox",   "label": "Wallbox",      "color": PRIO_COLORS["wallbox"]},
@@ -56,7 +55,7 @@ def _prio_available_items():
         {"id": "house",     "label": "House load",   "color": PRIO_COLORS["load"]},
         {"id": "grid_feed", "label": "Grid feed-in", "color": PRIO_COLORS["grid_feed"]},
     ]
-    # Duplikate vermeiden (falls IDs doppelt auftauchen)
+    # dedupe
     seen, dedup = set(), []
     for it in items:
         if it["id"] in seen:
@@ -65,26 +64,19 @@ def _prio_available_items():
     return dedup
 
 def _prio_merge_with_stored(stored_ids, available):
-    """Gespeicherte Reihenfolge mit Verfügbarem mergen, Neues hinten anhängen,
-       grid_feed immer ganz unten."""
     avail_ids = [a["id"] for a in available]
-    # nur noch vorhandene IDs behalten
     order = [x for x in (stored_ids or []) if x in avail_ids]
-    # fehlende hinten anhängen (außer grid_feed – das behandeln wir gleich)
     for aid in avail_ids:
         if aid not in order and aid != "grid_feed":
             order.append(aid)
-    # grid_feed ans Ende
     if "grid_feed" in avail_ids:
         order = [x for x in order if x != "grid_feed"] + ["grid_feed"]
     return order
 
 def _load_prio_ids():
-    # 1) native Liste?
     raw = set_get(PRIO_KEY, None)
     if isinstance(raw, list):
         return raw
-    # 2) JSON-String (neuer, robuster Weg)
     raw_json = set_get(PRIO_KEY_JSON, "")
     if isinstance(raw_json, str) and raw_json.strip():
         try:
@@ -96,7 +88,6 @@ def _load_prio_ids():
     return []
 
 def _save_prio_ids(ids):
-    # sicherheitshalber BEIDES schreiben
     try:
         set_set(**{PRIO_KEY: ids})
     except Exception:
@@ -105,7 +96,7 @@ def _save_prio_ids(ids):
         set_set(**{PRIO_KEY_JSON: json.dumps(ids)})
     except Exception:
         pass
-
+    print("[prio] saved:", ids, flush=True)
 
 def _prio_row(item):
     return html.Div(
@@ -115,21 +106,28 @@ def _prio_row(item):
                 "borderRadius":"50%","backgroundColor": item.get("color","#ccc"),
                 "marginRight":"8px","verticalAlign":"middle"
             }),
-            html.Strong(item.get("label","")),  # <- HIER: label statt title
+            html.Strong(item.get("label","")),
         ],
         className="prio-item",
         **{"data-pid": item["id"], "draggable": "true"}
     )
 
+def _render_prio_children(order):
+    available = _prio_available_items()
+    if not order:
+        order = _prio_merge_with_stored(_load_prio_ids(), available)
+    by_id = {a["id"]: a for a in available}
+    out = [by_id[i] for i in order if i in by_id]
+    for a in available:
+        if a["id"] not in order and a["id"] != "grid_feed":
+            out.append(a)
+    if "grid_feed" in by_id and all(x["id"] != "grid_feed" for x in out):
+        out.append(by_id["grid_feed"])
+    return [_prio_row(x) for x in out]
 
-
-
-def _num(x, d=0.0):
-    try: return float(x)
-    except (TypeError, ValueError): return d
+# ---------- Layout ----------
 
 def layout():
-    # initiale Settings
     policy   = (set_get("pv_cost_policy", "zero") or "zero").lower()
     mode     = (set_get("feedin_price_mode", "fixed") or "fixed").lower()
     fi_val   = _num(set_get("feedin_price_value", 0.0), 0.0)
@@ -140,13 +138,10 @@ def layout():
 
     sensors = [{"label": s, "value": s} for s in list_all_sensors()]
 
-    # aktuelle effektive PV-Kosten jetzt (nur Anzeige)
     fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
     eff_pv_cost = max((fi_val if mode=="fixed" else _num(get_sensor_value(fi_sens), 0.0)) - fee_up, 0.0) if policy=="feedin" else 0.0
-
     cooling_enabled = bool(set_get("cooling_feature_enabled", False))
 
-    initial_order = set_get(PRIO_KEY) or DEFAULT_ORDER
     return html.Div([
         html.H2("Settings"),
 
@@ -154,7 +149,7 @@ def layout():
             html.Legend("Cooling Circuit"),
             dcc.Checklist(
                 id="set-cooling-enabled",
-                options=[{"label": " Cooling circuit feature activ", "value": "on"}],
+                options=[{"label": " Cooling circuit feature active", "value": "on"}],
                 value=(["on"] if cooling_enabled else []),
             ),
             html.Div("If enabled, a Cooling block appears in the Miners tab. "
@@ -180,7 +175,7 @@ def layout():
                     id="set-feedin-mode",
                     options=[
                         {"label":" fixed Value", "value":"fixed"},
-                        {"label":" Sensor",  "value":"sensor"},
+                        {"label":" Sensor",      "value":"sensor"},
                     ],
                     value=mode,
                     labelStyle={"display":"inline-block", "marginRight":"18px"}
@@ -193,12 +188,12 @@ def layout():
             ], id="row-feed-fixed", style={"marginTop":"6px", "display": ("block" if (policy=="feedin" and mode=="fixed") else "none")}),
 
             html.Div([
-                html.Label("Feed-in tariff-Sensor"),
+                html.Label("Feed-in tariff sensor"),
                 dcc.Dropdown(id="set-feedin-sensor", options=sensors, value=fi_sens or None, placeholder="select Sensor..."),
             ], id="row-feed-sensor", style={"marginTop":"6px", "display": ("block" if (policy=="feedin" and mode=="sensor") else "none")}),
 
             html.Div(id="set-pv-effective", style={"marginTop":"8px", "fontWeight":"bold", "opacity":0.9},
-                     children=f"current assumed PV-costs: {eff_pv_cost:.4f} €/kWh"),
+                     children=f"Currently assumed PV-Costs: {eff_pv_cost:.4f} €/kWh"),
         ], style={"border":"1px solid #ccc", "borderRadius":"8px", "padding":"10px", "marginBottom":"14px"}),
 
         html.Fieldset([
@@ -225,19 +220,13 @@ def layout():
         html.Button("Save", id="set-save", className="custom-tab", style={"marginTop":"12px"}),
         html.Span(id="set-status", style={"marginLeft":"10px", "color":"green"}),
 
-        # --- Priority / Orchestrierung ---
         html.Hr(),
         html.H3("Power draw priority"),
         html.P("Drag & drop to reorder (top = highest priority). Grid feed-in is always last."),
 
-        # Store bekommt initial gleich die gemergte Reihenfolge
-        dcc.Store(
-            id="prio-order",
-            storage_type="local",  # <- bleibt im Browser erhalten
-            data=_prio_merge_with_stored(_load_prio_ids(), _prio_available_items())
-        ),
-
+        # Hidden wire: wird vom assets/prio_dnd.js beim Drop befüllt (JSON Liste)
         dcc.Input(id="prio-dnd-wire", type="text", value="", style={"display": "none"}),
+
         html.Div(id="prio-list", className="prio-list"),
 
         html.Div([
@@ -245,11 +234,12 @@ def layout():
             html.Button("Reset to default", id="prio-reset", className="custom-tab", style={"marginLeft": "10px"}),
             html.Span(id="prio-status", style={"marginLeft": "12px", "color": "green"})
         ], style={"marginTop": "8px"}),
-
     ])
 
+# ---------- Callbacks ----------
+
 def register_callbacks(app):
-    # Sichtbarkeit der Feed-in Reihen steuern
+    # Sichtbarkeit Feed-in Controls
     @app.callback(
         Output("row-feed-mode","style"),
         Output("row-feed-fixed","style"),
@@ -265,7 +255,7 @@ def register_callbacks(app):
         st_sensor = {"marginTop":"6px", "display": "block" if (show_feed and mode=="sensor") else "none"}
         return st_mode, st_fixed, st_sensor
 
-    # Live-Anzeige effektive PV-Kosten
+    # PV-Kosten-Text live
     @app.callback(
         Output("set-pv-effective","children"),
         Input("set-pv-policy","value"),
@@ -282,7 +272,7 @@ def register_callbacks(app):
             eff = 0.0
         return f"Currently assumed PV-Costs: {eff:.4f} €/kWh"
 
-    # FX-Text (nur Info)
+    # FX-Info
     @app.callback(
         Output("set-fx-read","children"),
         Input("set-btc-currency","value"),
@@ -293,7 +283,7 @@ def register_callbacks(app):
             return f"USD→EUR: {fx:.4f}"
         return ""
 
-    # Save
+    # Settings speichern
     @app.callback(
         Output("set-status","children"),
         Input("set-save","n_clicks"),
@@ -308,7 +298,8 @@ def register_callbacks(app):
         prevent_initial_call=True
     )
     def _save(n, policy, mode, val, sens, cur, reward, tax, cool_enabled_val):
-        if not n: return ""
+        if not n:
+            return ""
         set_set(
             pv_cost_policy=(policy or "zero"),
             feedin_price_mode=(mode or "fixed"),
@@ -321,25 +312,35 @@ def register_callbacks(app):
         )
         return "Saved."
 
-    from dash.exceptions import PreventUpdate
-    import json
-
+    # -------- 1) Render bei Tab-Wechsel -> immer aus Persistenz mergen --------
     @app.callback(
-        Output("prio-order", "data"),
-        Output("prio-status", "children"),
+        Output("prio-list", "children"),
+        Input("active-tab", "data"),
+    )
+    def _prio_render_on_tab(active_tab):
+        if active_tab != "settings":
+            raise PreventUpdate
+        children = _render_prio_children(order=None)
+        return children
+
+    # -------- 2) Schreiben + Rendern: Drop / Reset / Save --------
+    @app.callback(
+        Output("prio-list", "children", allow_duplicate=True),
+        Output("prio-status", "children", allow_duplicate=True),
         Input("prio-dnd-wire", "value"),
         Input("prio-reset", "n_clicks"),
+        Input("prio-save", "n_clicks"),
         prevent_initial_call=True
     )
-    def _prio_write(val, reset):
+    def _prio_write(val, n_reset, n_save):
         trig = callback_context.triggered_id
 
         if trig == "prio-reset":
             available = _prio_available_items()
             base_ids = [a["id"] for a in available]
             order = _prio_merge_with_stored(base_ids, available)
-            _save_prio_ids(order)  # <- HIER
-            return order, "Reset to default."
+            _save_prio_ids(order)
+            return _render_prio_children(order), "Reset to default."
 
         if trig == "prio-dnd-wire":
             try:
@@ -348,30 +349,13 @@ def register_callbacks(app):
                     raise ValueError("wire not a list")
             except Exception:
                 raise PreventUpdate
-            _save_prio_ids(ids)  # <- HIER
-            return ids, "Priority saved!"
+            _save_prio_ids(ids)
+            return _render_prio_children(ids), "Priority saved!"
+
+        if trig == "prio-save":
+            # Schreibe den aktuell persistierten Stand erneut (falls Save separat gedrückt wird)
+            current = _load_prio_ids()
+            _save_prio_ids(current)
+            return _render_prio_children(current), "Priority saved!"
 
         raise PreventUpdate
-
-    @app.callback(
-        Output("prio-list", "children"),
-        Input("prio-order", "data")
-    )
-    def _prio_render(order):
-        order = order or []
-        available = _prio_available_items()
-        by_id = {a["id"]: a for a in available}
-
-        # bekannte in Reihenfolge
-        out = [by_id[i] for i in order if i in by_id]
-        # neue (noch nicht in order) hinten anhängen – außer grid_feed
-        for a in available:
-            if a["id"] not in order and a["id"] != "grid_feed":
-                out.append(a)
-        # grid_feed immer zuletzt
-        if "grid_feed" in by_id and all(x["id"] != "grid_feed" for x in out):
-            out.append(by_id["grid_feed"])
-
-        return [_prio_row(x) for x in out]
-
-    # set_get("consumer_priority_order", []).

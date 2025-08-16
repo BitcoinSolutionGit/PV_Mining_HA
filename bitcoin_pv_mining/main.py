@@ -29,6 +29,13 @@ start_heartbeat_loop(addon_version=get_addon_version())
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
 
+# GANZ OBEN zusätzlich:
+from ui_pages.settings import (
+    _prio_available_items as prio_available_items,
+    _load_prio_ids as prio_load_ids,
+    _prio_merge_with_stored as prio_merge,
+)
+
 def resolve_icon_source():
     # 1) Container-Pfad
     c1 = "/app/icon.png"
@@ -85,12 +92,15 @@ app = dash.Dash(
     serve_locally=True,
 )
 
+try:
+    _initial_prio = prio_merge(prio_load_ids(), prio_available_items())
+    print("[prio:init] initial order:", _initial_prio, flush=True)
+except Exception as e:
+    print("[prio:init] failed to compute initial order:", e, flush=True)
+    _initial_prio = []
 
 # Zusätzliche (idempotente) Route, falls Dashs interner Assets-Handler am Proxy scheitert
 from flask import send_from_directory
-@app.server.route(f"{prefix}assets/<path:asset_path>")
-def _serve_assets(asset_path):
-    return send_from_directory(assets_dir, asset_path)
 
 print(f"[INFO] Dash runs with requests_pathname_prefix = {prefix}")
 
@@ -433,8 +443,6 @@ app.index_string = '''
 app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
     dcc.Store(id="premium-enabled", data={"enabled": is_premium_enabled()}),
-    # dcc.Interval(id="license-poll", interval=30_000, n_intervals=0),  # <- wird erst später genutzt
-
 
     html.Div([
         html.Img(src=f"{prefix}config-icon", className="header-icon"),
