@@ -4,8 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V4.0.15">
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V4.0.16">
+      <change afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config/pv_mining_addon/settings.local.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/assets/prio_dnd.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/assets/prio_dnd.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/services/settings_store.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/services/settings_store.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages/settings.py" afterDir="false" />
@@ -142,15 +146,8 @@
       <workItem from="1755185363340" duration="15983000" />
       <workItem from="1755237291146" duration="9567000" />
       <workItem from="1755289368866" duration="10774000" />
-      <workItem from="1755371380580" duration="9113000" />
-    </task>
-    <task id="LOCAL-00160" summary="V3.0.2">
-      <option name="closed" value="true" />
-      <created>1754685704777</created>
-      <option name="number" value="00160" />
-      <option name="presentableId" value="LOCAL-00160" />
-      <option name="project" value="LOCAL" />
-      <updated>1754685704777</updated>
+      <workItem from="1755371380580" duration="14222000" />
+      <workItem from="1755409697320" duration="938000" />
     </task>
     <task id="LOCAL-00161" summary="V3.0.3">
       <option name="closed" value="true" />
@@ -536,14 +533,21 @@
       <option name="project" value="LOCAL" />
       <updated>1755372809903</updated>
     </task>
-    <option name="localTasksCounter" value="209" />
+    <task id="LOCAL-00209" summary="V4.0.16">
+      <option name="closed" value="true" />
+      <created>1755380683833</created>
+      <option name="number" value="00209" />
+      <option name="presentableId" value="LOCAL-00209" />
+      <option name="project" value="LOCAL" />
+      <updated>1755380683833</updated>
+    </task>
+    <option name="localTasksCounter" value="210" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="V3.0.24" />
     <MESSAGE value="V3.0.25" />
     <MESSAGE value="V3.0.26" />
     <MESSAGE value="V3.0.27" />
@@ -568,10 +572,11 @@
     <MESSAGE value="V4.0.13" />
     <MESSAGE value="V4.0.14" />
     <MESSAGE value="V4.0.15" />
-    <option name="LAST_COMMIT_MESSAGE" value="V4.0.15" />
+    <MESSAGE value="V4.0.16" />
+    <option name="LAST_COMMIT_MESSAGE" value="V4.0.16" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$main.coverage" NAME="main Coverage Results" MODIFIED="1755380500337" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />
+    <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$main.coverage" NAME="main Coverage Results" MODIFIED="1755385606926" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$dashboard.coverage" NAME="dashboard Coverage Results" MODIFIED="1754086399949" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining/ui" />
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$ui_settings.coverage" NAME="ui_settings Coverage Results" MODIFIED="1754482408803" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$settings.coverage" NAME="settings Coverage Results" MODIFIED="1755238259874" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages" />
