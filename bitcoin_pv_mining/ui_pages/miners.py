@@ -76,6 +76,65 @@ def _pv_cost_per_kwh():
         tarif = _num(set_get("feedin_price_value", 0.0), 0.0)
     return max(tarif - fee_up, 0.0)  # nicht negativ
 
+def _is_profitable_for_start(m: dict, cooling_running_now: bool) -> bool:
+    """
+    Prüft, ob dieser Miner bei aktuellem Mix profitabel wäre.
+    Wenn Cooling noch nicht läuft und dieser Miner Cooling braucht,
+    rechnen wir die Cooling-Last in ΔP mit ein.
+    """
+    try:
+        ths = float(m.get("hashrate_ths") or 0.0)
+        pkw = float(m.get("power_kw") or 0.0)
+        if ths <= 0.0 or pkw <= 0.0:
+            return False
+
+        btc_eur = get_live_btc_price_eur(fallback=_num(set_get("btc_price_eur", 0.0)))
+        net_ths = get_live_network_hashrate_ths(fallback=_num(set_get("network_hashrate_ths", 0.0)))
+        reward  = _num(set_get("block_reward_btc", 3.125), 3.125)
+        tax_pct = _num(set_get("sell_tax_percent", 0.0), 0.0)
+        eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
+
+        sat_th_h = sats_per_th_per_hour(reward, net_ths)
+        sats_per_h = sat_th_h * ths
+        revenue_eur_h = sats_per_h * eur_per_sat
+        after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
+
+        pv_id   = _dash_resolve("pv_production")
+        grid_id = _dash_resolve("grid_consumption")
+        feed_id = _dash_resolve("grid_feed_in")
+        pv_val   = _num(get_sensor_value(pv_id), 0.0)
+        grid_val = _num(get_sensor_value(grid_id), 0.0)
+        feed_val = max(_num(get_sensor_value(feed_id), 0.0), 0.0)
+
+        base = elec_price() or 0.0
+        fee_down = _num(elec_get("network_fee_down_value", 0.0), 0.0)
+        pv_cost = _pv_cost_per_kwh()
+
+        cooling_feature = bool(set_get("cooling_feature_enabled", False))
+        require_cooling = bool(m.get("require_cooling"))
+        cooling = get_cooling() if cooling_feature else {}
+        cooling_kw_cfg = float((cooling or {}).get("power_kw") or 0.0)
+
+        extra_cool_kw = cooling_kw_cfg if (cooling_feature and require_cooling and not cooling_running_now) else 0.0
+        delta_kw = pkw + extra_cool_kw
+
+        pv_share_add = max(min(feed_val / delta_kw, 1.0), 0.0) if delta_kw > 0.0 else 0.0
+        grid_share_add = 1.0 - pv_share_add
+        blended_eur_per_kwh = pv_share_add * pv_cost + grid_share_add * (base + fee_down)
+
+        cool_share = 0.0
+        if cooling_feature and require_cooling and cooling_kw_cfg > 0.0:
+            active = [mx for mx in list_miners() if mx.get("enabled") and mx.get("on") and mx.get("require_cooling")]
+            n_future = len(active) + 1
+            cool_share = (cooling_kw_cfg * blended_eur_per_kwh) / max(n_future, 1)
+
+        total_cost_h = pkw * blended_eur_per_kwh + cool_share
+        return (after_tax - total_cost_h) > 0.0
+    except Exception:
+        return False
+
+
+
 def _any_miner_requires_cooling() -> bool:
     """
     True, wenn irgendein Miner Cooling braucht.
@@ -427,27 +486,43 @@ def register_callbacks(app):
         data = data or {"cooling": {"state": "off", "until": 0}, "miners": {}}
         cool = get_cooling() or {}
 
-        # UI hat Vorrang; sonst Store; sonst Defaults
+        # UI > Store > Defaults
         ready_ent = (ready_val or cool.get("ready_entity") or "").strip()
         try:
             timeout_s = int(timeout_val or cool.get("ready_timeout_s") or 60)
         except Exception:
             timeout_s = 60
 
-        need_cooling = any(
-            m.get("enabled") and m.get("mode") == "auto" and m.get("on") and m.get("require_cooling") for m in
-            list_miners())
+        # Cooling-Mode & gewünschtes Verhalten:
+        mode_auto = (str(cool.get("mode") or "").lower() == "auto")
 
         st = data["cooling"].get("state", "off")
-        until = float(data["cooling"].get("until", 0))
+        until = float(data["cooling"].get("until", 0.0))
+
+        # Effektiv läuft Cooling nur in "on"
+        cooling_running_now = (st == "on")
 
         def ready():
             if ready_ent:
                 return is_on_like(get_entity_state(ready_ent))
-            return _now() >= until  # fallback: Zeitablauf
+            return _now() >= until
 
-        # Sollwert: an, wenn mind. ein auto-ON Miner Cooling braucht; sonst aus
-        want_on = need_cooling or bool(cool.get("on"))
+        # Auto: nur wenn mind. ein Auto-Miner mit Cooling-Pflicht JETZT profitabel wäre
+        profitable_auto_needs_cooling = False
+        if mode_auto:
+            for m in (list_miners() or []):
+                if not m.get("enabled"):
+                    continue
+                if str(m.get("mode") or "").lower() != "auto":
+                    continue
+                if not m.get("require_cooling"):
+                    continue
+                if _is_profitable_for_start(m, cooling_running_now):
+                    profitable_auto_needs_cooling = True
+                    break
+
+        # Manual: respektiere den manuellen on/off-Schalter
+        want_on = profitable_auto_needs_cooling if mode_auto else bool(cool.get("on"))
 
         if want_on:
             if st in ("off", "stopping"):
@@ -458,16 +533,15 @@ def register_callbacks(app):
             elif st == "waiting":
                 if ready():
                     data["cooling"]["state"] = "on"
-            # on bleibt on
+            # "on" bleibt "on"
         else:
             if st in ("on", "waiting"):
                 call_action(cool.get("action_off_entity", ""), False)
                 data["cooling"] = {"state": "stopping", "until": _now() + timeout_s}
             elif st == "stopping":
-                if not ready():  # ready() false = aus
+                if not ready():  # ready() False = aus
                     data["cooling"]["state"] = "off"
 
-        # Ampel rendern
         ampel = {
             "off": _ampel("#e74c3c", "Cooling off"),
             "starting": _ampel("#f1c40f", "Cooling starting…"),
@@ -475,6 +549,11 @@ def register_callbacks(app):
             "on": _ampel("#27ae60", "Cooling on"),
             "stopping": _ampel("#f39c12", "Cooling stopping…"),
         }[data["cooling"]["state"]]
+
+        # Optional zum Debuggen:
+        print(
+            f"[cool:auto] want_on={want_on} mode_auto={mode_auto} profitable={profitable_auto_needs_cooling} state={st}",
+            flush=True)
 
         return data, ampel
 
@@ -583,29 +662,48 @@ def register_callbacks(app):
         Output({"type": "m-pwr", "mid": MATCH}, "disabled"),
         Output({"type": "m-act-on", "mid": MATCH}, "disabled"),
         Output({"type": "m-act-off", "mid": MATCH}, "disabled"),
+        Output({"type": "m-mode", "mid": MATCH}, "disabled"),  # NEU: Mode-Feld sperren
         Input({"type": "m-enabled", "mid": MATCH}, "value"),
         Input({"type": "m-mode", "mid": MATCH}, "value"),
         Input({"type": "m-reqcool", "mid": MATCH}, "value"),
-        Input("cool-enabled", "value"),  # existiert nur, wenn Feature aktiv (ok dank suppress_callback_exceptions)
+        Input("cool-enabled", "value"),
+        Input("cool-mode", "value"),  # NEU: Cooling-Mode (auto/manual)
         Input("cool-on", "value"),
     )
-    def _apply_enable_mode_with_cooling(enabled_val, mode_val, reqcool_val, cool_en_val, cool_on_val):
+    def _apply_enable_mode_with_cooling(enabled_val, mode_val, reqcool_val, cool_en_val, cool_mode_val, cool_on_val):
         enabled = bool(enabled_val and "on" in enabled_val)
-        mode_auto = bool(mode_val and "auto" in mode_val)
+        mode_auto_now = bool(mode_val and "auto" in mode_val)
         require_cooling = bool(reqcool_val and "on" in reqcool_val)
 
         cooling_feature = bool(set_get("cooling_feature_enabled", False))
         cooling_enabled = bool(cool_en_val and "on" in cool_en_val) if cooling_feature else False
         cooling_on = bool(cool_on_val and "on" in cool_on_val) if cooling_feature else False
+        cooling_mode_auto = bool(cool_mode_val and "auto" in cool_mode_val) if cooling_feature else False
 
-        lock_on = (not enabled) or mode_auto or (
-                    cooling_feature and require_cooling and (not cooling_enabled or not cooling_on))
+        # Regel 1: "Power (on)" gesperrt, wenn:
+        # - Miner disabled ODER
+        # - Miner im Auto-Modus ODER
+        # - Miner braucht Cooling und Cooling nicht "bereit" (manuell aus oder aus)
+        lock_on = (not enabled) or mode_auto_now or (
+                cooling_feature and require_cooling and (not cooling_enabled or not cooling_on)
+        )
         on_style = {"opacity": 0.6, "pointerEvents": "none"} if lock_on else {}
+
+        # Regel 2: Mode (auto) nicht erlauben, wenn Cooling im Manual und Miner Cooling braucht
+        mode_disabled = bool(cooling_feature and require_cooling and not cooling_mode_auto)
+        # Falls gesperrt -> Wert sicher auf "manual" halten
+        out_mode_value = (["auto"] if (mode_auto_now and not mode_disabled) else [])
 
         inputs_disabled = not enabled
         opts = [{"label": " on", "value": "auto"}]
-        val = ["auto"] if mode_auto else []
-        return opts, val, on_style, inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled
+
+        return (
+            opts,
+            out_mode_value,
+            on_style,
+            inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled,
+            mode_disabled
+        )
 
     # 8) Save pro Miner (ALL statt MATCH)
 
@@ -828,18 +926,18 @@ def register_callbacks(app):
     from dash import no_update
     from services.miners_store import list_miners
 
-    @app.callback(
+    @dash.callback(
         Output("cool-on", "style"),
-        Output("cool-on", "value"),  # ggf. automatisch auf ["on"] zurücksetzen
+        Output("cool-on", "value"),
         Output("cool-lock-note", "children"),
         Input("cool-mode", "value"),
-        Input("miners-refresh", "n_intervals"),  # regelmäßig prüfen
+        Input("miners-refresh", "n_intervals"),
         State("cool-on", "value"),
     )
     def _cool_disable(mode_val, _tick, cur_on):
         mode_auto = bool(mode_val and "auto" in mode_val)
 
-        # Läuft irgendein Miner, der Cooling benötigt?
+        # Läuft ein cooling-pflichtiger Miner aktuell? (nur Hinweistext)
         active_required = any(
             m.get("enabled") and m.get("on") and m.get("require_cooling")
             for m in list_miners()
@@ -847,16 +945,15 @@ def register_callbacks(app):
 
         locked = mode_auto or active_required
         style = {"opacity": 0.6, "pointerEvents": "none"} if locked else {}
-        # Wenn gesperrt und aktuell "off", sofort visuell und logisch auf "on" zurücksetzen
-        value_out = ["on"] if (locked and (cur_on != ["on"])) else no_update
 
+        # WICHTIG: NICHT mehr auf ["on"] zwingen!
         note = ""
         if active_required:
             note = "Cooling cannot be turned off while miners with 'Cooling required' are running."
         elif mode_auto:
-            note = "Cooling is in Auto mode and cannot be switched off manually here."
+            note = "Cooling is in Auto mode; state is controlled automatically."
 
-        return style, value_out, note
+        return style, no_update, note
 
     @app.callback(
         Output("cool-kpi", "children"),
@@ -883,29 +980,25 @@ def register_callbacks(app):
         )
 
         # Wenn gesperrt -> ON erzwingen, egal was im UI steht
-        force_on = mode_auto or active_required
+        if mode_auto:
+            # Im Auto-Modus persistieren wir "on" nur, wenn aktuell ein cooling-pflichtiger Miner *läuft*.
+            # Sonst bleibt "off" gespeichert – die Orchestrierung schaltet bei Profitabilität an.
+            desired_on = True if active_required else False
+        else:
+            # Im Manual-Modus honorieren wir den UI-Schalter
+            desired_on = bool(on_val and "on" in on_val)
 
-        try:
-            set_cooling(
-                enabled=True,
-                mode=("auto" if mode_auto else "manual"),
-                on=(True if force_on else bool(on_val and "on" in on_val)),
-                power_kw=float(pkw or 0.0),
-                action_on_entity=(act_on or ""),
-                action_off_entity=(act_off or ""),
-                ready_entity=(ready_ent or ""),
-                ready_timeout_s=int(ready_to or 60),
-            )
-        except TypeError:
-            # alte Signatur – ohne Ready/Timeout speichern
-            set_cooling(
-                enabled=True,
-                mode=("auto" if mode_auto else "manual"),
-                on=(True if force_on else bool(on_val and "on" in on_val)),
-                power_kw=float(pkw or 0.0),
-                action_on_entity=(act_on or ""),
-                action_off_entity=(act_off or "")
-            )
+        set_cooling(
+            enabled=True,
+            mode=("auto" if mode_auto else "manual"),
+            on=desired_on,
+            power_kw=float(pkw or 0.0),
+            action_on_entity=(act_on or ""),
+            action_off_entity=(act_off or ""),
+            ready_entity=(ready_ent or ""),
+            ready_timeout_s=int(ready_to or 60),
+        )
+
         return _cool_kpi_render(float(pkw or 0.0))
 
     @app.callback(
