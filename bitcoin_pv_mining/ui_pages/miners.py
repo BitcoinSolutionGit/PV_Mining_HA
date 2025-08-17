@@ -555,6 +555,10 @@ def register_callbacks(app):
             f"[cool:auto] want_on={want_on} mode_auto={mode_auto} profitable={profitable_auto_needs_cooling} state={st}",
             flush=True)
 
+        # SMOKE-TEST für Orchestrator: in _engine_tick ganz am Ende (nach Ampel-Berechnung), zusätzlich:
+        from services.consumers.orchestrator import log_dry_run_plan
+        log_dry_run_plan("[dry-run]")
+
         return data, ampel
 
     # 0) initial miners-data füllen

@@ -334,7 +334,7 @@ def layout():
 
         html.Hr(),
         html.H3("Power draw priority"),
-        html.P("Nur Verbraucher in Automatik werden priorisiert (Miner, Cooling). Nutze ↑/↓ zum Reorden – wird automatisch gespeichert."),
+        html.P("Only consumers in Auto mode are prioritized (Miners, Cooling). Use ↑/↓ to reorder — it’s saved automatically."),
 
         # Liste
         html.Div(id="prio-list", className="prio-list"),
