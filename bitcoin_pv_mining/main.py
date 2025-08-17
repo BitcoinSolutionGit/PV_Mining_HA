@@ -5,14 +5,13 @@ import flask
 
 from dash import html, dcc
 from dash.dependencies import Input, Output
-from flask import send_from_directory, request, redirect
 
+from flask import send_from_directory
+from flask import request, redirect
 from ui_dashboard import layout as dashboard_layout, register_callbacks
+
 from services.btc_api import update_btc_data_periodically
-from services.license import (
-    verify_license, start_heartbeat_loop, is_premium_enabled,
-    issue_token_and_enable, has_valid_token_cached
-)
+from services.license import verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
 from services.utils import get_addon_version
 
 from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
@@ -23,26 +22,35 @@ from ui_pages.wallbox import layout as wallbox_layout, register_callbacks as reg
 from ui_pages.heater import layout as heater_layout, register_callbacks as reg_heater
 from ui_pages.settings import layout as settings_layout, register_callbacks as reg_settings
 
-# Lizenz / Heartbeat
+# beim Start
 verify_license()
 start_heartbeat_loop(addon_version=get_addon_version())
 
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
 
+# GANZ OBEN zusätzlich:
+from ui_pages.settings import (
+    _prio_available_items as prio_available_items,
+    _load_prio_ids as prio_load_ids,
+    _prio_merge_with_stored as prio_merge,
+)
+
 def resolve_icon_source():
-    p1 = "/app/icon.png"
-    if os.path.exists(p1):
-        return p1
-    p2 = os.path.join(os.path.dirname(__file__), "icon.png")
-    if os.path.exists(p2):
-        return p2
+    # 1) Container-Pfad
+    c1 = "/app/icon.png"
+    if os.path.exists(c1):
+        return c1
+    # 2) Lokal neben main.py
+    c2 = os.path.join(os.path.dirname(__file__), "icon.png")
+    if os.path.exists(c2):
+        return c2
     return None
 
 ICON_SOURCE_PATH = resolve_icon_source()
-ICON_TARGET_PATH = os.path.join(CONFIG_DIR, "icon.png")
+ICON_TARGET_PATH = "/config/pv_mining_addon/icon.png"
 
-# Icon kopieren (einmalig)
+# Copy icon if it doesn't exist
 if ICON_SOURCE_PATH and not os.path.exists(ICON_TARGET_PATH):
     try:
         os.makedirs(os.path.dirname(ICON_TARGET_PATH), exist_ok=True)
@@ -52,24 +60,24 @@ if ICON_SOURCE_PATH and not os.path.exists(ICON_TARGET_PATH):
     except Exception as e:
         print(f"[ERROR] Failed to copy icon: {e}")
 
-# BTC-Updater starten
+# Start BTC API updater
 update_btc_data_periodically(CONFIG_PATH)
 server = flask.Flask(__name__)
 
 def get_ingress_prefix():
     token = os.getenv("SUPERVISOR_TOKEN")
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    headers = {"Authorization": f"Bearer {token}"}
     try:
-        resp = requests.get("http://supervisor/addons/self/info", headers=headers, timeout=3)
-        if resp.status_code == 200:
-            ingress_url = resp.json()["data"]["ingress_url"]
+        response = requests.get("http://supervisor/addons/self/info", headers=headers)
+        if response.status_code == 200:
+            ingress_url = response.json()["data"]["ingress_url"]
             print(f"[INFO] Supervisor ingress URL: {ingress_url}")
             return ingress_url
         else:
-            print(f"[WARN] Supervisor answer: {resp.status_code}")
+            print(f"[WARN] Supervisor answer: {response.status_code}")
     except Exception as e:
-        print(f"[ERROR] Supervisor API error: {e}")
-    return "/"
+        print(f"[ERROR] Supervisor API error: {str(e)}")
+    return "/"  # Fallback
 
 prefix = get_ingress_prefix()
 if not prefix.endswith("/"):
@@ -79,18 +87,30 @@ app = dash.Dash(
     __name__,
     server=server,
     routes_pathname_prefix="/",
-    requests_pathname_prefix=prefix,
+    requests_pathname_prefix=prefix,  # dein HA-Ingress-Prefix
     suppress_callback_exceptions=True,
     serve_locally=True,
 )
+
+try:
+    _initial_prio = prio_merge(prio_load_ids(), prio_available_items())
+    print("[prio:init] initial order:", _initial_prio, flush=True)
+except Exception as e:
+    print("[prio:init] failed to compute initial order:", e, flush=True)
+    _initial_prio = []
+
+# Zusätzliche (idempotente) Route, falls Dashs interner Assets-Handler am Proxy scheitert
+from flask import send_from_directory
 
 print(f"[INFO] Dash runs with requests_pathname_prefix = {prefix}")
 
 # --- OAuth Placeholder Routes ---
 def _abs_url(path: str) -> str:
-    base = request.host_url.rstrip('/')
+    # Baut absolute URL inkl. Ingress-Prefix
+    base = request.host_url.rstrip('/')  # z.B. https://ha.local:8123/
     p = prefix if prefix.endswith('/') else prefix + '/'
-    path = path[1:] if path.startswith('/') else path
+    if path.startswith('/'):
+        path = path[1:]
     return f"{base}{p}{path}"
 
 @app.server.route(f"{prefix}oauth/start")
@@ -100,7 +120,15 @@ def oauth_start():
 
 @app.server.route(f"{prefix}oauth/callback")
 def oauth_callback():
+    # HEUTE: keine echte Verarbeitung nötig – zurück zur App
     return redirect(prefix)
+
+    # SPÄTER:
+    # code = request.args.get("code", "")
+    # redirect_uri = _abs_url("oauth/callback")
+    # ok = complete_github_oauth(code, redirect_uri)
+    # return redirect(prefix)
+
 
 @app.server.route("/_dash-layout", methods=["GET"])
 def dash_ping():
@@ -110,11 +138,9 @@ def dash_ping():
 def serve_icon():
     return send_from_directory(CONFIG_DIR, 'icon.png')
 
-
-# --- Premium Button ---
 @dash.callback(
-    Output("premium-enabled", "data", allow_duplicate=True),
-    Input("btn-premium", "n_clicks"),
+    Output("premium-enabled","data", allow_duplicate=True),
+    Input("btn-premium","n_clicks"),
     prevent_initial_call=True
 )
 def on_click_premium(n):
@@ -135,11 +161,14 @@ def on_click_premium(n):
 def toggle_premium_button(data):
     enabled = bool((data or {}).get("enabled"))
     if enabled:
+        # Button ausblenden ODER als „aktiv“ markieren – du kannst hier entscheiden:
+        # Variante A: ganz ausblenden:
+        # return "custom-tab premium-btn premium-btn-hidden", "Premium Active"
+        # Variante B: sichtbar, aber als aktiv:
         return "custom-tab premium-btn premium-btn-active", "Premium Active"
     return "custom-tab premium-btn premium-btn-locked", "Activate Premium"
 
 
-# --- Tabs ---
 @dash.callback(
     Output("active-tab", "data"),
     Output("btn-dashboard", "className"),
@@ -149,7 +178,7 @@ def toggle_premium_button(data):
     Output("btn-battery", "className"),
     Output("btn-heater", "className"),
     Output("btn-wallbox", "className"),
-    Output("btn-settings", "className"),
+    Output("btn-settings","className"),
     Input("btn-dashboard", "n_clicks"),
     Input("btn-sensors", "n_clicks"),
     Input("btn-miners", "n_clicks"),
@@ -157,11 +186,11 @@ def toggle_premium_button(data):
     Input("btn-battery", "n_clicks"),
     Input("btn-heater", "n_clicks"),
     Input("btn-wallbox", "n_clicks"),
-    Input("btn-settings", "n_clicks"),
+    Input("btn-settings","n_clicks"),
     Input("premium-enabled", "data"),
     prevent_initial_call=True
 )
-def switch_tabs(n1, n2, n3, n4, n5, n6, n7, n8, premium_data):
+def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, premium_data):
     enabled = bool((premium_data or {}).get("enabled"))
     ctx = dash.callback_context
     if not ctx.triggered:
@@ -176,11 +205,11 @@ def switch_tabs(n1, n2, n3, n4, n5, n6, n7, n8, premium_data):
     elif btn == "btn-electricity":
         target = "electricity"
     elif btn == "btn-battery":
-        target = "battery" if enabled else "dashboard"
+        target = "battery" if enabled else "dashboard"  # Premium required
     elif btn == "btn-heater":
-        target = "heater" if enabled else "dashboard"
+        target = "heater" if enabled else "dashboard"   # Premium required
     elif btn == "btn-wallbox":
-        target = "wallbox" if enabled else "dashboard"
+        target = "wallbox" if enabled else "dashboard"  # Premium required
     elif btn == "btn-settings":
         target = "settings"
 
@@ -201,15 +230,16 @@ def premium_upsell():
         html.H3("Premium Feature"),
         html.P("Dieses Feature ist mit Premium verfügbar."),
         html.Button("Activate Premium", id="btn-premium", n_clicks=0, className="custom-tab premium-btn")
-    ], style={"textAlign": "center", "padding": "20px"})
+    ], style={"textAlign":"center", "padding":"20px"})
+
 
 @dash.callback(
     Output("btn-battery", "className", allow_duplicate=True),
     Input("premium-enabled", "data"),
     Input("active-tab", "data"),
-    prevent_initial_call=True
+    prevent_initial_call="initial_duplicate"
 )
-def style_btn_battery(premium_data, active_tab):
+def style_miners_button(premium_data, active_tab):
     enabled = bool((premium_data or {}).get("enabled"))
     classes = ["custom-tab"]
     if active_tab == "battery":
@@ -221,9 +251,9 @@ def style_btn_battery(premium_data, active_tab):
     Output("btn-heater", "className", allow_duplicate=True),
     Input("premium-enabled", "data"),
     Input("active-tab", "data"),
-    prevent_initial_call=True
+    prevent_initial_call="initial_duplicate"
 )
-def style_btn_heater(premium_data, active_tab):
+def style_miners_button(premium_data, active_tab):
     enabled = bool((premium_data or {}).get("enabled"))
     classes = ["custom-tab"]
     if active_tab == "heater":
@@ -235,15 +265,16 @@ def style_btn_heater(premium_data, active_tab):
     Output("btn-wallbox", "className", allow_duplicate=True),
     Input("premium-enabled", "data"),
     Input("active-tab", "data"),
-    prevent_initial_call=True
+    prevent_initial_call="initial_duplicate"
 )
-def style_btn_wallbox(premium_data, active_tab):
+def style_miners_button(premium_data, active_tab):
     enabled = bool((premium_data or {}).get("enabled"))
     classes = ["custom-tab"]
     if active_tab == "wallbox":
         classes.append("custom-tab-selected")
     classes.append("wallbox-premium-ok" if enabled else "wallbox-premium-locked")
     return " ".join(classes)
+
 
 @dash.callback(
     Output("tabs-content", "children"),
@@ -270,17 +301,17 @@ def render_tab(tab, premium_data):
         return settings_layout()
     return dashboard_layout()
 
-# Register callbacks
-register_callbacks(app)
-reg_sensors(app)
-reg_electricity(app)
-reg_miners(app)
-reg_battery(app)
-reg_heater(app)
-reg_wallbox(app)
-reg_settings(app)
 
-# Index / Layout
+register_callbacks(app)     # Dashboard
+reg_sensors(app)            # Sensors
+reg_electricity (app)       # electricity
+reg_miners(app)             # miners
+reg_battery(app)            # battery
+reg_heater(app)             # heater
+reg_wallbox(app)            # wallbox
+reg_settings(app)           # settings
+
+
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -290,30 +321,121 @@ app.index_string = '''
         {%favicon%}
         {%css%}
         <style>
-            body { background-color: white; color: black; font-family: Arial, sans-serif; }
-            .custom-tab { background-color: #eee; border: 1px solid #ccc; border-radius: 4px;
-                          padding: 6px 12px; font-size: 14px; cursor: pointer; transition: all .2s; }
-            .custom-tab:hover { background-color: #ddd; }
-            .custom-tab-selected { background-color: #ccc; color: black; font-weight: bold;
-                                   border: 2px solid #999; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-            @media (max-width: 600px) { .custom-tab { font-size: 12px; padding: 4px 8px; } }
-            .header-bar { display:flex; justify-content:center; align-items:center; gap:12px; flex-wrap:wrap; padding:8px; }
-            .header-icon { width:32px; height:32px; }
-            .premium-btn { background: linear-gradient(#2ecc71, #27ae60); color:white; font-weight:bold; border:1px solid #1e874b; }
-            .premium-btn:hover { filter: brightness(1.05); }
-            .premium-btn-active { background:#e0ffe9; color:#1e874b; border:2px solid #1e874b; cursor:default; }
-            .premium-btn-locked { background: linear-gradient(#e57373, #e53935); color:white; font-weight:bold; border:1px solid #b71c1c; }
-            .custom-tab.battery-premium-ok { border-color:#27ae60!important; }
-            .custom-tab.battery-premium-locked { border-color:#e74c3c!important; }
-            .custom-tab.heater-premium-ok { border-color:#27ae60!important; }
-            .custom-tab.heater-premium-locked { border-color:#e74c3c!important; }
-            .custom-tab.wallbox-premium-ok { border-color:#27ae60!important; }
-            .custom-tab.wallbox-premium-locked { border-color:#e74c3c!important; }
+            body {
+                background-color: white;
+                color: black;
+                font-family: Arial, sans-serif;
+            }
+            .custom-tab {
+                background-color: #eee;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 14px;
+                cursor: pointer;
+                transition: all 0.2s ease-in-out;
+            }
+            .custom-tab:hover {
+                background-color: #ddd;
+            }
+            .custom-tab-selected {
+                background-color: #ccc;
+                color: black;
+                font-weight: bold;
+                border: 2px solid #999;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            }
+            @media (max-width: 600px) {
+                .custom-tab {
+                    font-size: 12px;
+                    padding: 4px 8px;
+                }
+            }
+            .header-bar {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+                padding: 8px;
+            }
+            .header-icon {
+                width: 32px;
+                height: 32px;
+            }
+            
+            .premium-btn {
+                background: linear-gradient(#2ecc71, #27ae60);
+                color: white;
+                font-weight: bold;
+                border: 1px solid #1e874b;
+            }
+            .premium-btn:hover {
+                filter: brightness(1.05);
+            }
+            .premium-btn-hidden {
+                display: none;
+            }
+            .premium-btn-active {
+                background: #e0ffe9;
+                color: #1e874b;
+                border: 2px solid #1e874b;
+                cursor: default;
+            }
+            .premium-btn-locked {
+                background: linear-gradient(#e57373, #e53935);
+                color: white;
+                font-weight: bold;
+                border: 1px solid #b71c1c;
+            }
+            .premium-btn-locked:hover {
+                filter: brightness(1.05);
+            }
+            /* --- Battery-Button: Rahmenfarbe nach Premium-Status --- */
+            .custom-tab.battery-premium-ok { border-color: #27ae60 !important; }
+            .custom-tab.battery-premium-locked { border-color: #e74c3c !important; }
+            /* Wenn der Tab ausgewählt ist, überschreibt diese Regel die Standardauswahlfarbe */
+            .custom-tab.battery-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
+            .custom-tab.battery-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
+            /* --- heater-Button: Rahmenfarbe nach Premium-Status --- */
+            .custom-tab.heater-premium-ok { border-color: #27ae60 !important; }
+            .custom-tab.heater-premium-locked { border-color: #e74c3c !important; }
+            /* Wenn der Tab ausgewählt ist, überschreibt diese Regel die Standardauswahlfarbe */
+            .custom-tab.heater-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
+            .custom-tab.heater-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
+            /* --- Wallbox-Button: Rahmenfarbe nach Premium-Status --- */
+            .custom-tab.wallbox-premium-ok { border-color: #27ae60 !important; }
+            .custom-tab.wallbox-premium-locked { border-color: #e74c3c !important; }
+            /* Wenn der Tab ausgewählt ist, überschreibt diese Regel die Standardauswahlfarbe */
+            .custom-tab.wallbox-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
+            .custom-tab.wallbox-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
+            
+            /* Footer (Desktop = eine Zeile, Mobile = 2 Spalten) */
+            .footer-stats {
+              display: flex;
+              flex-wrap: wrap;
+              justify-content: center;
+              gap: 40px;
+              margin-top: 20px;
+              width: 100%;
+            }
+            .footer-stat {
+              font-weight: bold;
+              text-align: center;
+            }
+            @media (max-width: 680px) {
+              .footer-stats { gap: 12px; }
+              .footer-stat { flex: 0 0 calc(50% - 12px); }
+            }
         </style>
     </head>
     <body>
         {%app_entry%}
-        <footer>{%config%}{%scripts%}{%renderer%}</footer>
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
     </body>
 </html>
 '''
@@ -321,25 +443,29 @@ app.index_string = '''
 app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
     dcc.Store(id="premium-enabled", data={"enabled": is_premium_enabled()}),
-    # Globaler Store für die Prioritätenliste (persistiert im Browser)
     dcc.Store(id="prio-order", storage_type="local"),
 
     html.Div([
         html.Img(src=f"{prefix}config-icon", className="header-icon"),
-        html.Button("Dashboard",    id="btn-dashboard",    n_clicks=0, className="custom-tab custom-tab-selected"),
-        html.Button("Sensors",      id="btn-sensors",      n_clicks=0, className="custom-tab"),
-        html.Button("Miners",       id="btn-miners",       n_clicks=0, className="custom-tab"),
-        html.Button("Electricity",  id="btn-electricity",  n_clicks=0, className="custom-tab"),
-        html.Button("Battery",      id="btn-battery",      n_clicks=0, className="custom-tab"),
-        html.Button("Water Heater", id="btn-heater",       n_clicks=0, className="custom-tab"),
-        html.Button("Wall-Box",     id="btn-wallbox",      n_clicks=0, className="custom-tab"),
-        html.Button("Settings",     id="btn-settings",     n_clicks=0, className="custom-tab"),
+        html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab custom-tab-selected", **{"data-tab": "dashboard"}),
+        html.Button("Sensors", id="btn-sensors", n_clicks=0, className="custom-tab", **{"data-tab": "sensors"}),
+        html.Button("Miners", id="btn-miners", n_clicks=0, className="custom-tab", **{"data-tab": "miners"}),
+        html.Button("Electricity", id="btn-electricity", n_clicks=0, className="custom-tab", **{"data-tab": "electricity"}),
+        html.Button("Battery", id="btn-battery", n_clicks=0, className="custom-tab", **{"data-tab": "battery"}),
+        html.Button("Water Heater", id="btn-heater", n_clicks=0, className="custom-tab", **{"data-tab": "heater"}),
+        html.Button("Wall-Box", id="btn-wallbox", n_clicks=0, className="custom-tab", **{"data-tab": "wallbox"}),
+        html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab":"settings"}),
+
+
+        # Spacer + Premium-Button ganz rechts
         html.Div(style={"flex": "1"}),
         html.Button("Activate Premium", id="btn-premium", n_clicks=0, className="custom-tab premium-btn"),
     ], id="tab-buttons", className="header-bar"),
 
     html.Div(id="tabs-content", style={"marginTop": "10px"})
 ])
+
+
 
 if __name__ == "__main__":
     print("[main.py] Starting Dash on 0.0.0.0:21000")

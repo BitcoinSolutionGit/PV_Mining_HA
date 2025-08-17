@@ -29,6 +29,15 @@ def _ampel(color, text):
         text
     ])
 
+
+def _truthy(val, default=False):
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        return val
+    s = str(val).strip().lower()
+    return s in ("1", "true", "yes", "on", "auto", "automatic", "enabled")
+
 def _dash_resolve(kind: str) -> str:
     def _mget(path, key):
         m = (load_yaml(path, {}).get("mapping", {}) or {})
@@ -66,6 +75,45 @@ def _pv_cost_per_kwh():
     else:
         tarif = _num(set_get("feedin_price_value", 0.0), 0.0)
     return max(tarif - fee_up, 0.0)  # nicht negativ
+
+def _any_miner_requires_cooling() -> bool:
+    """
+    True, wenn irgendein Miner Cooling braucht.
+    Prüft dein Feld 'require_cooling' + Synonyme + optionale Settings-Fallbacks.
+    """
+    try:
+        for m in (list_miners() or []):
+            flags = [
+                m.get("require_cooling"),   # <— DEIN Feld
+                m.get("cooling_required"),
+                m.get("needs_cooling"),
+                (m.get("cooling") or {}).get("required") if isinstance(m.get("cooling"), dict) else None,
+            ]
+            if any(_truthy(f) for f in flags):
+                return True
+
+            mid = m.get("id", "")
+            for k in (f"miner.{mid}.require_cooling",
+                      f"miner.{mid}.cooling_required",
+                      f"miner_{mid}_require_cooling",
+                      f"{mid}_require_cooling"):
+                v = set_get(k, None)
+                if v is not None and _truthy(v):
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+def _should_show_cooling_block() -> bool:
+    """
+    Cooling-Block im MINERS-Tab anzeigen, wenn:
+    - Feature eingeschaltet und
+    - Mindestens 1 Miner Cooling benötigt
+    """
+    if not bool(set_get("cooling_feature_enabled", False)):
+        return False
+    return _any_miner_requires_cooling()
 
 def _cool_card(c: dict, sym: str, ha_actions: list[dict]):
     return html.Div([
@@ -389,8 +437,6 @@ def register_callbacks(app):
         need_cooling = any(
             m.get("enabled") and m.get("mode") == "auto" and m.get("on") and m.get("require_cooling") for m in
             list_miners())
-        ready_ent = (cool.get("ready_entity") or "").strip()
-        timeout_s = int(cool.get("ready_timeout_s") or 60)
 
         st = data["cooling"].get("state", "off")
         until = float(data["cooling"].get("until", 0))
