@@ -1,18 +1,23 @@
-from typing import Optional
-from .base import Consumer
-from .cooling import CoolingConsumer
-from .house import HouseLoadConsumer
-from .battery import BatteryConsumer
-from .miner import MinerConsumer
+# services/consumers/registry.py (Ausschnitt)
+from services.consumers.house import HouseLoadConsumer
+from services.consumers.battery import BatteryConsumer
+from services.consumers.cooling import CoolingConsumer
+# from .heater import HeaterConsumer
+# from .wallbox import WallboxConsumer
+from services.consumers.miner import MinerConsumer
 
-def get_consumer_for_id(consumer_id: str) -> Optional[Consumer]:
-    if consumer_id == "house":
+def get_consumer_for_id(cid: str):
+    if cid == "house":
         return HouseLoadConsumer()
-    if consumer_id == "battery":
+    if cid == "battery":
         return BatteryConsumer()
-    if consumer_id == "cooling":
+    if cid == "cooling":
         return CoolingConsumer()
-    if consumer_id.startswith("miner:"):
-        mid = consumer_id.split(":", 1)[1]
-        return MinerConsumer(miner_id=mid)
+    # if cid == "heater":
+    #     return HeaterConsumer()
+    # if cid == "wallbox":
+    #     return WallboxConsumer()
+    if cid.startswith("miner:"):
+        mid = cid.split(":", 1)[1]
+        return MinerConsumer(mid)
     return None

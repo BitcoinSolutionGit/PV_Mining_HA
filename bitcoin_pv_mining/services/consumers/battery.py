@@ -1,70 +1,76 @@
 # services/consumers/battery.py
 from __future__ import annotations
-from .base import Consumer, Desire, Ctx
-from services.settings_store import get_var as set_get
-from services.ha_sensors import get_sensor_value
-from services.utils import load_yaml
+
 import os
+from services.consumers.base import BaseConsumer, Desire
+from services.utils import load_yaml
+from services.ha_sensors import get_sensor_value
+from services.settings_store import get_var as set_get
+from services.ha_entities import call_action
 
 CONFIG_DIR = "/config/pv_mining_addon"
 SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
 SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
 
-def _map_id(kind: str) -> str:
-    def _mget(path, key):
-        m = (load_yaml(path, {}).get("mapping", {}) or {})
-        return (m.get(key) or "").strip()
-    return _mget(SENS_OVR, kind) or _mget(SENS_DEF, kind)
-
 def _num(x, d=0.0):
-    try: return float(x)
-    except (TypeError, ValueError): return d
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return d
 
-class BatteryConsumer(Consumer):
+def _map(key: str) -> str:
+    def _mget(path, k):
+        m = (load_yaml(path, {}).get("mapping", {}) or {})
+        return (m.get(k) or "").strip()
+    return _mget(SENS_OVR, key) or _mget(SENS_DEF, key)
+
+class BatteryConsumer(BaseConsumer):
     id = "battery"
-    label = "Battery (charge)"
+    label = "Battery"
 
-    def _soc(self) -> float:
-        sens = _map_id("battery_soc")
-        if sens:
-            return max(min(_num(get_sensor_value(sens), 0.0), 100.0), 0.0)
-        # Fallback: Settings-Wert, falls jemand Sensor → Helper mapped
-        return max(min(_num(set_get("battery_soc_percent", 0.0), 0.0), 100.0), 0.0)
+    def compute_desire(self, ctx=None) -> Desire:
+        # SoC (0..100)
+        soc_ent = _map("battery_soc") or (set_get("battery_soc_sensor", "") or "")
+        soc = _num(get_sensor_value(soc_ent) if soc_ent else None, 0.0)
 
-    def _cfg(self):
-        # minimale Konfig – kann später in UI editiert werden
-        return {
-            "min_soc":     _num(set_get("battery_min_soc", 20.0), 20.0),
-            "max_soc":     _num(set_get("battery_max_soc", 95.0), 95.0),
-            "reserve_soc": _num(set_get("battery_reserve_soc", 10.0), 10.0),
-            "p_charge_kw": _num(set_get("battery_charge_kw_max", 3.0), 3.0),
-            # p_discharge_kw folgt in „Discharge“-Schritt
-        }
+        # Ziel-SoC & max. Ladeleistung
+        target_soc = _num(set_get("battery_target_soc", 90.0), 90.0)
+        max_kw = _num(
+            set_get("battery_max_charge_kw", None)
+            or set_get("battery_charge_kw_max", None)
+            or (get_sensor_value(_map("battery_charge_power_max_kw")) if _map("battery_charge_power_max_kw") else None),
+            0.0
+        )
 
-    def compute_desire(self, ctx: Ctx) -> Desire:
-        soc = self._soc()
-        cfg = self._cfg()
+        wants = (soc < target_soc) and (max_kw > 0.0)
+        if not wants:
+            return Desire(
+                wants=False, min_kw=0.0, max_kw=0.0, must_run=False, exact_kw=None,
+                reason=f"SoC {soc:.1f}% ≥ target {target_soc:.1f}% or no max power"
+            )
 
-        # nur Auto-Laden aus PV-Überschuss (feed_in_kw)
-        feed = max(_num(ctx.get("feed_in_kw"), 0.0), 0.0)
+        # Batterie ist flexibel → kein must_run, nur PV-Überschuss nutzen
+        return Desire(
+            wants=True, min_kw=0.0, max_kw=max_kw, must_run=False, exact_kw=None,
+            reason=f"charge until {target_soc:.0f}% (SoC {soc:.1f}%)"
+        )
 
-        # Wenn SOC >= max → kein Ladewunsch
-        if soc >= cfg["max_soc"] - 1e-6:
-            return Desire(False, 0.0, 0.0, reason=f"SOC {soc:.1f}% ≥ max {cfg['max_soc']}%")
+    def apply_allocation(self, ctx, alloc_kw: float) -> None:
+        """
+        Minimal: per Settings definierte Aktionen schalten.
+        Optional-Keys:
+          - battery_action_on_entity
+          - battery_action_off_entity
+        """
+        on_ent  = set_get("battery_action_on_entity", "") or ""
+        off_ent = set_get("battery_action_off_entity", "") or ""
 
-        # Wenn kein Überschuss → kein Ladewunsch (vorerst; Grid-Laden später optional)
-        if feed <= 0.01:
-            return Desire(False, 0.0, 0.0, reason="no PV surplus")
-
-        # Ladeleistung begrenzen auf (max Charge, Überschuss)
-        max_kw = max(min(cfg["p_charge_kw"], feed), 0.0)
-        if max_kw <= 0.0:
-            return Desire(False, 0.0, 0.0, reason="no allocatable surplus")
-
-        # Battery ist „weich“: sie *will* bis max_kw, muss aber nicht (kein must_run)
-        return Desire(True, 0.0, max_kw, must_run=False, exact_kw=None,
-                      reason=f"charge towards {cfg['max_soc']}% (SOC {soc:.1f}%)")
-
-    def apply(self, allocated_kw: float, ctx: Ctx) -> None:
-        # Steuerung folgt in einem späteren Schritt (Services → Charger/Switch)
-        return
+        # >0.05 kW interpretieren wir als "an"
+        if alloc_kw > 0.05:
+            if on_ent:
+                call_action(on_ent, True)
+            print(f"[battery] apply ~{alloc_kw:.2f} kW (ON)", flush=True)
+        else:
+            if off_ent:
+                call_action(off_ent, False)
+            print("[battery] apply 0 kW (OFF)", flush=True)

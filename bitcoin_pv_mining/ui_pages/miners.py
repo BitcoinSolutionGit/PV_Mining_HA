@@ -16,6 +16,11 @@ from services.ha_sensors import get_sensor_value
 from services.cooling_store import get_cooling, set_cooling
 from services.ha_entities import list_actions, call_action, get_entity_state, is_on_like
 
+# SMOKE-TEST für Orchestrator: in _engine_tick ganz am Ende (nach Ampel-Berechnung), zusätzlich:
+from services.consumers.orchestrator import log_dry_run_plan
+from services.log import dry
+from services.power_planner import plan_and_allocate
+plan_and_allocate(apply=False, log=True)
 
 CONFIG_DIR = "/config/pv_mining_addon"
 SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
@@ -517,8 +522,10 @@ def register_callbacks(app):
                     continue
                 if not m.get("require_cooling"):
                     continue
-                if _is_profitable_for_start(m, cooling_running_now):
-                    profitable_auto_needs_cooling = True
+                # if _is_profitable_for_start(m, cooling_running_now):
+                #     profitable_auto_needs_cooling = True
+                if _is_profitable_for_start(m, cooling_running_now=bool(cool.get("on"))):
+                    dry("miner:profit", name=m.get("name"), mid=m.get("id"))
                     break
 
         # Manual: respektiere den manuellen on/off-Schalter
@@ -556,8 +563,16 @@ def register_callbacks(app):
             flush=True)
 
         # SMOKE-TEST für Orchestrator: in _engine_tick ganz am Ende (nach Ampel-Berechnung), zusätzlich:
-        from services.consumers.orchestrator import log_dry_run_plan
+        dry("cool:auto",
+            mode=cool.get("mode"),
+            profitable=profitable_auto_needs_cooling,
+            want_on=want_on,
+            state=st)
         log_dry_run_plan("[dry-run]")
+        try:
+            plan_and_allocate(dry_run=True)
+        except Exception as e:
+            print(f"[planner] error: {e}", flush=True)
 
         return data, ampel
 
