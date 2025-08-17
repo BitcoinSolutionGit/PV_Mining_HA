@@ -9,6 +9,7 @@ from services.ha_sensors import get_sensor_value
 from services.electricity_store import current_price as elec_price, get_var as elec_get
 from services.consumers.base import Ctx, now
 from services.consumers.registry import get_consumer_for_id
+from services.log import dry
 
 CONFIG_DIR = "/config/pv_mining_addon"
 SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
