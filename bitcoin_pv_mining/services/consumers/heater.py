@@ -43,6 +43,7 @@ class HeaterConsumer(BaseConsumer):
 
     def _config(self) -> dict:
         return {
+            "enabled":      bool(heat_get("enabled", True)),
             "warmwasser_id": resolve_entity_id("input_warmwasser_cache") or "",
             "heizstab_id":   resolve_entity_id("input_heizstab_cache") or "",
             "wanted_temp":   _num(heat_get("wanted_water_temperature", 60.0), 60.0),
@@ -66,6 +67,8 @@ class HeaterConsumer(BaseConsumer):
     def compute_desire(self, ctx: Ctx | None = None) -> Desire:
         cfg = self._config()
         # Basic checks
+        if not cfg["enabled"]:
+            return Desire(False, 0.0, 0.0, reason="disabled")
         if not cfg["warmwasser_id"] or not cfg["heizstab_id"]:
             return Desire(False, 0.0, 0.0, reason="not configured")
         max_kw = self._max_power_kw(cfg)
@@ -92,7 +95,7 @@ class HeaterConsumer(BaseConsumer):
 
     def apply_allocation(self, ctx: Ctx, alloc_kw: float) -> None:
         cfg = self._config()
-        if not cfg["heizstab_id"]:
+        if not cfg["enabled"] or not cfg["heizstab_id"]:
             return
 
         # Wenn manuell, nichts ändern

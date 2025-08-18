@@ -51,16 +51,26 @@ def layout():
     warmwasser_entity = resolve_entity_id("input_warmwasser_cache") or None
     heizstab_entity   = resolve_entity_id("input_heizstab_cache") or None
 
+    enabled     = bool(heat_get_var("enabled", False))
     wanted_temp = _num(heat_get_var("wanted_water_temperature", 60), 60)
     max_power   = _num(heat_get_var("max_power_heater", 0.0), 0.0)
     power_unit  = (heat_get_var("power_unit", "kW") or "kW")
     heat_unit   = (heat_get_var("heat_unit", "°C") or "°C")
 
-    override_active = bool(heat_get_var("manual_override", False))   # True = manuell
+    override_active = bool(heat_get_var("manual_override", False))
     override_percent = _num(heat_get_var("manual_override_percent", 0), 0)
 
     return html.Div([
         html.H2("Water Heater settings"),
+
+        # Enabled-Schalter (neu)
+        dcc.Checklist(
+            id="heater-enabled",
+            options=[{"label": " Enabled", "value": "on"}],
+            value=(["on"] if enabled else []),
+            style={"marginBottom": "12px"}
+        ),
+        html.Div(id="heater-enabled-status", style={"display":"none"}),
 
         html.H4("Entity mapping (input_number)"),
         html.Div([
@@ -167,9 +177,21 @@ def layout():
 
 # ---------- callbacks ----------
 def register_callbacks(app):
+    # Auto-persist Enabled toggle so Settings -> Prio-Liste reagiert sofort
+    @app.callback(
+        Output("heater-enabled-status","children"),
+        Input("heater-enabled","value"),
+        prevent_initial_call=True
+    )
+    def on_enabled_toggle(enabled_val):
+        from services.heater_store import set_vars as heat_set_vars
+        heat_set_vars(enabled=bool(enabled_val and "on" in enabled_val))
+        return ""
+
     @app.callback(
         Output("heater-save-status", "children"),
         Input("heater-save", "n_clicks"),
+        State("heater-enabled", "value"),
         State("heater-input-warmwasser", "value"),
         State("heater-input-heizstab", "value"),
         State("heater-wanted-temp", "value"),
@@ -178,7 +200,7 @@ def register_callbacks(app):
         State("heater-power-unit", "value"),
         prevent_initial_call=True
     )
-    def save_heater(n, warmwasser_id, heizstab_id, wanted_temp, heat_unit, max_power, power_unit):
+    def save_heater(n, enabled_val, warmwasser_id, heizstab_id, wanted_temp, heat_unit, max_power, power_unit):
         if not n:
             return ""
         # Mapping speichern
@@ -186,6 +208,7 @@ def register_callbacks(app):
         set_mapping("input_heizstab_cache",  heizstab_id or "")
         # Variablen speichern
         heat_set_vars(
+            enabled=bool(enabled_val and "on" in enabled_val),
             wanted_water_temperature=_num(wanted_temp, 60.0),
             max_power_heater=_num(max_power, 0.0),
             power_unit=(power_unit or "kW"),

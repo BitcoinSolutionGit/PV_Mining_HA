@@ -11,6 +11,9 @@ from services.ha_sensors import list_all_sensors, get_sensor_value
 from services.forex import usd_to_eur_rate
 from services.miners_store import list_miners
 from services.cooling_store import get_cooling
+from services.battery_store import get_var as bat_get
+from services.wallbox_store import get_var as wb_get
+from services.heater_store import resolve_entity_id as heat_resolve, get_var as heat_get
 
 PRIO_KEY = "priority_order"
 PRIO_KEY_JSON = "priority_order_json"
@@ -44,6 +47,46 @@ def _truthy(val, default=False):
         return val
     s = str(val).strip().lower()
     return s in ("1", "true", "yes", "on", "auto", "automatic", "enabled")
+
+def _is_battery_active() -> bool:
+    return bool(bat_get("enabled", False))
+
+def _is_battery_auto() -> bool:
+    return str(bat_get("mode", "manual")).lower().startswith("auto")
+
+def _is_wallbox_active() -> bool:
+    return bool(wb_get("enabled", False))
+
+def _is_wallbox_auto() -> bool:
+    return str(wb_get("mode", "manual")).lower().startswith("auto")
+
+def _is_heater_active() -> bool:
+    try:
+        return bool(heat_get("enabled", False))  # nur der Enabled-Flag entscheidet über Sichtbarkeit
+    except Exception:
+        return False
+
+
+def _is_heater_auto() -> bool:
+    # manual_override=True bedeutet: manuell; Auto ist also False
+    try:
+        return not bool(heat_get("manual_override", False))
+    except Exception:
+        return True
+
+def _is_cooling_enabled() -> bool:
+    # Cooling-Feature + cooling.enabled
+    if not bool(set_get("cooling_feature_enabled", False)):
+        return False
+    c = get_cooling() or {}
+    return bool(c.get("enabled", True))
+
+def _is_miner_enabled(m: dict) -> bool:
+    # versuche gängige Felder; default True
+    for k in ("enabled", "is_enabled", "active"):
+        if k in m:
+            return _truthy(m.get(k), default=True)
+    return True
 
 def _is_cooling_auto_enabled() -> bool:
     """
@@ -111,14 +154,14 @@ def _prio_available_items():
     """
     items = []
 
-    # Cooling nur, wenn Auto
-    if _is_cooling_auto_enabled():
+    # Cooling sichtbar, wenn enabled (gesteuert wird nur im Auto-Modus)
+    if _is_cooling_enabled():
         items.append({"id": "cooling", "label": "Cooling circuit", "color": PRIO_COLORS["cooling"]})
 
-    # Miner dynamisch – nur, wenn Auto
+    # Miner: sichtbar, wenn enabled (gesteuert wird nur im Auto-Modus)
     try:
         for m in list_miners() or []:
-            if not _is_miner_auto(m):
+            if not _is_miner_enabled(m):
                 continue
             items.append({
                 "id": f"miner:{m['id']}",
@@ -128,14 +171,20 @@ def _prio_available_items():
     except Exception:
         pass
 
-    # Rest immer anzeigen
+    # Sichtbar nur, wenn aktiv/installiert
+    if _is_battery_active():
+        items.append({"id": "battery", "label": "Battery", "color": PRIO_COLORS["battery"]})
+    if _is_wallbox_active():
+        items.append({"id": "wallbox", "label": "Wallbox", "color": PRIO_COLORS["wallbox"]})
+    if _is_heater_active():
+        items.append({"id": "heater", "label": "Water Heater", "color": PRIO_COLORS["heater"]})
+
+    # House & Grid Feed immer sichtbar
     items += [
-        {"id": "battery",   "label": "Battery",      "color": PRIO_COLORS["battery"]},
-        {"id": "wallbox",   "label": "Wallbox",      "color": PRIO_COLORS["wallbox"]},
-        {"id": "heater",    "label": "Water Heater", "color": PRIO_COLORS["heater"]},
-        {"id": "house",     "label": "House load",   "color": PRIO_COLORS["load"]},
+        {"id": "house", "label": "House load", "color": PRIO_COLORS["load"]},
         {"id": "grid_feed", "label": "Grid feed-in", "color": PRIO_COLORS["grid_feed"]},
     ]
+
     # De-dupe
     seen, dedup = set(), []
     for it in items:
