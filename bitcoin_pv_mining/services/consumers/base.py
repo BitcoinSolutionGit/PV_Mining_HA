@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import time
+
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from typing import Optional
 
 @dataclass
 class Desire:
@@ -12,7 +14,7 @@ class Desire:
     min_kw: float
     max_kw: float
     must_run: bool = False
-    exact_kw: float | None = None
+    exact_kw: Optional[float] = None
     reason: str = ""
 
 @dataclass

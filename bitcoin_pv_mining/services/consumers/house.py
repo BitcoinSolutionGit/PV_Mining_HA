@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from services.consumers.base import Desire
+from services.consumers.base import BaseConsumer,Desire, Ctx
 from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 
@@ -25,26 +25,36 @@ def _map(key: str) -> str:
             return ""
     return _mget(SENS_OVR, key) or _mget(SENS_DEF, key)
 
-class HouseLoadConsumer:
+class HouseLoadConsumer(BaseConsumer):
     """Undrosselbarer Grundlast-Verbraucher (Hauslast)."""
     id = "house"
     label = "House load"
     is_dispatchable = False  # nicht steuer-/abschaltbar
 
-    def compute_desire(self, ctx=None) -> Desire:
-        # Versuche mehrere mögliche Mapping-Keys
-        sens = _map("house_load") or _map("house_consumption") or _map("load")
-        val_kw = _num(get_sensor_value(sens) if sens else 0.0, 0.0)
-
-        # Falls der Sensor in W statt kW liefert, einfache Heuristik:
-        if val_kw > 100.0:  # >100 kW ist unplausibel -> vermutlich W
-            val_kw = val_kw / 1000.0
-
+    def compute_desire(self, ctx=Ctx) -> Desire:
+        # Baseline: beansprucht keinen Überschuss, läuft immer
         return Desire(
             wants=True,
             min_kw=0.0,
-            max_kw=val_kw,
-            exact_kw=val_kw,      # Hauslast muss bedient werden
+            max_kw=0.0,
             must_run=True,
-            reason=("measured house load" if sens else "no house sensor configured"),
+            exact_kw=None,  # None = wird nicht allokiert
+            reason="baseline house load (no explicit sensor)"
         )
+
+        # # Versuche mehrere mögliche Mapping-Keys
+        # sens = _map("house_load") or _map("house_consumption") or _map("load")
+        # val_kw = _num(get_sensor_value(sens) if sens else 0.0, 0.0)
+        #
+        # # Falls der Sensor in W statt kW liefert, einfache Heuristik:
+        # if val_kw > 100.0:  # >100 kW ist unplausibel -> vermutlich W
+        #     val_kw = val_kw / 1000.0
+        #
+        # return Desire(
+        #     wants=True,
+        #     min_kw=0.0,
+        #     max_kw=val_kw,
+        #     exact_kw=val_kw,      # Hauslast muss bedient werden
+        #     must_run=True,
+        #     reason=("measured house load" if sens else "no house sensor configured"),
+        # )

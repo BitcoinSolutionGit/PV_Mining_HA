@@ -19,7 +19,7 @@ from services.ha_entities import list_actions, call_action, get_entity_state, is
 # SMOKE-TEST für Orchestrator: in _engine_tick ganz am Ende (nach Ampel-Berechnung), zusätzlich:
 from services.consumers.orchestrator import log_dry_run_plan
 from services.log import dry
-
+from services.power_planner import plan_and_allocate_auto
 
 CONFIG_DIR = "/config/pv_mining_addon"
 SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
@@ -578,6 +578,10 @@ def register_callbacks(app):
             log_dry_run_plan("[dry-run]")  # ruft intern plan_and_allocate(..., dry_run=True) auf
         except Exception as e:
             print(f"[dry-run] error: {e}", flush=True)
+
+        plan_and_allocate_auto(dry_run=True)  # nur Log/Simulation
+        # später zum Schalten:
+        # plan_and_allocate_auto(apply=True, dry_run=False)
 
         return data, ampel
 

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from services.consumers.base import BaseConsumer, Desire
+from services.consumers.base import BaseConsumer, Desire, Ctx
 from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 from services.settings_store import get_var as set_get
@@ -28,32 +28,50 @@ class BatteryConsumer(BaseConsumer):
     id = "battery"
     label = "Battery"
 
-    def compute_desire(self, ctx=None) -> Desire:
-        # SoC (0..100)
-        soc_ent = _map("battery_soc") or (set_get("battery_soc_sensor", "") or "")
-        soc = _num(get_sensor_value(soc_ent) if soc_ent else None, 0.0)
+    # services/consumers/battery.py
+    def compute_desire(self, ctx: Ctx) -> Desire:
+        soc = self._read_soc()
+        target = self._target_soc()
+        max_kw = max(0.0, self._max_charge_kw())
+        surplus = max(0.0, ctx.surplus_kw)
 
-        # Ziel-SoC & max. Ladeleistung
-        target_soc = _num(set_get("battery_target_soc", 90.0), 90.0)
-        max_kw = _num(
-            set_get("battery_max_charge_kw", None)
-            or set_get("battery_charge_kw_max", None)
-            or (get_sensor_value(_map("battery_charge_power_max_kw")) if _map("battery_charge_power_max_kw") else None),
-            0.0
-        )
+        # eindeutige Gründe nacheinander prüfen
+        if max_kw <= 0:
+            return Desire(False, 0.0, 0.0, reason="no max power configured")
+        if soc >= target:
+            return Desire(False, 0.0, 0.0, reason=f"SoC {soc:.1f}% ≥ target {target:.1f}%")
+        if surplus <= 0:
+            return Desire(False, 0.0, 0.0, reason="no PV surplus")
 
-        wants = (soc < target_soc) and (max_kw > 0.0)
-        if not wants:
-            return Desire(
-                wants=False, min_kw=0.0, max_kw=0.0, must_run=False, exact_kw=None,
-                reason=f"SoC {soc:.1f}% ≥ target {target_soc:.1f}% or no max power"
-            )
+        want = min(max_kw, surplus)
+        return Desire(True, 0.0, want, reason=f"charge up to {want:.3f} kW (SoC {soc:.1f}% < {target:.1f}%)")
 
-        # Batterie ist flexibel → kein must_run, nur PV-Überschuss nutzen
-        return Desire(
-            wants=True, min_kw=0.0, max_kw=max_kw, must_run=False, exact_kw=None,
-            reason=f"charge until {target_soc:.0f}% (SoC {soc:.1f}%)"
-        )
+    # def compute_desire(self, ctx=None) -> Desire:
+    #     # SoC (0..100)
+    #     soc_ent = _map("battery_soc") or (set_get("battery_soc_sensor", "") or "")
+    #     soc = _num(get_sensor_value(soc_ent) if soc_ent else None, 0.0)
+    #
+    #     # Ziel-SoC & max. Ladeleistung
+    #     target_soc = _num(set_get("battery_target_soc", 90.0), 90.0)
+    #     max_kw = _num(
+    #         set_get("battery_max_charge_kw", None)
+    #         or set_get("battery_charge_kw_max", None)
+    #         or (get_sensor_value(_map("battery_charge_power_max_kw")) if _map("battery_charge_power_max_kw") else None),
+    #         0.0
+    #     )
+    #
+    #     wants = (soc < target_soc) and (max_kw > 0.0)
+    #     if not wants:
+    #         return Desire(
+    #             wants=False, min_kw=0.0, max_kw=0.0, must_run=False, exact_kw=None,
+    #             reason=f"SoC {soc:.1f}% ≥ target {target_soc:.1f}% or no max power"
+    #         )
+    #
+    #     # Batterie ist flexibel → kein must_run, nur PV-Überschuss nutzen
+    #     return Desire(
+    #         wants=True, min_kw=0.0, max_kw=max_kw, must_run=False, exact_kw=None,
+    #         reason=f"charge until {target_soc:.0f}% (SoC {soc:.1f}%)"
+    #     )
 
     def apply_allocation(self, ctx, alloc_kw: float) -> None:
         """
