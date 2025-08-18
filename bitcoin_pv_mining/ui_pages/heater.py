@@ -56,7 +56,7 @@ def layout():
     power_unit  = (heat_get_var("power_unit", "kW") or "kW")
     heat_unit   = (heat_get_var("heat_unit", "°C") or "°C")
 
-    override_active = bool(heat_get_var("manual_override", False))
+    override_active = bool(heat_get_var("manual_override", False))   # True = manuell
     override_percent = _num(heat_get_var("manual_override_percent", 0), 0)
 
     return html.Div([
@@ -146,19 +146,19 @@ def layout():
 
         html.Div(style={"height": "8px"}),
 
-        # Manual override + Slider ---
+        # Mode (auto) + Slider ---
         html.Div([
             dcc.Checklist(
                 id="heater-override",
-                options=[{"label": " Manuell override", "value": "on"}],
-                value=(["on"] if override_active else []),
+                options=[{"label": " Mode (auto)", "value": "on"}],
+                value=(["on"] if not override_active else []),  # checked = Auto
                 style={"marginBottom": "8px"}
             ),
             dcc.Slider(
                 id="heater-override-slider",
                 min=0, max=100, step=1,
                 value=override_percent,
-                disabled=not override_active,
+                disabled=not override_active,  # Auto (manual_override=False) => disabled True
                 marks=None, tooltip={"always_visible": False}
             ),
             html.Div(id="heater-override-status", style={"marginTop": "6px", "color": "green"})
@@ -193,7 +193,7 @@ def register_callbacks(app):
         )
         return "Heater settings saved!"
 
-    # --- NEW: Slider enabled/disabled je nach Override ---
+    # --- Slider enabled/disabled je nach Mode (Auto/Manuell) ---
     @app.callback(
         Output("heater-override-slider", "disabled"),
         Input("heater-override", "value"),
@@ -201,15 +201,16 @@ def register_callbacks(app):
         prevent_initial_call=False
     )
     def toggle_slider(override_val, current_val):
-        on = bool(override_val and "on" in override_val)
-        # Override-Status in YAML speichern
+        auto_on = bool(override_val and "on" in override_val)  # checked = Auto
+        # Intern speichern: manual_override (True = manuell)
         heat_set_vars(
-            manual_override=on,
+            manual_override=(not auto_on),
             manual_override_percent=current_val or 0
         )
-        return not on
+        # Auto => Slider disabled, Manuell => enabled
+        return auto_on
 
-    # --- NEW: Live-Update Prozent + Leistung + Slider-Sync (wenn nicht Override) ---
+    # --- Live-Update Prozent + Leistung + Slider-Sync (nur in Auto) ---
     @app.callback(
         Output("heater-current-percent", "children"),
         Output("heater-current-power", "children"),
@@ -231,13 +232,13 @@ def register_callbacks(app):
         pct_text = f"{pct:.0f} %"
         pwr_text = f"{pwr:.2f} {unit}"
 
-        # Slider nur synchronisieren, wenn Override AUS ist
-        override_on = bool(override_val and "on" in override_val)
-        slider_val = dash.no_update if override_on else int(round(pct or 0))
+        # Slider nur synchronisieren, wenn Auto aktiv ist
+        auto_on  = bool(override_val and "on" in override_val)
+        slider_val = int(round(pct or 0)) if auto_on else dash.no_update
 
         return pct_text, pwr_text, slider_val
 
-    # --- NEW: Bei Slider-Änderung (nur wenn Override aktiv) -> in HA schreiben ---
+    # --- Bei Slider-Änderung -> nur im manuellen Modus in HA schreiben ---
     @app.callback(
         Output("heater-override-status", "children"),
         Input("heater-override-slider", "value"),
@@ -246,17 +247,20 @@ def register_callbacks(app):
         prevent_initial_call=True
     )
     def on_slider_change(new_value, override_val, heizstab_entity):
-        # Immer persistieren, egal ob Override an oder aus
+        # Immer persistieren
         heat_set_vars(manual_override_percent=new_value or 0)
 
-        if not (override_val and "on" in override_val):
+        # In Auto nichts senden
+        auto_on = bool(override_val and "on" in override_val)
+        if auto_on:
             return ""
-        if not heizstab_entity:
-            return "Kein Heizstab-Input ausgewählt."
-        ok = set_input_number_value(heizstab_entity, new_value or 0)
-        return "Override gesendet." if ok else "Fehler beim Senden."
 
-    # NEW: Poll alle 10s + sofort bei Auswahl/Einheitenwechsel
+        if not heizstab_entity:
+            return "no heater input selected."
+        ok = set_input_number_value(heizstab_entity, new_value or 0)
+        return "Override sent." if ok else "Error sending override."
+
+    # --- Poll alle 10s + sofort bei Auswahl/Einheitenwechsel ---
     @app.callback(
         Output("heater-current-temp", "children"),
         Input("heater-refresh", "n_intervals"),
@@ -271,5 +275,5 @@ def register_callbacks(app):
             raw = get_sensor_value(warmwasser_entity)
             val_c = _num(raw, None)           # Wert in °C erwartet (aus input_number)
             return _fmt_temp(val_c, unit or "°C")
-        except Exception as e:
-            return f"–"
+        except Exception:
+            return "–"
