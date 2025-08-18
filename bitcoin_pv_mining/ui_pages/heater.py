@@ -88,7 +88,7 @@ def layout():
             html.Label("Target water temperature"),
             dcc.Input(
                 id="heater-wanted-temp",
-                type="number", step="0.1", min=0, max=95,
+                type="number", step="0.001", min=0, max=95,
                 value=wanted_temp, style={"width": "140px"}
             ),
             html.Span(" "),
@@ -104,7 +104,7 @@ def layout():
             html.Label("Max heater power"),
             dcc.Input(
                 id="heater-max-power",
-                type="number", step="0.1", min=0, max=50,
+                type="number", step="0.001", min=0, max=50,
                 value=max_power, style={"width": "140px"}
             ),
             html.Span(" "),
