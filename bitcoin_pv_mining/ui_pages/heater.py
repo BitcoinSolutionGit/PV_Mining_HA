@@ -225,20 +225,17 @@ def register_callbacks(app):
         prevent_initial_call=False
     )
     def toggle_slider(override_val, current_val, heizstab_entity):
-        auto_on = bool(override_val and "on" in override_val)  # checked = Auto
-        # Intern persistieren
-        heat_set_vars(
-            manual_override=(not auto_on),
-            manual_override_percent=current_val or 0
-        )
-        # Optionaler "Kick": Beim Wechsel auf Auto einmalig auf 0% setzen
+        auto_on = bool(override_val and "on" in override_val)
+        heat_set_vars(manual_override=(not auto_on), manual_override_percent=current_val or 0)
+
+        # Beim Wechsel auf Auto einmalig auf 0% setzen, damit der Planner "übernimmt"
         if auto_on and heizstab_entity:
             try:
                 set_input_number_value(heizstab_entity, 0)
             except Exception:
                 pass
-        # Auto => Slider disabled, Manuell => enabled
-        return auto_on
+
+        return auto_on  # Auto => Slider disabled
 
     # --- Live-Update Prozent + Leistung + Slider-Sync (nur in Auto) ---
     @app.callback(

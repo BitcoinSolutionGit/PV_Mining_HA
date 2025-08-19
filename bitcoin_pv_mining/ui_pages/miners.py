@@ -609,7 +609,7 @@ def register_callbacks(app):
 
         # plan_and_allocate_auto(dry_run=True)  # nur Log/Simulation
         # später zum Schalten:
-        plan_and_allocate_auto(apply=True, dry_run=False, logger=_plan_log) # LIVE produktiv!
+        plan_and_allocate_auto(apply=True, dry_run=False, logger=lambda m: print(m, flush=True)) # LIVE produktiv!
 
         return data, ampel
 

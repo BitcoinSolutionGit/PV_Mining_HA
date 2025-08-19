@@ -11,6 +11,13 @@ import os
 from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 
+# --- stdout logger helper (Add-on-Log) ---
+def _stdout_logger(msg: str):
+    try:
+        print(msg, flush=True)
+    except Exception:
+        pass
+
 Number = float
 
 CONFIG_DIR = "/config/pv_mining_addon"
@@ -42,22 +49,18 @@ def _kw(val: float) -> float:
 
 
 def read_surplus_kw() -> float:
-    """Liefert den aktuell verfügbaren Überschuss in kW (>=0).
-    Robust: nutzt Feed-in und PV-Production minus Grid-Consumption und nimmt das Maximum."""
+    """Aktueller Überschuss in kW (>=0). Nimmt max(Feed-in, PV-Prod - Grid-Import)."""
     from services.ha_sensors import get_sensor_value
 
-    # Helper: map -> sensor id
+    def _m(path, k):
+        return (load_yaml(path, {}).get("mapping", {}) or {}).get(k, "").strip()
+
     def _map(key: str) -> str:
-        return (
-            (load_yaml(SENS_OVR, {}).get("mapping", {}) or {}).get(key, "").strip()
-            or (load_yaml(SENS_DEF, {}).get("mapping", {}) or {}).get(key, "").strip()
-        )
+        return _m(SENS_OVR, key) or _m(SENS_DEF, key)
 
     def _f(v, d=0.0):
         try:
-            if v is None or v == "":
-                return d
-            return float(v)
+            return float(v) if v not in (None, "") else d
         except Exception:
             return d
 
@@ -66,34 +69,28 @@ def read_surplus_kw() -> float:
             f = float(v)
         except Exception:
             return 0.0
-        # Heuristik: große Werte = Watt -> in kW umrechnen
         return f / 1000.0 if abs(f) > 2000 else f
 
-    # A) Feed-in (Export)
+    # A) Feed-in (Export) – negatives Export-Sign korrigieren
     feed_id = _map("grid_feed_in")
     feed_kw = None
     if feed_id:
-        raw = get_sensor_value(feed_id)
-        val = _kw(_f(raw, 0.0))
-        # Falls Zähler Export als NEGATIV liefert -> Betrag nehmen
+        val = _kw(_f(get_sensor_value(feed_id), 0.0))
         export_kw = abs(val) if val < 0 else val
-        # nur >=0
         feed_kw = max(export_kw, 0.0)
 
-    # B) Fallback: PV-Produktion - Netzbezug
-    pv_id   = _map("pv_production")
-    imp_id  = _map("grid_consumption")
+    # B) PV-Produktion minus Netzbezug
+    pv_id  = _map("pv_production")
+    imp_id = _map("grid_consumption")
     diff_kw = None
     if pv_id and imp_id:
         pv_kw  = max(_kw(_f(get_sensor_value(pv_id), 0.0)), 0.0)
         imp_kw = max(_kw(_f(get_sensor_value(imp_id), 0.0)), 0.0)
         diff_kw = max(pv_kw - imp_kw, 0.0)
 
-    # C) Ergebnis: best effort
-    candidates = [x for x in [feed_kw, diff_kw] if x is not None]
-    if not candidates:
-        return 0.0
-    return max(candidates + [0.0])
+    cands = [x for x in (feed_kw, diff_kw) if x is not None]
+    return max(cands + [0.0]) if cands else 0.0
+
 
 
 
@@ -138,7 +135,8 @@ def plan_and_allocate(
         "allocations": List[Tuple[cid, pv_alloc, grid_alloc, Desire]]
       }
     """
-    log_fn: Callable[[str], None] = (logger or (print if log else (lambda *_: None)))
+    # Logger wählen: expliziter logger > stdout > no-op
+    log_fn = (logger or _stdout_logger) if log else (lambda *_: None)
 
     # Consumer-Map aufbauen/verwenden
     cons_map: Dict[str, BaseConsumer] = consumers.copy() if consumers else {}
@@ -160,15 +158,31 @@ def plan_and_allocate(
     log_fn(f"[plan] order={order}")
     log_fn(f"[plan] start surplus={pv_left:.3f} kW")
 
+    # Surplus-Debug: Rohwerte der Sensoren anzeigen
     try:
+        from services.ha_sensors import get_sensor_value
+        def _f(v, d=0.0):
+            try:
+                return float(v) if v not in (None, "") else d
+            except Exception:
+                return d
+
+        def _kw(v):
+            try:
+                f = float(v)
+            except Exception:
+                return 0.0
+            return f / 1000.0 if abs(f) > 2000 else f
+
         _feed_id = _map("grid_feed_in")
         _pv_id = _map("pv_production")
         _imp_id = _map("grid_consumption")
+
         _feed_v = _kw(_f(get_sensor_value(_feed_id), 0.0)) if _feed_id else None
         _pv_v = _kw(_f(get_sensor_value(_pv_id), 0.0)) if _pv_id else None
         _imp_v = _kw(_f(get_sensor_value(_imp_id), 0.0)) if _imp_id else None
-        log_fn(
-            f"[plan:surplus_dbg] feed_id={_feed_id} val={_feed_v}  pv_id={_pv_id} val={_pv_v}  imp_id={_imp_id} val={_imp_v}")
+
+        log_fn(f"[plan:surplus_dbg] feed={_feed_id}:{_feed_v}  pv={_pv_id}:{_pv_v}  imp={_imp_id}:{_imp_v}")
     except Exception as _e:
         log_fn(f"[plan:surplus_dbg] failed: {_e}")
 
@@ -201,12 +215,9 @@ def plan_and_allocate(
         try:
             desire: Desire = cons.compute_desire(ctx)
 
-            log_fn(
-                f"[plan:desire] {cid}: wants={desire.wants} "
-                f"min={desire.min_kw:.2f} max={desire.max_kw:.2f} "
-                f"must={getattr(desire, 'must_run', False)} exact={getattr(desire, 'exact_', False)} "
-                f"reason={getattr(desire, 'reason', '')}"
-            )
+            log_fn(f"[plan:desire] {cid}: wants={desire.wants} min={desire.min_kw:.2f} "
+                   f"max={desire.max_kw:.2f} must={getattr(desire, 'must_run', False)} "
+                   f"reason={getattr(desire, 'reason', '')}")
 
         except Exception as e:
             log_fn(f"[plan] error: compute_desire({cid}) -> {e}")
@@ -229,11 +240,9 @@ def plan_and_allocate(
             target_max = max(min_kw, max_kw)
 
         if not wants or target_max <= 0.0:
-            allocations.append((cid, 0.0, 0.0, desire))
             log_fn(
-                f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} "
-                f"exact={_fmt(exact)} must={must} -> alloc=0.000 (pv=0.000, grid=0.000) | {reason}"
-            )
+                f"[plan:alloc]  {cid}: pv={pv_alloc:.2f} grid={grid_alloc:.2f} total={alloc_total:.2f} pv_left={pv_left:.2f}")
+            allocations.append((cid, 0.0, 0.0, desire))
             continue
 
         log_fn(
