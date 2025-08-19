@@ -114,6 +114,12 @@ class HeaterConsumer(BaseConsumer):
         if cur_c is not None and cur_c >= target_c - 0.0:
             pct = 0.0
 
+        print(f"[heater] apply: alloc_kw={alloc_kw:.3f} max_kw={max_kw:.3f} -> pct={pct:.1f} "
+              f"(cur={cur_c}°C target={target_c}°C) manual={cfg['manual']} enabled={cfg['enabled']} "
+              f"id={cfg['heizstab_id']}", flush=True)
+
         ok = _set_input_number(cfg["heizstab_id"], round(pct, 1))
         if not ok:
             print(f"[HeaterConsumer] failed to apply {pct:.1f}% to {cfg['heizstab_id']}", flush=True)
+
+        print(f"[heater] write {'OK' if ok else 'FAIL'} to {cfg['heizstab_id']}", flush=True)

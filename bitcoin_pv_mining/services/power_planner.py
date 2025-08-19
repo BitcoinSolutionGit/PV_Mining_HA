@@ -82,6 +82,7 @@ def plan_and_allocate(
     dry_run: bool = True,              # True = nur rechnen+loggen
     log: bool = True,                  # bequemes Flag für stdout-Logging
     logger: Optional[Callable[[str], None]] = None,  # eigener Logger
+
 ) -> dict:
     """
     Verteilt Leistung gemäß Priority-Order.
@@ -122,6 +123,31 @@ def plan_and_allocate(
     log_fn(f"[plan] order={order}")
     log_fn(f"[plan] start surplus={pv_left:.3f} kW")
 
+    try:
+        _feed_id = _map("grid_feed_in")
+        _pv_id = _map("pv_production")
+        _imp_id = _map("grid_consumption")
+        _feed_v = _kw(_f(get_sensor_value(_feed_id), 0.0)) if _feed_id else None
+        _pv_v = _kw(_f(get_sensor_value(_pv_id), 0.0)) if _pv_id else None
+        _imp_v = _kw(_f(get_sensor_value(_imp_id), 0.0)) if _imp_id else None
+        log_fn(
+            f"[plan:surplus_dbg] feed_id={_feed_id} val={_feed_v}  pv_id={_pv_id} val={_pv_v}  imp_id={_imp_id} val={_imp_v}")
+    except Exception as _e:
+        log_fn(f"[plan:surplus_dbg] failed: {_e}")
+
+    # DEBUG: Sensor-Rohwerte für Surplus nachvollziehen
+    try:
+        _feed_id = _map("grid_feed_in")
+        _pv_id = _map("pv_production")
+        _imp_id = _map("grid_consumption")
+        _feed_v = _kw(_f(get_sensor_value(_feed_id), 0.0)) if _feed_id else None
+        _pv_v = _kw(_f(get_sensor_value(_pv_id), 0.0)) if _pv_id else None
+        _imp_v = _kw(_f(get_sensor_value(_imp_id), 0.0)) if _imp_id else None
+        log_fn(
+            f"[plan:surplus_dbg] feed_id={_feed_id} val={_feed_v}  pv_id={_pv_id} val={_pv_v}  imp_id={_imp_id} val={_imp_v}")
+    except Exception as _e:
+        log_fn(f"[plan:surplus_dbg] failed: {_e}")
+
     # Durch die priorisierten Verbraucher laufen
     for cid in order:
         # „Sinks“ nur informativ: leftover PV wird eingespeist
@@ -137,6 +163,14 @@ def plan_and_allocate(
         # Desire abfragen
         try:
             desire: Desire = cons.compute_desire(ctx)
+
+            log_fn(
+                f"[plan:desire] {cid}: wants={desire.wants} "
+                f"min={desire.min_kw:.2f} max={desire.max_kw:.2f} "
+                f"must={getattr(desire, 'must_run', False)} exact={getattr(desire, 'exact_', False)} "
+                f"reason={getattr(desire, 'reason', '')}"
+            )
+
         except Exception as e:
             log_fn(f"[plan] error: compute_desire({cid}) -> {e}")
             continue
@@ -164,6 +198,11 @@ def plan_and_allocate(
                 f"exact={_fmt(exact)} must={must} -> alloc=0.000 (pv=0.000, grid=0.000) | {reason}"
             )
             continue
+
+        log_fn(
+            f"[plan:alloc]  {cid}: pv={pv_alloc:.2f} grid={grid_alloc:.2f} "
+            f"total={alloc_total:.2f} pv_left={pv_left:.2f}"
+        )
 
         # 1) PV zuweisen bis target_max
         pv_alloc = min(pv_left, target_max)
