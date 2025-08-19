@@ -221,15 +221,22 @@ def register_callbacks(app):
         Output("heater-override-slider", "disabled"),
         Input("heater-override", "value"),
         State("heater-override-slider", "value"),
+        State("heater-input-heizstab", "value"),
         prevent_initial_call=False
     )
-    def toggle_slider(override_val, current_val):
+    def toggle_slider(override_val, current_val, heizstab_entity):
         auto_on = bool(override_val and "on" in override_val)  # checked = Auto
-        # Intern speichern: manual_override (True = manuell)
+        # Intern persistieren
         heat_set_vars(
             manual_override=(not auto_on),
             manual_override_percent=current_val or 0
         )
+        # Optionaler "Kick": Beim Wechsel auf Auto einmalig auf 0% setzen
+        if auto_on and heizstab_entity:
+            try:
+                set_input_number_value(heizstab_entity, 0)
+            except Exception:
+                pass
         # Auto => Slider disabled, Manuell => enabled
         return auto_on
 

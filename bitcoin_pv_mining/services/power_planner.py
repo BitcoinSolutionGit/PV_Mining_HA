@@ -42,22 +42,59 @@ def _kw(val: float) -> float:
 
 
 def read_surplus_kw() -> float:
-    """
-    Überschuss in kW (PV nach Hauslast). Wenn ein Feed-in-Sensor existiert,
-    ist die Hauslast implizit bereits gedeckt und wird NICHT weiter geplant.
-    """
-    feed_id = _map("grid_feed_in")
-    if feed_id:
-        raw = _f(get_sensor_value(feed_id), 0.0)
-        feed_in_kw = _kw(raw)
-        return max(feed_in_kw, 0.0)
+    """Liefert den aktuell verfügbaren Überschuss in kW (>=0).
+    Robust: nutzt Feed-in und PV-Production minus Grid-Consumption und nimmt das Maximum."""
+    from services.ha_sensors import get_sensor_value
 
-    # Fallback ohne Feed-in-Sensor: PV - Import
-    pv_id = _map("pv_production")
-    imp_id = _map("grid_consumption")
-    pv_kw = _kw(_f(get_sensor_value(pv_id), 0.0)) if pv_id else 0.0
-    imp_kw = _kw(_f(get_sensor_value(imp_id), 0.0)) if imp_id else 0.0
-    return max(pv_kw - imp_kw, 0.0)
+    # Helper: map -> sensor id
+    def _map(key: str) -> str:
+        return (
+            (load_yaml(SENS_OVR, {}).get("mapping", {}) or {}).get(key, "").strip()
+            or (load_yaml(SENS_DEF, {}).get("mapping", {}) or {}).get(key, "").strip()
+        )
+
+    def _f(v, d=0.0):
+        try:
+            if v is None or v == "":
+                return d
+            return float(v)
+        except Exception:
+            return d
+
+    def _kw(v: float) -> float:
+        try:
+            f = float(v)
+        except Exception:
+            return 0.0
+        # Heuristik: große Werte = Watt -> in kW umrechnen
+        return f / 1000.0 if abs(f) > 2000 else f
+
+    # A) Feed-in (Export)
+    feed_id = _map("grid_feed_in")
+    feed_kw = None
+    if feed_id:
+        raw = get_sensor_value(feed_id)
+        val = _kw(_f(raw, 0.0))
+        # Falls Zähler Export als NEGATIV liefert -> Betrag nehmen
+        export_kw = abs(val) if val < 0 else val
+        # nur >=0
+        feed_kw = max(export_kw, 0.0)
+
+    # B) Fallback: PV-Produktion - Netzbezug
+    pv_id   = _map("pv_production")
+    imp_id  = _map("grid_consumption")
+    diff_kw = None
+    if pv_id and imp_id:
+        pv_kw  = max(_kw(_f(get_sensor_value(pv_id), 0.0)), 0.0)
+        imp_kw = max(_kw(_f(get_sensor_value(imp_id), 0.0)), 0.0)
+        diff_kw = max(pv_kw - imp_kw, 0.0)
+
+    # C) Ergebnis: best effort
+    candidates = [x for x in [feed_kw, diff_kw] if x is not None]
+    if not candidates:
+        return 0.0
+    return max(candidates + [0.0])
+
 
 
 # --- Format-Helfer fürs Log ---
