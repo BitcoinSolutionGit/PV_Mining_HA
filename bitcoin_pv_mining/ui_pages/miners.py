@@ -2,6 +2,8 @@ import math
 import dash
 import os
 import time
+import logging
+
 from dash import no_update
 from dash import html, dcc, callback_context
 from dash.dependencies import Input, Output, State, MATCH, ALL
@@ -24,6 +26,24 @@ from services.power_planner import plan_and_allocate_auto
 CONFIG_DIR = "/config/pv_mining_addon"
 SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
 SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
+LOG_PATH = "/config/pv_mining_addon/planner.log"
+
+_logger = logging.getLogger("planner")
+if not _logger.handlers:
+    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+    fh = logging.FileHandler(LOG_PATH, encoding="utf-8")
+    fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    _logger.addHandler(fh)
+    _logger.setLevel(logging.INFO)
+
+def _plan_log(msg: str):
+    try:
+        _logger.info(msg)
+    except Exception:
+        pass
+    # zusätzlich auch in die Konsole
+    print(msg, flush=True)
+
 
 def _now(): return time.time()
 
@@ -581,7 +601,7 @@ def register_callbacks(app):
 
         # plan_and_allocate_auto(dry_run=True)  # nur Log/Simulation
         # später zum Schalten:
-        plan_and_allocate_auto(apply=True, dry_run=False) # LIVE produktiv!
+        plan_and_allocate_auto(apply=True, dry_run=False, logger=_plan_log) # LIVE produktiv!
 
         return data, ampel
 
