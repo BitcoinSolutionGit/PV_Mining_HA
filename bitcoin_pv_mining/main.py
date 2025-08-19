@@ -4,7 +4,7 @@ import dash
 import flask
 
 from dash import html, dcc
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 
 from flask import send_from_directory
 from flask import request, redirect
@@ -13,6 +13,7 @@ from ui_dashboard import layout as dashboard_layout, register_callbacks
 from services.btc_api import update_btc_data_periodically
 from services.license import verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
 from services.utils import get_addon_version
+from services.power_planner import plan_and_allocate_auto
 
 from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
 from ui_pages.miners import layout as miners_layout, register_callbacks as reg_miners
@@ -445,6 +446,10 @@ app.layout = html.Div([
     dcc.Store(id="premium-enabled", data={"enabled": is_premium_enabled()}),
     dcc.Store(id="prio-order", storage_type="local"),
 
+    # NEU: globaler Engine-Timer (unabhängig vom Tab)
+    dcc.Interval(id="planner-engine", interval=10_000, n_intervals=0),  # alle 10s
+    html.Div(id="planner-heartbeat", style={"display": "none"}),        # Dummy-Output
+
     html.Div([
         html.Img(src=f"{prefix}config-icon", className="header-icon"),
         html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab custom-tab-selected", **{"data-tab": "dashboard"}),
@@ -465,6 +470,25 @@ app.layout = html.Div([
     html.Div(id="tabs-content", style={"marginTop": "10px"})
 ])
 
+@dash.callback(
+    Output("planner-heartbeat", "children"),
+    Input("planner-engine", "n_intervals"),
+    State("premium-enabled", "data"),
+    prevent_initial_call=False
+)
+def _global_engine_tick(n, premium_data):
+    # nur wenn Premium aktiv ist (bei dir ja), sonst still
+    enabled = bool((premium_data or {}).get("enabled"))
+    if not enabled:
+        return ""
+
+    try:
+        # schreibt direkt ins Add-on-Log (stdout)
+        plan_and_allocate_auto(apply=True, dry_run=False, logger=lambda m: print(m, flush=True))
+        return f"ok:{n}"
+    except Exception as e:
+        print(f"[engine] error: {e}", flush=True)
+        return f"err:{n}"
 
 
 if __name__ == "__main__":
