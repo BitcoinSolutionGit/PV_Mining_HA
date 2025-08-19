@@ -607,10 +607,6 @@ def register_callbacks(app):
         except Exception as e:
             print(f"[dry-run] error: {e}", flush=True)
 
-        # plan_and_allocate_auto(dry_run=True)  # nur Log/Simulation
-        # später zum Schalten:
-        plan_and_allocate_auto(apply=True, dry_run=False, logger=lambda m: print(m, flush=True)) # LIVE produktiv!
-
         return data, ampel
 
     # 0) initial miners-data füllen

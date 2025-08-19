@@ -1,91 +1,124 @@
-# consumers/cooling.py
+# services/consumers/cooling.py
 from __future__ import annotations
-from .base import Desire
+
+from services.consumers.base import BaseConsumer, Desire, Ctx
 from services.cooling_store import get_cooling
 from services.settings_store import get_var as set_get
 from services.miners_store import list_miners
+from services.ha_entities import call_action
 
-def desire_now(any_profitable_miner_requires_cooling: bool) -> tuple[Desire, float, bool]:
+def _truthy(x, default=False) -> bool:
+    if x is None:
+        return default
+    s = str(x).strip().lower()
+    if s in ("1","true","on","yes","y","auto","enabled"):
+        return True
+    try:
+        return float(s) > 0.0
+    except Exception:
+        return False
+
+def _num(x, d=0.0) -> float:
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return d
+
+def _any_miner_requires_cooling() -> bool:
+    """True, wenn irgendein Miner Cooling braucht (Feld tolerant)."""
+    try:
+        for m in (list_miners() or []):
+            flags = [
+                m.get("require_cooling"),
+                m.get("cooling_required"),
+                m.get("needs_cooling"),
+                (m.get("cooling") or {}).get("required") if isinstance(m.get("cooling"), dict) else None,
+            ]
+            if any(_truthy(f) for f in flags):
+                return True
+    except Exception:
+        pass
+    return False
+
+def _any_auto_enabled_miner_profitable() -> bool:
     """
-    Gibt Desire für Cooling zurück sowie (power_kw_cfg, running_now_flag)
+    Grobe Positivprüfung: es gibt mindestens einen Miner in Auto mit sinnvoller
+    Konfig (Hashrate/Power > 0). Die genaue Profitprüfung macht der MinerConsumer.
     """
-    if not bool(set_get("cooling_feature_enabled", False)):
-        return Desire(False,0,0,False,None,"feature disabled"), 0.0, False
+    try:
+        for m in (list_miners() or []):
+            if not _truthy(m.get("enabled"), False):
+                continue
+            mode = str(m.get("mode") or "manual").lower()
+            if mode != "auto":
+                continue
+            if _num(m.get("power_kw"), 0.0) <= 0.0:
+                continue
+            if _num(m.get("hashrate_ths"), 0.0) <= 0.0:
+                continue
+            return True
+    except Exception:
+        pass
+    return False
 
-    c = get_cooling() or {}
-    mode = (str(c.get("mode") or "").lower() or "manual")
-    on = bool(c.get("on"))
-    kw = float(c.get("power_kw") or 0.0)
 
-    running_now = on  # falls du eine ready_entity hast, könntest du das hier genauer prüfen
+class CoolingConsumer(BaseConsumer):
+    id = "cooling"
+    label = "Cooling circuit"
 
-    if mode == "manual":
-        # respektiere manuellen Schalter
-        des = Desire(wants=on, min_kw=kw if on else 0.0, max_kw=kw if on else 0.0,
-                     must_run=on, exact_kw=(kw if on else 0.0),
-                     reason="manual state")
-        return des, kw, running_now
+    def compute_desire(self, ctx: Ctx) -> Desire:
+        # globales Feature
+        feature = bool(set_get("cooling_feature_enabled", False))
+        if not feature:
+            return Desire(False, 0.0, 0.0, reason="feature disabled")
 
-    # auto: nur wenn mind. ein profitabler Miner cooling benötigt
-    wants = bool(any_profitable_miner_requires_cooling)
-    des = Desire(wants=wants, min_kw=0.0, max_kw=(kw if wants else 0.0),
-                 must_run=False, exact_kw=(kw if wants else None),
-                 reason=("needed by profitable miner" if wants else "no profitable miner needs cooling"))
-    return des, kw, running_now
+        c = get_cooling() or {}
+        enabled = _truthy(c.get("enabled"), True)
+        mode = str(c.get("mode") or "manual").lower()
+        power_kw = _num(c.get("power_kw"), 0.0)
 
-class CoolingConsumer:
-    """
-    Thin adapter für den Planner/Registry.
-    Cooling verlangt selbst keine Leistung; es wird nur gestartet,
-    wenn ein profitabler Miner mit Cooling-Pflicht versorgt werden soll.
-    """
-    def __init__(self) -> None:
-        cfg = get_cooling() or {}
-        self._label = cfg.get("name", "Cooling circuit")
-
-    @property
-    def id(self) -> str:
-        return "cooling"
-
-    @property
-    def label(self) -> str:
-        return self._label
-
-    def desire_now(self) -> Desire:
-        enabled = bool(set_get("cooling_feature_enabled", False))
         if not enabled:
-            return Desire(False, 0.0, 0.0, False, None, "feature disabled")
-        # kein eigener Bedarf – Planner verteilt nur, wenn Miner das erfordern
-        return Desire(False, 0.0, 0.0, False, None,
-                      "idle (starts only when a miner needs cooling & is profitable)")
+            return Desire(False, 0.0, 0.0, reason="disabled")
+        if mode != "auto":
+            return Desire(False, 0.0, 0.0, reason="manual mode")
+        if power_kw <= 0.0:
+            return Desire(False, 0.0, 0.0, reason="no power configured")
 
-    # Platzhalter für später (z.B. call_action etc.)
-    def apply(self, kw: float) -> None:  # noqa: ARG002
-        return
+        if not _any_miner_requires_cooling():
+            return Desire(False, 0.0, 0.0, reason="no miner requires cooling")
 
-    from .base import Desire
-    from services.settings_store import get_var as set_get
-    from services.cooling_store import get_cooling
+        if not _any_auto_enabled_miner_profitable():
+            return Desire(False, 0.0, 0.0, reason="no eligible miner")
 
-    class CoolingConsumer:
-        def __init__(self) -> None:
-            cfg = get_cooling() or {}
-            self._label = cfg.get("name", "Cooling circuit")
+        # diskret (an/aus) → exact = power_kw
+        return Desire(
+            wants=True,
+            min_kw=0.0,
+            max_kw=power_kw,
+            must_run=False,
+            exact_kw=power_kw,
+            reason="cooling required for auto miners",
+        )
 
-        @property
-        def id(self) -> str:
-            return "cooling"
+    def apply_allocation(self, ctx: Ctx, alloc_kw: float) -> None:
+        """
+        Schaltet Cooling via HA-Action an/aus.
+        Schwelle: >= 50% der konfigurierten Leistung -> ON, sonst OFF.
+        """
+        c = get_cooling() or {}
+        power_kw = _num(c.get("power_kw"), 0.0)
+        on_ent = c.get("action_on_entity", "") or ""
+        off_ent = c.get("action_off_entity", "") or ""
 
-        @property
-        def label(self) -> str:
-            return self._label
-
-        def desire_now(self) -> Desire:
-            enabled = bool(set_get("cooling_feature_enabled", False))
-            if not enabled:
-                return Desire(False, 0.0, 0.0, False, None, "feature disabled")
-            return Desire(False, 0.0, 0.0, False, None,
-                          "idle (starts only when a miner needs cooling & is profitable)")
-
-        def apply(self, kw: float) -> None:
-            return
+        should_on = power_kw > 0.0 and alloc_kw >= 0.5 * power_kw
+        try:
+            if should_on:
+                if on_ent:
+                    call_action(on_ent, True)
+                print(f"[cooling] apply ~{alloc_kw:.2f} kW (ON)", flush=True)
+            else:
+                if off_ent:
+                    call_action(off_ent, False)
+                print(f"[cooling] apply 0 kW (OFF)", flush=True)
+        except Exception as e:
+            print(f"[cooling] apply error: {e}", flush=True)
