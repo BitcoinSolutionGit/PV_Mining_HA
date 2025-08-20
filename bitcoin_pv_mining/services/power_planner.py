@@ -47,6 +47,14 @@ def _kw(val: float) -> float:
         return 0.0
     return v / 1000.0 if abs(v) > 2000 else v
 
+# --- Format-Helfer fürs Log (fehlte -> NameError) ---
+def _fmt(x: Optional[Number]) -> str:
+    if x is None:
+        return "None"
+    try:
+        return f"{float(x):.3f}"
+    except Exception:
+        return str(x)
 
 def _config_selfcheck(log_fn: Callable[[str], None]) -> None:
     """Loggt, ob die YAMLs vorhanden sind und welche Keys/IDs gefunden werden."""
