@@ -472,23 +472,6 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
                     persistence=True, persistence_type="memory"
                 )
             ], style={"flex": "1", "marginLeft": "10px"}),
-            html.Div([
-                html.Label("Ready/State entity (True = running)"),
-                dcc.Dropdown(
-                    id={"type": "m-ready-entity", "mid": mid},
-                    options=ha_actions,
-                    value=m.get("ready_entity", "") or None,
-                    placeholder="Select entity that signals 'ON'…",
-                    persistence=True, persistence_type="memory"
-                )
-            ], style={"flex": "1"}),
-            html.Div([
-                html.Label("Timeout (s)"),
-                dcc.Input(id={"type": "m-ready-timeout", "mid": mid}, type="number", step=1, min=5,
-                          value=int(m.get("ready_timeout_s", 60) or 60),
-                          style={"width": "120px"})
-            ], style={"marginLeft": "10px"})
-
         ], style={"display": "flex", "gap": "10px", "marginTop": "8px"}),
 
         html.Hr(),
@@ -759,7 +742,6 @@ def register_callbacks(app):
 
     # 8) Save pro Miner (ALL statt MATCH)
 
-
     @app.callback(
         Output("miners-data", "data", allow_duplicate=True),
         Input({"type": "m-save", "mid": ALL}, "n_clicks"),
@@ -773,32 +755,19 @@ def register_callbacks(app):
         State({"type": "m-reqcool", "mid": ALL}, "value"),
         State({"type": "m-act-on", "mid": ALL}, "value"),
         State({"type": "m-act-off", "mid": ALL}, "value"),
-        State({"type": "m-ready-entity", "mid": ALL}, "value"),
-        State({"type": "m-ready-timeout", "mid": ALL}, "value"),
         prevent_initial_call=True
     )
-    def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals, ths_vals, pkw_vals,
-                    reqcool_vals, act_on_vals, act_off_vals, ready_vals, rto_vals):
-        # Welcher Save-Button hat ausgelöst?
+    def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals,
+                    ths_vals, pkw_vals, reqcool_vals, act_on_vals, act_off_vals):
         trg = callback_context.triggered_id
         if not trg:
             raise dash.exceptions.PreventUpdate
-        mid = trg.get("mid")  # z.B. "m_abcd1234"
+        mid = trg.get("mid")
 
-        # Index des geklickten Buttons in den ALL-Listen finden
         try:
             idx = next(i for i, sid in enumerate(save_ids) if sid.get("mid") == mid)
         except StopIteration:
             raise dash.exceptions.PreventUpdate
-
-        # Werte sauber herausziehen
-        name = names[idx] if idx < len(names) else ""
-        enable = bool(enabled_vals[idx] and "on" in enabled_vals[idx]) if idx < len(enabled_vals) else False
-        mode = "auto" if (idx < len(mode_vals) and mode_vals[idx] and "auto" in mode_vals[idx]) else "manual"
-        on = bool(on_vals[idx] and "on" in on_vals[idx]) if idx < len(on_vals) else False
-        reqc = bool(reqcool_vals[idx] and "on" in reqcool_vals[idx]) if idx < len(reqcool_vals) else False
-        act_on = (act_on_vals[idx] if idx < len(act_on_vals) else None) or ""
-        act_off = (act_off_vals[idx] if idx < len(act_off_vals) else None) or ""
 
         def _num(x, d=0.0):
             try:
@@ -806,26 +775,28 @@ def register_callbacks(app):
             except (TypeError, ValueError):
                 return d
 
+        name = names[idx] if idx < len(names) else ""
+        enable = bool(enabled_vals[idx] and "on" in enabled_vals[idx]) if idx < len(enabled_vals) else False
+        mode = "auto" if (idx < len(mode_vals) and mode_vals[idx] and "auto" in mode_vals[idx]) else "manual"
+        on = bool(on_vals[idx] and "on" in on_vals[idx]) if idx < len(on_vals) else False
         ths = _num(ths_vals[idx] if idx < len(ths_vals) else 0.0, 0.0)
         pkw = _num(pkw_vals[idx] if idx < len(pkw_vals) else 0.0, 0.0)
+        reqc = bool(reqcool_vals[idx] and "on" in reqcool_vals[idx]) if idx < len(reqcool_vals) else False
+        act_on = (act_on_vals[idx] if idx < len(act_on_vals) else None) or ""
+        act_off = (act_off_vals[idx] if idx < len(act_off_vals) else None) or ""
 
-        ready_ent = (ready_vals[idx] if idx < len(ready_vals) else None) or ""
-        ready_to = int((rto_vals[idx] if idx < len(rto_vals) else 60) or 60)
-
-        # Speichern
-        try:
-            update_miner(mid,
-                         name=name or "", enabled=enable, mode=mode, on=on,
-                         hashrate_ths=ths, power_kw=pkw, require_cooling=reqc,
-                         action_on_entity=act_on, action_off_entity=act_off,
-                         ready_entity=ready_ent, ready_timeout_s=ready_to)
-        except TypeError:
-            update_miner(mid,
-                         name=name or "", enabled=enable, mode=mode, on=on,
-                         hashrate_ths=ths, power_kw=pkw, require_cooling=reqc,
-                         action_on_entity=act_on, action_off_entity=act_off)
-
-        # Liste neu laden
+        update_miner(
+            mid,
+            name=name or "",
+            enabled=enable,
+            mode=mode,
+            on=on,
+            hashrate_ths=ths,
+            power_kw=pkw,
+            require_cooling=reqc,
+            action_on_entity=act_on,
+            action_off_entity=act_off,
+        )
         return list_miners()
 
     # 9) KPIs je Miner live berechnen (alle 10s + bei Eingaben)
