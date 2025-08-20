@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import requests
+import math
 from typing import Optional
 
 from services.consumers.base import BaseConsumer, Desire, Ctx
@@ -103,9 +104,10 @@ class HeaterConsumer(BaseConsumer):
             return
 
         max_kw = max(0.0, self._max_power_kw(cfg))
-        pct = 0.0
-        if max_kw > 1e-6:
-            pct = _clamp((alloc_kw / max_kw) * 100.0, 0.0, 100.0)
+        pct = 0
+        if max_kw > 0:
+            pct = int(math.floor((alloc_kw / max_kw) * 100.0))
+        pct = max(0, min(100, pct))
 
         # Temperatur-Sicherheitscheck: Bei/über Ziel => 0 %
         from services.ha_sensors import get_sensor_value

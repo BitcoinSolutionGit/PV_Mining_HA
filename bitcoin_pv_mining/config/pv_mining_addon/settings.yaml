@@ -16,3 +16,6 @@ settings:
   fx_usd_to_eur: 0.93
 
   cooling_feature_enabled: false
+
+  surplus_guard_w: 150.0   # z. B. 100–300 W
+  surplus_guard_pct: 0.00  # optionaler prozentualer Guard (0–0.05)

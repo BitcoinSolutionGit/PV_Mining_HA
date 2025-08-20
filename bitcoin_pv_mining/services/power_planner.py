@@ -6,12 +6,12 @@ from typing import Callable, Dict, List, Optional, Tuple
 from services.consumers.base import Ctx, Desire, BaseConsumer, now
 from services.consumers.registry import get_consumer_for_id
 
-# --- Surplus helpers (liest deine Sensor-Mappings aus /config) ---
 import os
 from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
+from services.settings_store import get_var as set_get
 
-# --- stdout logger helper (Add-on-Log) ---
+# stdout logger -> Add-on-Log
 def _stdout_logger(msg: str):
     try:
         print(msg, flush=True)
@@ -48,94 +48,122 @@ def _kw(val: float) -> float:
     return v / 1000.0 if abs(v) > 2000 else v
 
 
-def read_surplus_kw() -> float:
-    """Aktueller Überschuss in kW (>=0). Nimmt max(Feed-in, PV-Prod - Grid-Import)."""
-    from services.ha_sensors import get_sensor_value
-
-    def _m(path, k):
-        return (load_yaml(path, {}).get("mapping", {}) or {}).get(k, "").strip()
-
-    def _map_local(key: str) -> str:
-        return _m(SENS_OVR, key) or _m(SENS_DEF, key)
-
-    def _f_local(v, d=0.0):
-        try:
-            return float(v) if v not in (None, "") else d
-        except Exception:
-            return d
-
-    def _kw_local(v: float) -> float:
-        try:
-            f = float(v)
-        except Exception:
-            return 0.0
-        return f / 1000.0 if abs(f) > 2000 else f
-
-    # A) Feed-in (Export) – negatives Export-Sign korrigieren
-    feed_id = _map_local("grid_feed_in")
-    feed_kw = None
-    if feed_id:
-        val = _kw_local(_f_local(get_sensor_value(feed_id), 0.0))
-        export_kw = abs(val) if val < 0 else val
-        feed_kw = max(export_kw, 0.0)
-
-    # B) PV-Produktion minus Netzbezug
-    pv_id  = _map_local("pv_production")
-    imp_id = _map_local("grid_consumption")
-    diff_kw = None
-    if pv_id and imp_id:
-        pv_kw  = max(_kw_local(_f_local(get_sensor_value(pv_id), 0.0)), 0.0)
-        imp_kw = max(_kw_local(_f_local(get_sensor_value(imp_id), 0.0)), 0.0)
-        diff_kw = max(pv_kw - imp_kw, 0.0)
-
-    cands = [x for x in (feed_kw, diff_kw) if x is not None]
-    return max(cands + [0.0]) if cands else 0.0
-
-
-# --- Format-Helfer fürs Log ---
-def _fmt(x: Optional[Number]) -> str:
-    if x is None:
-        return "None"
+def _config_selfcheck(log_fn: Callable[[str], None]) -> None:
+    """Loggt, ob die YAMLs vorhanden sind und welche Keys/IDs gefunden werden."""
     try:
-        return f"{x:.3f}"
+        sens_ovr_exists = os.path.exists(SENS_OVR)
+        sens_def_exists = os.path.exists(SENS_DEF)
+        sens_ovr = load_yaml(SENS_OVR, {}) or {}
+        sens_def = load_yaml(SENS_DEF, {}) or {}
+        sens_keys_ovr = sorted(list((sens_ovr.get("mapping") or {}).keys()))
+        sens_keys_def = sorted(list((sens_def.get("mapping") or {}).keys()))
+        log_fn(f"[cfg] sensors.local.yaml exists={sens_ovr_exists} keys={sens_keys_ovr}")
+        log_fn(f"[cfg] sensors.yaml       exists={sens_def_exists} keys={sens_keys_def}")
+
+        _feed_id = _map("grid_feed_in")
+        _pv_id   = _map("pv_production")
+        _imp_id  = _map("grid_consumption")
+        log_fn(f"[cfg] resolved: grid_feed_in={_feed_id} pv_production={_pv_id} grid_consumption={_imp_id}")
+    except Exception as e:
+        log_fn(f"[cfg] sensors selfcheck failed: {e}")
+
+    # Planner-Guard Settings
+    try:
+        guard_w   = _f(set_get("surplus_guard_w", 100.0), 100.0)
+        guard_pct = _f(set_get("surplus_guard_pct", 0.0), 0.0)
+        log_fn(f"[cfg] planner guard: surplus_guard_w={guard_w:.0f}W surplus_guard_pct={guard_pct:.3f}")
+    except Exception as e:
+        log_fn(f"[cfg] planner guard read failed: {e}")
+
+
+# ---------- Strikter Überschuss: Basislast-Abzug ----------
+def _read_pv_import_feed() -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    """Liest PV, Grid-Import, Feed-in in kW (None wenn nicht gemappt)."""
+    pv_id  = _map("pv_production")
+    imp_id = _map("grid_consumption")
+    feed_id = _map("grid_feed_in")
+    pv = _kw(_f(get_sensor_value(pv_id), 0.0)) if pv_id else None
+    imp = _kw(_f(get_sensor_value(imp_id), 0.0)) if imp_id else None
+    feed = _kw(_f(get_sensor_value(feed_id), 0.0)) if feed_id else None
+    # Export positiv
+    if feed is not None and feed < 0:
+        feed = abs(feed)
+    return pv, imp, feed
+
+
+def _controllable_now_kw() -> float:
+    """Schätzt aktuell laufende, von uns kontrollierbare Last (kW)."""
+    now_kw = 0.0
+    # Heater (aus Prozent × Max-Leistung)
+    try:
+        from services.heater_store import resolve_entity_id as heat_resolve, get_var as heat_get
+        he_id = (heat_resolve("input_heizstab_cache") or "").strip()
+        maxp = _f(heat_get("max_power_heater", 0.0), 0.0)  # in kW (oder W, aber UI stellt kW/W sicher)
+        if he_id and maxp > 0.0:
+            pct = _f(get_sensor_value(he_id), 0.0)
+            now_kw += max(0.0, maxp) * max(0.0, min(100.0, pct)) / 100.0
     except Exception:
-        return str(x)
+        pass
+
+    # Cooling (diskret)
+    try:
+        from services.cooling_store import get_cooling
+        c = get_cooling() or {}
+        pkw = _f(c.get("power_kw"), 0.0)
+        is_on = bool(c.get("on"))  # optional; wenn fehlt, nix addieren
+        if is_on and pkw > 0.0:
+            now_kw += pkw
+    except Exception:
+        pass
+
+    # Miner (diskret)
+    try:
+        from services.miners_store import list_miners
+        for m in (list_miners() or []):
+            if bool(m.get("on")):
+                now_kw += _f(m.get("power_kw"), 0.0)
+    except Exception:
+        pass
+
+    # Wallbox/Battery könntest du später ergänzen
+    return max(0.0, now_kw)
+
+
+def _surplus_strict_kw() -> Tuple[float, float, float, float, float]:
+    """
+    Liefert (surplus_raw, total_load, ctrl_now, base_load, pv)
+    surplus_raw = max(feed_in, pv - base_load)
+    """
+    pv, imp, feed = _read_pv_import_feed()
+    pv_kw   = max(pv or 0.0, 0.0)
+    imp_kw  = max(imp or 0.0, 0.0)
+    feed_kw = max(feed or 0.0, 0.0)
+
+    total_load = max(0.0, pv_kw + imp_kw - feed_kw)  # physikalisch: Last = PV + Import - Export
+    ctrl_now   = _controllable_now_kw()
+    base_load  = max(0.0, total_load - ctrl_now)
+
+    surplus_raw = max(feed_kw, pv_kw - base_load)    # konservativ + korrekt für „Vor-Feedin“-Phasen
+    return surplus_raw, total_load, ctrl_now, base_load, pv_kw
 
 
 # ----------------------------------------------------------------------------------
-# Kernfunktion: plant und (optional) setzt um
+# Kernfunktion
 # ----------------------------------------------------------------------------------
 def plan_and_allocate(
     ctx: Ctx,
     order: List[str],
     consumers: Optional[Dict[str, BaseConsumer]] = None,
     *,
-    apply: bool = False,               # True = apply_allocation() ausführen
-    dry_run: bool = True,              # True = nur rechnen+loggen
-    log: bool = True,                  # bequemes Flag für stdout-Logging
-    logger: Optional[Callable[[str], None]] = None,  # eigener Logger
+    apply: bool = False,
+    dry_run: bool = True,
+    log: bool = True,
+    logger: Optional[Callable[[str], None]] = None,
 ) -> dict:
-    """
-    Verteilt Leistung gemäß Priority-Order.
-
-    Regeln:
-      - Es wird der *tatsächliche* PV-Überschuss (read_surplus_kw) verwendet.
-        Hauslast ist dabei bereits implizit gedeckt (sobald grid_feed_in verfügbar).
-      - PV wird zuerst verteilt. Grid wird nur gezogen, um 'must_run' mindestens
-        das 'min_kw' (oder 'exact_kw') zu garantieren.
-      - Jeder Consumer liefert via compute_desire(ctx) seinen Wunsch (Desire).
-
-    Rückgabe:
-      {
-        "pv_left": float,           # unbenutzter PV-Überschuss
-        "grid_draw": float,         # zusätzlich benötigter Netzbezug für must_run-Minima
-        "allocations": List[Tuple[cid, consumer, alloc_total]]
-      }
-    """
-    # Logger wählen: expliziter logger > stdout > no-op
+    # Logger wählen
     log_fn = (logger or _stdout_logger) if log else (lambda *_: None)
 
-    # Consumer-Map aufbauen/verwenden
+    # Consumer-Map
     cons_map: Dict[str, BaseConsumer] = consumers.copy() if consumers else {}
 
     def _get_cons(cid: str) -> Optional[BaseConsumer]:
@@ -146,16 +174,23 @@ def plan_and_allocate(
             cons_map[cid] = c
         return c
 
-    # PV-Überschuss (Hauslast-bereinigt) ermitteln
-    surplus_kw = read_surplus_kw()
-    pv_left: float = max(surplus_kw, 0.0)
+    # Strikter Überschuss + Guard anwenden
+    surplus_raw, total_load, ctrl_now, base_load, pv_kw = _surplus_strict_kw()
+    guard_w   = _f(set_get("surplus_guard_w", 100.0), 100.0)
+    guard_pct = _f(set_get("surplus_guard_pct", 0.0), 0.0)
+    guard_kw  = max(guard_w / 1000.0, max(0.0, guard_pct) * surplus_raw)
+    surplus_kw = max(surplus_raw - guard_kw, 0.0)
+
+    pv_left: float = surplus_kw
     grid_draw: float = 0.0
     allocations: List[Tuple[str, BaseConsumer, float]] = []
 
     log_fn(f"[plan] order={order}")
     log_fn(f"[plan] start surplus={pv_left:.3f} kW")
+    log_fn(f"[plan:strict] total={total_load:.3f} kW  ctrl_now={ctrl_now:.3f} kW  base={base_load:.3f} kW  pv={pv_kw:.3f} kW  raw={surplus_raw:.3f} kW")
+    log_fn(f"[plan:guard] guard={guard_kw:.3f} kW (w={guard_w:.0f}W, pct={guard_pct:.3f}) -> pv_left={pv_left:.3f} kW")
 
-    # Surplus-Debug: Rohwerte der Sensoren anzeigen
+    # Debug: Rohwerte der Sensoren
     try:
         _feed_id = _map("grid_feed_in")
         _pv_id   = _map("pv_production")
@@ -167,9 +202,8 @@ def plan_and_allocate(
     except Exception as _e:
         log_fn(f"[plan:surplus_dbg] failed: {_e}")
 
-    # Durch die priorisierten Verbraucher laufen
+    # Durch die Prioritätsliste
     for cid in order:
-        # „Sinks“ nur informativ: leftover PV wird eingespeist
         if cid in ("grid_feed", "inflow"):
             log_fn(f"[plan] sink '{cid}' at end; leftover will be fed in.")
             continue
@@ -179,14 +213,12 @@ def plan_and_allocate(
             log_fn(f"[plan] skip unknown consumer id='{cid}'")
             continue
 
-        # Desire abfragen
         try:
             desire: Desire = cons.compute_desire(ctx)
         except Exception as e:
             log_fn(f"[plan] error: compute_desire({cid}) -> {e}")
             continue
 
-        # Debug Desire
         wants  = bool(desire.wants)
         min_kw = max(desire.min_kw or 0.0, 0.0)
         max_kw = max(desire.max_kw or 0.0, 0.0)
@@ -194,29 +226,19 @@ def plan_and_allocate(
         must   = bool(getattr(desire, "must_run", False))
         reason = getattr(desire, "reason", "")
 
-        log_fn(
-            f"[plan:desire] {cid}: wants={wants} "
-            f"min={min_kw:.2f} max={max_kw:.2f} must={must} "
-            f"reason={reason}"
-        )
+        log_fn(f"[plan:desire] {cid}: wants={wants} min={min_kw:.2f} max={max_kw:.2f} must={must} reason={reason}")
 
-        # *** Sichere Defaults, damit Logging nie crasht ***
         pv_alloc   = 0.0
         grid_alloc = 0.0
         alloc_total = 0.0
 
         if not wants or (min_kw <= 0.0 and max_kw <= 0.0):
-            # Nichts zuteilen
             allocations.append((cid, cons, 0.0))
             log_fn(f"[plan:alloc]  {cid}: pv=0.00 grid=0.00 total=0.00 pv_left={pv_left:.2f}")
-            # DRY-Zeile für Übersicht
-            log_fn(
-                f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} "
-                f"exact={_fmt(exact)} must={must} -> alloc=0.000 (pv=0.000, grid=0.000) | {reason}"
-            )
+            log_fn(f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} exact={_fmt(exact)} must={must} -> alloc=0.000 (pv=0.000, grid=0.000) | {reason}")
             continue
 
-        # --- Zuteilung berechnen: erst PV, ggf. Grid für Mindestleistung ---
+        # Zuteilung: erst PV (mit Guard), optional Grid für must_run-Minimum
         need_from_pv = min(max_kw, pv_left)
         pv_alloc = max(0.0, need_from_pv)
         pv_left  -= pv_alloc
@@ -228,12 +250,9 @@ def plan_and_allocate(
         if grid_alloc > 0:
             grid_draw += grid_alloc
 
-        # Logging *nachdem* die Werte gesetzt sind
         log_fn(f"[plan:alloc]  {cid}: pv={pv_alloc:.2f} grid={grid_alloc:.2f} total={alloc_total:.2f} pv_left={pv_left:.2f}")
-
         allocations.append((cid, cons, alloc_total))
 
-        # Anwenden (nur wenn gewünscht)
         do_apply = bool(apply) and not bool(dry_run)
         if do_apply:
             try:
@@ -241,30 +260,17 @@ def plan_and_allocate(
             except Exception as e:
                 log_fn(f"[plan] error: apply_allocation({cid}, {alloc_total:.3f}) -> {e}")
 
-        # DRY/Info-Log (auch im Live-Betrieb hilfreich als Summary)
-        log_fn(
-            f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} "
-            f"exact={_fmt(exact)} must={must} -> alloc={alloc_total:.3f} "
-            f"(pv={pv_alloc:.3f}, grid={grid_alloc:.3f}) | {reason}"
-        )
+        log_fn(f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} exact={_fmt(exact)} must={must} -> alloc={alloc_total:.3f} (pv={pv_alloc:.3f}, grid={grid_alloc:.3f}) | {reason}")
 
     log_fn(f"[plan] end   surplus={pv_left:.3f} kW, grid_draw={grid_draw:.3f} kW")
 
-    return {
-        "pv_left": pv_left,
-        "grid_draw": grid_draw,
-        "allocations": allocations,
-    }
+    return {"pv_left": pv_left, "grid_draw": grid_draw, "allocations": allocations}
 
 
 # ----------------------------------------------------------------------------------
-# Komfort-Wrapper: baut ctx & order automatisch (praktisch für Tests / _engine_tick)
+# Komfort-Wrapper
 # ----------------------------------------------------------------------------------
 def _discover_priority_order() -> List[str]:
-    """
-    Versucht, die Prioritätenliste aus ui_pages.settings zu lesen.
-    Fällt andernfalls auf eine sichere Default-Reihenfolge zurück.
-    """
     try:
         from ui_pages.settings import (  # type: ignore
             _prio_available_items as prio_available_items,
@@ -274,12 +280,10 @@ def _discover_priority_order() -> List[str]:
         available = prio_available_items()
         stored = prio_load_ids()
         order = prio_merge(stored, available)
-        # Sinks nicht ganz vorne – Sicherheitshalber
         if "grid_feed" in order:
             order = [x for x in order if x != "grid_feed"] + ["grid_feed"]
         return order
     except Exception:
-        # Minimal sinnvoller Fallback
         return ["house", "battery", "heater", "wallbox", "cooling", "grid_feed"]
 
 
@@ -292,20 +296,6 @@ def plan_and_allocate_auto(
     consumers: Optional[Dict[str, BaseConsumer]] = None,
     order: Optional[List[str]] = None,
 ) -> dict:
-    """
-    Bequemer Auto-Planer:
-      - baut einen frischen Kontext (Zeitstempel etc.)
-      - ermittelt die aktuelle Priority-Order (Settings) oder nutzt den übergebenen `order`
-      - ruft `plan_and_allocate()` mit denselben Flags auf
-    """
-    ctx = Ctx(ts=now())  # minimaler, gültiger Kontext
+    ctx = Ctx(ts=now())
     order_eff = order or _discover_priority_order()
-    return plan_and_allocate(
-        ctx=ctx,
-        order=order_eff,
-        consumers=consumers,
-        apply=apply,
-        dry_run=dry_run,
-        log=log,
-        logger=logger,
-    )
+    return plan_and_allocate(ctx=ctx, order=order_eff, consumers=consumers, apply=apply, dry_run=dry_run, log=log, logger=logger)
