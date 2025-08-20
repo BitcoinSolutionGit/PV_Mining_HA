@@ -105,6 +105,13 @@ from flask import send_from_directory
 
 print(f"[INFO] Dash runs with requests_pathname_prefix = {prefix}")
 
+# --- tiny formatter for engine logs ---
+def _fmt(x):
+    try:
+        return f"{float(x):.3f}"
+    except Exception:
+        return str(x)
+
 # --- OAuth Placeholder Routes ---
 def _abs_url(path: str) -> str:
     # Baut absolute URL inkl. Ingress-Prefix
