@@ -66,7 +66,6 @@ def _is_heater_active() -> bool:
     except Exception:
         return False
 
-
 def _is_heater_auto() -> bool:
     # manual_override=True bedeutet: manuell; Auto ist also False
     try:
@@ -114,7 +113,6 @@ def _is_cooling_auto_enabled() -> bool:
     if auto_flag is None:
         auto_flag = set_get("cooling_auto_enabled", None)
     return _truthy(auto_flag, default=False)
-
 
 def _is_miner_auto(m: dict) -> bool:
     """
@@ -298,6 +296,10 @@ def layout():
     reward   = _num(set_get("block_reward_btc", 3.125), 3.125)
     tax_pct  = _num(set_get("sell_tax_percent", 0.0), 0.0)
 
+    # NEW: Planner-Guard Defaults
+    guard_w   = _num(set_get("surplus_guard_w", 100.0), 100.0)
+    guard_pct = _num(set_get("surplus_guard_pct", 0.0), 0.0)  # als Anteil (0.00–0.05)
+
     sensors = [{"label": s, "value": s} for s in list_all_sensors()]
     fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
     eff_pv_cost = max((fi_val if mode == "fixed" else _num(get_sensor_value(fi_sens), 0.0)) - fee_up, 0.0) if policy == "feedin" else 0.0
@@ -355,6 +357,22 @@ def layout():
 
             html.Div(id="set-pv-effective", style={"marginTop": "8px", "fontWeight": "bold", "opacity": 0.9},
                      children=f"Currently assumed PV-Costs: {eff_pv_cost:.4f} €/kWh"),
+        ], style={"border": "1px solid #ccc", "borderRadius": "8px", "padding": "10px", "marginBottom": "14px"}),
+
+        # ---------- NEW: Planner guard ----------
+        html.Fieldset([
+            html.Legend("Planner guard (anti-overdraw)"),
+            html.Div([
+                html.Label("Fixed safety margin (W)"),
+                dcc.Input(id="set-guard-w", type="number", step=1, min=0, value=guard_w, style={"width": "160px"}),
+                html.Span("  (subtracts this from measured PV surplus)", style={"marginLeft": "8px", "opacity": 0.7}),
+            ], style={"marginTop": "6px"}),
+
+            html.Div([
+                html.Label("Relative safety margin (fraction)"),
+                dcc.Input(id="set-guard-pct", type="number", step=0.001, min=0, max=0.2, value=guard_pct, style={"width": "160px"}),
+                html.Span("  e.g. 0.03 = 3 %  (values >1 are interpreted as percent and divided by 100 on save)", style={"marginLeft": "8px", "opacity": 0.7}),
+            ], style={"marginTop": "8px"}),
         ], style={"border": "1px solid #ccc", "borderRadius": "8px", "padding": "10px", "marginBottom": "14px"}),
 
         html.Fieldset([
@@ -441,11 +459,19 @@ def register_callbacks(app):
         State("set-reward", "value"),
         State("set-tax", "value"),
         State("set-cooling-enabled", "value"),
+        # NEW:
+        State("set-guard-w", "value"),
+        State("set-guard-pct", "value"),
         prevent_initial_call=True
     )
-    def _save(n, policy, mode, val, sens, cur, reward, tax, cool_enabled_val):
+    def _save(n, policy, mode, val, sens, cur, reward, tax, cool_enabled_val, guard_w, guard_pct):
         if not n:
             return ""
+        # Prozent robust interpretieren: 3 -> 0.03
+        g_pct_raw = _num(guard_pct, 0.0)
+        g_pct = g_pct_raw / 100.0 if g_pct_raw > 1.0 else g_pct_raw
+        g_pct = max(0.0, min(0.2, g_pct))  # clamp 0–20%
+
         set_set(
             pv_cost_policy=(policy or "zero"),
             feedin_price_mode=(mode or "fixed"),
@@ -455,12 +481,14 @@ def register_callbacks(app):
             block_reward_btc=_num(reward, 3.125),
             sell_tax_percent=_num(tax, 0.0),
             cooling_feature_enabled=bool(cool_enabled_val and "on" in cool_enabled_val),
+            # NEW:
+            surplus_guard_w=_num(guard_w, 0.0),
+            surplus_guard_pct=g_pct,
         )
-        return "Saved."
+        shown_pct = g_pct * 100.0
+        return f"Saved. Planner guard = {guard_w or 0:.0f} W and {shown_pct:.2f} %."
 
-    # Store befüllen/aktualisieren, immer wenn Settings-Tab angezeigt wird ODER
-    # wenn sich die Liste der verfügbaren Items (Auto/Manuell) ändert.
-    # => Wir hängen uns an die Tabs-Content-Änderung.
+    # Store befüllen/aktualisieren, wenn Settings-Tab angezeigt wird
     @app.callback(
         Output("prio-list", "children"),
         Output("prio-status", "children", allow_duplicate=True),
