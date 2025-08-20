@@ -1,3 +1,4 @@
+# ui_pages/heater.py
 import os
 import requests
 import dash
@@ -8,6 +9,7 @@ from dash.dependencies import Input, Output, State
 from services.ha_sensors import list_all_input_numbers, get_sensor_value
 from services.heater_store import resolve_entity_id, set_mapping, get_var as heat_get_var, set_vars as heat_set_vars
 
+
 def _num(value, default=None):
     try:
         if value is None or value == "":
@@ -16,20 +18,23 @@ def _num(value, default=None):
     except (TypeError, ValueError):
         return default
 
-def _fmt_temp(v: float | None, unit: str) -> str:                            # NEW: Formatter
+
+def _fmt_temp(v: float | None, unit: str) -> str:
     if v is None:
         return "–"
     if unit == "K":
         v = v + 273.15
     return f"{v:.2f} {unit}"
 
-# --- NEW: HA service helper (set input_number value) ---
+
+# --- HA service helper (set input_number value) ---
 def _ha_headers():
     tok = os.getenv("SUPERVISOR_TOKEN", "")
     return {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"} if tok else {"Content-Type": "application/json"}
 
+
 def set_input_number_value(entity_id: str, value: float) -> bool:
-    """Schreibt per Supervisor-Proxy auf input_number.set_value."""
+    """Write to Home Assistant service input_number.set_value via Supervisor proxy."""
     if not entity_id:
         return False
     try:
@@ -44,37 +49,37 @@ def set_input_number_value(entity_id: str, value: float) -> bool:
         print(f"[heater] set_input_number_value failed: {e}", flush=True)
         return False
 
+
 # ---------- layout ----------
 def layout():
     input_numbers = [{"label": e, "value": e} for e in list_all_input_numbers()]
 
     warmwasser_entity = resolve_entity_id("input_warmwasser_cache") or None
-    heizstab_entity   = resolve_entity_id("input_heizstab_cache") or None
+    heizstab_entity = resolve_entity_id("input_heizstab_cache") or None
 
-    enabled     = bool(heat_get_var("enabled", False))
     wanted_temp = _num(heat_get_var("wanted_water_temperature", 60), 60)
-    max_power   = _num(heat_get_var("max_power_heater", 0.0), 0.0)
-    power_unit  = (heat_get_var("power_unit", "kW") or "kW")
-    heat_unit   = (heat_get_var("heat_unit", "°C") or "°C")
+    max_power = _num(heat_get_var("max_power_heater", 0.0), 0.0)
+    power_unit = (heat_get_var("power_unit", "kW") or "kW")
+    heat_unit = (heat_get_var("heat_unit", "°C") or "°C")
 
-    override_active = bool(heat_get_var("manual_override", False))
+    # Auto/Manual: checklist is "Mode (auto)" -> checked = Auto
+    override_active = bool(heat_get_var("manual_override", False))  # True = manual
     override_percent = _num(heat_get_var("manual_override_percent", 0), 0)
 
-    return html.Div([
-        html.H2("Water Heater settings"),
+    # Zero-export kickstart variables
+    kick_enabled = bool(heat_get_var("zero_export_kick_enabled", False))
+    kick_kw = _num(heat_get_var("zero_export_kick_kw", 0.2), 0.2)
+    kick_cooldown = int(_num(heat_get_var("zero_export_kick_cooldown_s", 60), 60) or 0)
 
-        # Enabled-Schalter (neu)
-        dcc.Checklist(
-            id="heater-enabled",
-            options=[{"label": " Enabled", "value": "on"}],
-            value=(["on"] if enabled else []),
-            style={"marginBottom": "12px"}
-        ),
-        html.Div(id="heater-enabled-status", style={"display":"none"}),
+    # initial slider disabled state: disabled in Auto, enabled in Manual
+    slider_disabled_initial = (not override_active)  # auto_on = not manual
+
+    return html.Div([
+        html.H2("Water heater settings"),
 
         html.H4("Entity mapping (input_number)"),
         html.Div([
-            html.Label("Warmwasser-Cache (Temperatur, °C)"),
+            html.Label("Water temperature cache (°C)"),
             dcc.Dropdown(
                 id="heater-input-warmwasser",
                 options=input_numbers,
@@ -84,7 +89,7 @@ def layout():
         ], style={"marginBottom": "10px"}),
 
         html.Div([
-            html.Label("Heizstab-Cache (Leistung, 0–100 %)"),
+            html.Label("Heater percent cache (0–100 %)"),
             dcc.Dropdown(
                 id="heater-input-heizstab",
                 options=input_numbers,
@@ -126,118 +131,139 @@ def layout():
             ),
         ], style={"marginBottom": "16px"}),
 
+        # --- Zero-export kickstart ---
+        html.Fieldset([
+            html.Legend("Zero-export kickstart (optional)"),
+            dcc.Checklist(
+                id="heater-kick-enabled",
+                options=[{"label": " Enable kickstart (for zero feed-in inverters)", "value": "on"}],
+                value=(["on"] if kick_enabled else []),
+                style={"marginBottom": "8px"}
+            ),
+            html.Div([
+                html.Label("Kick power (kW)"),
+                dcc.Input(
+                    id="heater-kick-kw",
+                    type="number", step="0.01", min=0, max=5,
+                    value=kick_kw, style={"width": "140px"}
+                ),
+                html.Span("  "),
+                html.Label("Cooldown (s)"),
+                dcc.Input(
+                    id="heater-kick-cooldown",
+                    type="number", step=1, min=0, max=3600,
+                    value=kick_cooldown, style={"width": "120px"}
+                ),
+            ]),
+            html.Div("Gives a short start impulse so the inverter begins producing under zero feed-in limits.",
+                     style={"opacity": 0.8, "marginTop": "6px"})
+        ], style={"border": "1px solid #ccc", "borderRadius": "8px", "padding": "10px", "marginBottom": "16px"}),
+
         html.Button("Save", id="heater-save", className="custom-tab"),
         html.Div(id="heater-save-status", style={"marginTop": "10px", "color": "green"}),
 
         html.Hr(),
 
-        # Temperaturanzeige
+        # Temperature display
         dcc.Interval(id="heater-refresh", interval=10_000, n_intervals=0),
         html.Div([
-            html.Label("Aktuelle Wassertemperatur"),
+            html.Label("Current water temperature"),
             html.Div(id="heater-current-temp",
                      style={"fontWeight": "bold", "marginTop": "6px"})
         ], style={"marginTop": "10px"}),
 
         html.Div(style={"height": "8px"}),
 
-        # Live-Status unten ---
+        # Live status
         dcc.Interval(id="heater-live-refresh", interval=10_000, n_intervals=0),  # 10s
         html.Div([
             html.Div([
-                html.Label("Aktueller Heizstab (%)"),
+                html.Label("Current heater (%)"),
                 html.Div(id="heater-current-percent", style={"fontWeight": "bold", "marginTop": "4px"})
             ]),
             html.Div([
-                html.Label("Aktuelle Leistung"),
+                html.Label("Current power"),
                 html.Div(id="heater-current-power", style={"fontWeight": "bold", "marginTop": "4px"})
             ], style={"marginLeft": "24px"}),
         ], style={"display": "flex", "alignItems": "baseline", "gap": "24px"}),
 
         html.Div(style={"height": "8px"}),
 
-        # Mode (auto) + Slider ---
+        # Manual override + slider
         html.Div([
             dcc.Checklist(
                 id="heater-override",
                 options=[{"label": " Mode (auto)", "value": "on"}],
-                value=(["on"] if not override_active else []),  # checked = Auto
+                value=(["on"] if not override_active else []),
                 style={"marginBottom": "8px"}
             ),
             dcc.Slider(
                 id="heater-override-slider",
                 min=0, max=100, step=1,
                 value=override_percent,
-                disabled=not override_active,  # Auto (manual_override=False) => disabled True
+                disabled=slider_disabled_initial,  # Auto → disabled, Manual → enabled
                 marks=None, tooltip={"always_visible": False}
             ),
             html.Div(id="heater-override-status", style={"marginTop": "6px", "color": "green"})
         ], style={"maxWidth": "520px"})
     ])
 
+
 # ---------- callbacks ----------
 def register_callbacks(app):
-    # Auto-persist Enabled toggle so Settings -> Prio-Liste reagiert sofort
-    @app.callback(
-        Output("heater-enabled-status","children"),
-        Input("heater-enabled","value"),
-        prevent_initial_call=True
-    )
-    def on_enabled_toggle(enabled_val):
-        from services.heater_store import set_vars as heat_set_vars
-        heat_set_vars(enabled=bool(enabled_val and "on" in enabled_val))
-        return ""
-
     @app.callback(
         Output("heater-save-status", "children"),
         Input("heater-save", "n_clicks"),
-        State("heater-enabled", "value"),
         State("heater-input-warmwasser", "value"),
         State("heater-input-heizstab", "value"),
         State("heater-wanted-temp", "value"),
         State("heater-heat-unit", "value"),
         State("heater-max-power", "value"),
         State("heater-power-unit", "value"),
+        # Kick settings
+        State("heater-kick-enabled", "value"),
+        State("heater-kick-kw", "value"),
+        State("heater-kick-cooldown", "value"),
         prevent_initial_call=True
     )
-    def save_heater(n, enabled_val, warmwasser_id, heizstab_id, wanted_temp, heat_unit, max_power, power_unit):
+    def save_heater(n, warmwasser_id, heizstab_id, wanted_temp, heat_unit, max_power, power_unit,
+                    kick_enabled_val, kick_kw, kick_cooldown):
         if not n:
             return ""
-        # Mapping speichern
+        # Save mapping
         set_mapping("input_warmwasser_cache", warmwasser_id or "")
-        set_mapping("input_heizstab_cache",  heizstab_id or "")
-        # Variablen speichern
+        set_mapping("input_heizstab_cache", heizstab_id or "")
+        # Save variables
         heat_set_vars(
-            enabled=bool(enabled_val and "on" in enabled_val),
             wanted_water_temperature=_num(wanted_temp, 60.0),
             max_power_heater=_num(max_power, 0.0),
             power_unit=(power_unit or "kW"),
             heat_unit=(heat_unit or "°C"),
+            # Kick
+            zero_export_kick_enabled=bool(kick_enabled_val and "on" in kick_enabled_val),
+            zero_export_kick_kw=_num(kick_kw, 0.2),
+            zero_export_kick_cooldown_s=int(_num(kick_cooldown, 60) or 0),
         )
         return "Heater settings saved!"
 
-    # --- Slider enabled/disabled je nach Mode (Auto/Manuell) ---
+    # Slider enabled/disabled based on Auto/Manual (checkbox)
     @app.callback(
         Output("heater-override-slider", "disabled"),
         Input("heater-override", "value"),
         State("heater-override-slider", "value"),
-        State("heater-input-heizstab", "value"),
         prevent_initial_call=False
     )
-    def toggle_slider(override_val, current_val, heizstab_entity):
-        auto_on = bool(override_val and "on" in override_val)
-        heat_set_vars(manual_override=(not auto_on), manual_override_percent=current_val or 0)
+    def toggle_slider(override_val, current_val):
+        auto_on = bool(override_val and "on" in override_val)  # checked = Auto
+        # Persist state (manual_override = not auto)
+        heat_set_vars(
+            manual_override=(not auto_on),
+            manual_override_percent=current_val or 0
+        )
+        # In Auto mode the slider is disabled (display only)
+        return auto_on
 
-        # Beim Wechsel auf Auto einmalig auf 0% setzen, damit der Planner "übernimmt"
-        if auto_on and heizstab_entity:
-            try:
-                set_input_number_value(heizstab_entity, 0)
-            except Exception:
-                pass
-
-        return auto_on  # Auto => Slider disabled
-
-    # --- Live-Update Prozent + Leistung + Slider-Sync (nur in Auto) ---
+    # Live updates (only sync slider if Auto)
     @app.callback(
         Output("heater-current-percent", "children"),
         Output("heater-current-power", "children"),
@@ -250,22 +276,21 @@ def register_callbacks(app):
         prevent_initial_call=False
     )
     def update_live(_tick, heizstab_entity, max_power, power_unit, override_val):
-        import dash  # local import for dash.no_update
+        import dash as _dash  # local import for dash.no_update
         pct_raw = get_sensor_value(heizstab_entity) if heizstab_entity else None
         pct = _num(pct_raw, 0.0)
-        # Leistung ableiten
+        # derive power
         pwr = (_num(max_power, 0.0) or 0.0) * (pct / 100.0)
         unit = power_unit or "kW"
         pct_text = f"{pct:.0f} %"
         pwr_text = f"{pwr:.2f} {unit}"
 
-        # Slider nur synchronisieren, wenn Auto aktiv ist
-        auto_on  = bool(override_val and "on" in override_val)
-        slider_val = int(round(pct or 0)) if auto_on else dash.no_update
+        auto_on = bool(override_val and "on" in override_val)
+        slider_val = int(round(pct or 0)) if auto_on else _dash.no_update
 
         return pct_text, pwr_text, slider_val
 
-    # --- Bei Slider-Änderung -> nur im manuellen Modus in HA schreiben ---
+    # On slider change (manual mode only) -> write to HA
     @app.callback(
         Output("heater-override-status", "children"),
         Input("heater-override-slider", "value"),
@@ -274,20 +299,19 @@ def register_callbacks(app):
         prevent_initial_call=True
     )
     def on_slider_change(new_value, override_val, heizstab_entity):
-        # Immer persistieren
+        # always persist last manual value
         heat_set_vars(manual_override_percent=new_value or 0)
 
-        # In Auto nichts senden
         auto_on = bool(override_val and "on" in override_val)
         if auto_on:
-            return ""
+            return ""  # nothing to send in Auto mode
 
         if not heizstab_entity:
-            return "no heater input selected."
+            return "No heater input selected."
         ok = set_input_number_value(heizstab_entity, new_value or 0)
         return "Override sent." if ok else "Error sending override."
 
-    # --- Poll alle 10s + sofort bei Auswahl/Einheitenwechsel ---
+    # Poll temperature every 10s + on selection/unit changes
     @app.callback(
         Output("heater-current-temp", "children"),
         Input("heater-refresh", "n_intervals"),
@@ -300,7 +324,7 @@ def register_callbacks(app):
             return "–"
         try:
             raw = get_sensor_value(warmwasser_entity)
-            val_c = _num(raw, None)           # Wert in °C erwartet (aus input_number)
+            val_c = _num(raw, None)  # expected °C from input_number
             return _fmt_temp(val_c, unit or "°C")
         except Exception:
             return "–"

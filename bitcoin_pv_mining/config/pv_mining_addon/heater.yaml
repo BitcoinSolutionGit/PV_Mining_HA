@@ -9,3 +9,6 @@ heater:
     heat_unit: "°C"
     manual_override: false
     manual_override_percent: 0
+    zero_export_kick_enabled: true      # <— einschalten
+    zero_export_kick_kw: 0.2            # 200 W „Anfahr-Impuls“
+    zero_export_kick_cooldown_s: 60     # min. Abstand zwischen Kicks
