@@ -74,7 +74,7 @@ def layout():
     kick_cooldown = int(_num(heat_get_var("zero_export_kick_cooldown_s", 60), 60) or 0)
 
     # initial slider disabled state: disabled in Auto, enabled in Manual
-    slider_disabled_initial = (not override_active)  # auto_on = not manual
+    slider_disabled_initial = (not enabled) or (not override_active)  # auto_on = not manual
 
     return html.Div([
         html.H2("Water heater settings"),
@@ -101,12 +101,14 @@ def layout():
         ], style={"marginBottom": "20px"}),
 
         html.H4("Variables"),
-        dcc.Checklist(
-            id="heater-enabled",
-            options=[{"label": " Enabled", "value": "on"}],
-            value=(["on"] if enabled else []),
-            style={"marginBottom": "10px"}
-        ),
+        html.Div([
+            dcc.Checklist(
+                id="heater-enabled",
+                options=[{"label": " Enabled", "value": "on"}],
+                value=(["on"] if enabled else []),
+                persistence=True, persistence_type="memory"
+            )
+        ], style={"marginBottom": "10px"}),
         html.Div([
             html.Label("Target water temperature"),
             dcc.Input(
@@ -222,20 +224,20 @@ def register_callbacks(app):
     @app.callback(
         Output("heater-save-status", "children"),
         Input("heater-save", "n_clicks"),
-        State("heater-enabled", "value"),
         State("heater-input-warmwasser", "value"),
         State("heater-input-heizstab", "value"),
         State("heater-wanted-temp", "value"),
         State("heater-heat-unit", "value"),
         State("heater-max-power", "value"),
         State("heater-power-unit", "value"),
+        State("heater-enabled", "value"),
         State("heater-kick-enabled", "value"),
         State("heater-kick-kw", "value"),
         State("heater-kick-cooldown", "value"),
         prevent_initial_call=True
     )
     def save_heater(n, warmwasser_id, heizstab_id, wanted_temp, heat_unit, max_power, power_unit,
-                    kick_enabled_val, kick_kw, kick_cooldown, enabled_val):
+                    enabled_val, kick_enabled_val, kick_kw, kick_cooldown):
         if not n:
             return ""
         # Save mapping
@@ -243,6 +245,7 @@ def register_callbacks(app):
         set_mapping("input_heizstab_cache", heizstab_id or "")
         # Save variables
         heat_set_vars(
+            enabled=bool(enabled_val and "on" in enabled_val),
             wanted_water_temperature=_num(wanted_temp, 60.0),
             max_power_heater=_num(max_power, 0.0),
             power_unit=(power_unit or "kW"),
@@ -251,7 +254,6 @@ def register_callbacks(app):
             zero_export_kick_enabled=bool(kick_enabled_val and "on" in kick_enabled_val),
             zero_export_kick_kw=_num(kick_kw, 0.2),
             zero_export_kick_cooldown_s=int(_num(kick_cooldown, 60) or 0),
-            enabled=bool(enabled_val and "on" in enabled_val),
         )
         return "Heater settings saved!"
 
@@ -259,18 +261,17 @@ def register_callbacks(app):
     @app.callback(
         Output("heater-override-slider", "disabled"),
         Input("heater-override", "value"),
+        State("heater-enabled", "value"),  # <— NEU
         State("heater-override-slider", "value"),
         prevent_initial_call=False
     )
-    def toggle_slider(override_val, current_val):
+    def toggle_slider(override_val, enabled_val, current_val):
         auto_on = bool(override_val and "on" in override_val)  # checked = Auto
-        # Persist state (manual_override = not auto)
-        heat_set_vars(
-            manual_override=(not auto_on),
-            manual_override_percent=current_val or 0
-        )
-        # In Auto mode the slider is disabled (display only)
-        return auto_on
+        is_enabled = bool(enabled_val and "on" in enabled_val)
+        # persist manual/percent wie gehabt
+        heat_set_vars(manual_override=(not auto_on), manual_override_percent=current_val or 0)
+        # Slider gesperrt wenn: disabled ODER Auto
+        return (not is_enabled) or auto_on
 
     # Live updates (only sync slider if Auto)
     @app.callback(
@@ -303,13 +304,17 @@ def register_callbacks(app):
     @app.callback(
         Output("heater-override-status", "children"),
         Input("heater-override-slider", "value"),
+        State("heater-enabled", "value"),
         State("heater-override", "value"),
         State("heater-input-heizstab", "value"),
         prevent_initial_call=True
     )
-    def on_slider_change(new_value, override_val, heizstab_entity):
+    def on_slider_change(new_value, enabled_val, override_val, heizstab_entity):
         # always persist last manual value
         heat_set_vars(manual_override_percent=new_value or 0)
+
+        if not (enabled_val and "on" in enabled_val):
+            return "Heater is disabled."
 
         auto_on = bool(override_val and "on" in override_val)
         if auto_on:
