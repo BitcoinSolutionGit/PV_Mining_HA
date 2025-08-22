@@ -62,9 +62,14 @@ def _is_wallbox_auto() -> bool:
 
 def _is_heater_active() -> bool:
     try:
-        return bool(heat_get("enabled", False))  # nur der Enabled-Flag entscheidet über Sichtbarkeit
+        en   = heat_get("enabled", None)
+        heid = (heat_resolve("input_heizstab_cache") or "").strip()
+        wwid = (heat_resolve("input_warmwasser_cache") or "").strip()
+        maxp = _num(heat_get("max_power_heater", 0.0), 0.0)
+        return bool((en is True) or (heid and wwid and maxp > 0.0))
     except Exception:
         return False
+
 
 def _is_heater_auto() -> bool:
     # manual_override=True bedeutet: manuell; Auto ist also False

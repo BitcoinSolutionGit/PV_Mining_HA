@@ -52,6 +52,8 @@ def set_input_number_value(entity_id: str, value: float) -> bool:
 
 # ---------- layout ----------
 def layout():
+    enabled = bool(heat_get_var("enabled", False))
+
     input_numbers = [{"label": e, "value": e} for e in list_all_input_numbers()]
 
     warmwasser_entity = resolve_entity_id("input_warmwasser_cache") or None
@@ -99,6 +101,12 @@ def layout():
         ], style={"marginBottom": "20px"}),
 
         html.H4("Variables"),
+        dcc.Checklist(
+            id="heater-enabled",
+            options=[{"label": " Enabled", "value": "on"}],
+            value=(["on"] if enabled else []),
+            style={"marginBottom": "10px"}
+        ),
         html.Div([
             html.Label("Target water temperature"),
             dcc.Input(
@@ -214,20 +222,20 @@ def register_callbacks(app):
     @app.callback(
         Output("heater-save-status", "children"),
         Input("heater-save", "n_clicks"),
+        State("heater-enabled", "value"),
         State("heater-input-warmwasser", "value"),
         State("heater-input-heizstab", "value"),
         State("heater-wanted-temp", "value"),
         State("heater-heat-unit", "value"),
         State("heater-max-power", "value"),
         State("heater-power-unit", "value"),
-        # Kick settings
         State("heater-kick-enabled", "value"),
         State("heater-kick-kw", "value"),
         State("heater-kick-cooldown", "value"),
         prevent_initial_call=True
     )
     def save_heater(n, warmwasser_id, heizstab_id, wanted_temp, heat_unit, max_power, power_unit,
-                    kick_enabled_val, kick_kw, kick_cooldown):
+                    kick_enabled_val, kick_kw, kick_cooldown, enabled_val):
         if not n:
             return ""
         # Save mapping
@@ -243,6 +251,7 @@ def register_callbacks(app):
             zero_export_kick_enabled=bool(kick_enabled_val and "on" in kick_enabled_val),
             zero_export_kick_kw=_num(kick_kw, 0.2),
             zero_export_kick_cooldown_s=int(_num(kick_cooldown, 60) or 0),
+            enabled=bool(enabled_val and "on" in enabled_val),
         )
         return "Heater settings saved!"
 

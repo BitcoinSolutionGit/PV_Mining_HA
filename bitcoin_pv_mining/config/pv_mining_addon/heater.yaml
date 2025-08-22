@@ -3,7 +3,8 @@ heater:
     input_warmwasser_cache:
     input_heizstab_cache:
   variables:
-    max_power_heater:
+    enabled: true
+    max_power_heater: 4.0
     wanted_water_temperature: 60
     power_unit: kW
     heat_unit: "°C"
