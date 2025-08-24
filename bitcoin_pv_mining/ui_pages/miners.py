@@ -16,7 +16,8 @@ from services.license import is_premium_enabled
 from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 from services.cooling_store import get_cooling, set_cooling
-from services.ha_entities import list_actions, call_action, get_entity_state, is_on_like
+from services.ha_entities import list_actions, call_action, get_entity_state, is_on_like, list_ready_entities
+
 
 # SMOKE-TEST für Orchestrator: in _engine_tick ganz am Ende (nach Ampel-Berechnung), zusätzlich:
 from services.consumers.orchestrator import log_dry_run_plan
@@ -206,7 +207,9 @@ def _should_show_cooling_block() -> bool:
         return False
     return _any_miner_requires_cooling()
 
-def _cool_card(c: dict, sym: str, ha_actions: list[dict]):
+def _cool_card(c: dict, sym: str, ha_actions: list[dict], ready_options: list[dict]):
+    ready_options = [{"label": e, "value": e} for e in list_ready_entities(("input_boolean", "binary_sensor"))]
+
     return html.Div([
         html.Div([ html.Strong(c.get("name","Cooling circuit")) ],
                  style={"display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"6px"}),
@@ -272,10 +275,9 @@ def _cool_card(c: dict, sym: str, ha_actions: list[dict]):
             html.Label("Ready/State entity  (True = running)"),
             dcc.Dropdown(
                 id="cool-ready-entity",
-                options=ha_actions,
-                # du kannst hier alle Entities listen; wenn du nur scripts/switches drin hast, liefere zusätzlich Sensors/Binarys mit list_actions()
+                options=ready_options,
                 value=c.get("ready_entity", "") or None,
-                placeholder="Select entity that signals 'running'…",
+                placeholder="Select input_boolean…",
                 persistence=True, persistence_type="memory"
             )
         ], style={"flex": "1"}),
@@ -331,6 +333,10 @@ def layout():
 
     sym = currency_symbol()
     ha_actions = list_actions()
+    try:
+        ready_opts = [{"label": e, "value": e} for e in list_ready_entities(("input_boolean", "binary_sensor"))]
+    except Exception:
+        ready_opts = []
 
     cooling_feature = bool(set_get("cooling_feature_enabled", False))
     cooling = get_cooling() if cooling_feature else None
@@ -369,7 +375,7 @@ def layout():
             html.Span(id="miners-add-status", style={"marginLeft":"10px","color":"#e74c3c"})
         ], style={"margin":"10px 0"}),
 
-        (_cool_card(cooling, sym, ha_actions) if cooling_feature else html.Div()),
+        (_cool_card(cooling, sym, ha_actions, ready_opts) if cooling_feature else html.Div()),
         (html.Hr() if cooling_feature else html.Div()),
 
         dcc.Store(id="miners-data"),  # hält aktuelle Liste

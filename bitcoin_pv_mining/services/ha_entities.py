@@ -1,5 +1,6 @@
 # services/ha_entities.py
 import os, requests
+from services.ha_sensors import list_entities_by_domain
 
 _HA = "http://supervisor/core/api"
 _HDR = {"Authorization": f"Bearer {os.getenv('SUPERVISOR_TOKEN')}",
@@ -90,3 +91,11 @@ def is_on_like(state) -> bool:
         return float(s) > 0.0
     except Exception:
         return False
+
+# ganz unten o. unter list_entities(...)
+def list_ready_entities(domains: tuple[str, ...] = ("input_boolean",)) -> list[str]:
+    """Entities für den Cooling-Ready-Dropdown (Standard: nur input_boolean)."""
+    return list_entities(domains=domains)
+
+
+
