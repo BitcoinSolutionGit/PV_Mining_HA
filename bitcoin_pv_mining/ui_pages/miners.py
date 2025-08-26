@@ -748,7 +748,7 @@ def register_callbacks(app):
 
     # 8) Save pro Miner (ALL statt MATCH)
 
-    @app.callback(
+    @dash.callback(
         Output("miners-data", "data", allow_duplicate=True),
         Input({"type": "m-save", "mid": ALL}, "n_clicks"),
         State({"type": "m-save", "mid": ALL}, "id"),
@@ -784,26 +784,45 @@ def register_callbacks(app):
         name = names[idx] if idx < len(names) else ""
         enable = bool(enabled_vals[idx] and "on" in enabled_vals[idx]) if idx < len(enabled_vals) else False
         mode = "auto" if (idx < len(mode_vals) and mode_vals[idx] and "auto" in mode_vals[idx]) else "manual"
-        on = bool(on_vals[idx] and "on" in on_vals[idx]) if idx < len(on_vals) else False
+        want_on = bool(on_vals[idx] and "on" in on_vals[idx]) if idx < len(on_vals) else False
         ths = _num(ths_vals[idx] if idx < len(ths_vals) else 0.0, 0.0)
         pkw = _num(pkw_vals[idx] if idx < len(pkw_vals) else 0.0, 0.0)
         reqc = bool(reqcool_vals[idx] and "on" in reqcool_vals[idx]) if idx < len(reqcool_vals) else False
         act_on = (act_on_vals[idx] if idx < len(act_on_vals) else None) or ""
         act_off = (act_off_vals[idx] if idx < len(act_off_vals) else None) or ""
 
+        # Vor dem Schreiben alten Zustand für Vergleich holen
+        from services.miners_store import list_miners, update_miner
+        old = next((m for m in (list_miners() or []) if m.get("id") == mid), {}) or {}
+        old_on = bool(old.get("on"))
+
+        # Persistieren
         update_miner(
             mid,
             name=name or "",
             enabled=enable,
             mode=mode,
-            on=on,
+            on=want_on,  # UI-Checkbox erst jetzt wirksam
             hashrate_ths=ths,
             power_kw=pkw,
             require_cooling=reqc,
             action_on_entity=act_on,
             action_off_entity=act_off,
         )
+
+        # HA-Aktion NUR bei Save ausführen – und nur im Manual-Mode
+        if enable and mode == "manual" and (want_on != old_on):
+            from services.ha_entities import call_action
+            if want_on and act_on:
+                ok = call_action(act_on, True)
+                print(f"[save] miner {mid} ON via {act_on}: {ok}", flush=True)
+            elif (not want_on) and act_off:
+                ok = call_action(act_off, False)
+                print(f"[save] miner {mid} OFF via {act_off}: {ok}", flush=True)
+
+        # Liste neu laden
         return list_miners()
+
 
     # 9) KPIs je Miner live berechnen (alle 10s + bei Eingaben)
     @app.callback(
@@ -951,53 +970,53 @@ def register_callbacks(app):
 
         return sat_txt, eur_txt, prof_txt
 
-    @dash.callback(
-        Output("miners-data", "data", allow_duplicate=True),
-        Input({"type": "m-on", "mid": ALL}, "value"),
-        State({"type": "m-on", "mid": ALL}, "id"),
-        State({"type": "m-mode", "mid": ALL}, "value"),
-        State({"type": "m-enabled", "mid": ALL}, "value"),
-        State({"type": "m-act-on", "mid": ALL}, "value"),
-        State({"type": "m-act-off", "mid": ALL}, "value"),
-        prevent_initial_call=True
-    )
-    def _manual_switch(on_vals, on_ids, mode_vals, enabled_vals, act_on_vals, act_off_vals):
-        trg = callback_context.triggered_id
-        if not isinstance(trg, dict) or trg.get("type") != "m-on":
-            raise dash.exceptions.PreventUpdate
-        mid = trg.get("mid")
-
-        # Index des betroffenen Miners finden
-        try:
-            idx = next(i for i, sid in enumerate(on_ids) if isinstance(sid, dict) and sid.get("mid") == mid)
-        except StopIteration:
-            raise dash.exceptions.PreventUpdate
-
-        want_on = bool(on_vals[idx] and "on" in on_vals[idx])
-        is_auto = bool(mode_vals[idx] and "auto" in mode_vals[idx])
-        enabled = bool(enabled_vals[idx] and "on" in enabled_vals[idx])
-
-        # Nur im Manual-Mode und wenn enabled
-        if not enabled or is_auto:
-            raise dash.exceptions.PreventUpdate
-
-        act_on = (act_on_vals[idx] or "")
-        act_off = (act_off_vals[idx] or "")
-
-        # HA Script/Schalter ausführen
-        from services.ha_entities import call_action
-        if want_on and act_on:
-            ok = call_action(act_on, True)
-            print(f"[ui] miner {mid} ON via {act_on}: {ok}", flush=True)
-        elif (not want_on) and act_off:
-            ok = call_action(act_off, False)
-            print(f"[ui] miner {mid} OFF via {act_off}: {ok}", flush=True)
-
-        # Zustand im Store spiegeln
-        from services.miners_store import update_miner, list_miners
-        update_miner(mid, on=want_on)
-
-        return list_miners()
+    # @dash.callback(
+    #     Output("miners-data", "data", allow_duplicate=True),
+    #     Input({"type": "m-on", "mid": ALL}, "value"),
+    #     State({"type": "m-on", "mid": ALL}, "id"),
+    #     State({"type": "m-mode", "mid": ALL}, "value"),
+    #     State({"type": "m-enabled", "mid": ALL}, "value"),
+    #     State({"type": "m-act-on", "mid": ALL}, "value"),
+    #     State({"type": "m-act-off", "mid": ALL}, "value"),
+    #     prevent_initial_call=True
+    # )
+    # def _manual_switch(on_vals, on_ids, mode_vals, enabled_vals, act_on_vals, act_off_vals):
+    #     trg = callback_context.triggered_id
+    #     if not isinstance(trg, dict) or trg.get("type") != "m-on":
+    #         raise dash.exceptions.PreventUpdate
+    #     mid = trg.get("mid")
+    #
+    #     # Index des betroffenen Miners finden
+    #     try:
+    #         idx = next(i for i, sid in enumerate(on_ids) if isinstance(sid, dict) and sid.get("mid") == mid)
+    #     except StopIteration:
+    #         raise dash.exceptions.PreventUpdate
+    #
+    #     want_on = bool(on_vals[idx] and "on" in on_vals[idx])
+    #     is_auto = bool(mode_vals[idx] and "auto" in mode_vals[idx])
+    #     enabled = bool(enabled_vals[idx] and "on" in enabled_vals[idx])
+    #
+    #     # Nur im Manual-Mode und wenn enabled
+    #     if not enabled or is_auto:
+    #         raise dash.exceptions.PreventUpdate
+    #
+    #     act_on = (act_on_vals[idx] or "")
+    #     act_off = (act_off_vals[idx] or "")
+    #
+    #     # HA Script/Schalter ausführen
+    #     from services.ha_entities import call_action
+    #     if want_on and act_on:
+    #         ok = call_action(act_on, True)
+    #         print(f"[ui] miner {mid} ON via {act_on}: {ok}", flush=True)
+    #     elif (not want_on) and act_off:
+    #         ok = call_action(act_off, False)
+    #         print(f"[ui] miner {mid} OFF via {act_off}: {ok}", flush=True)
+    #
+    #     # Zustand im Store spiegeln
+    #     from services.miners_store import update_miner, list_miners
+    #     update_miner(mid, on=want_on)
+    #
+    #     return list_miners()
 
 
     # 10) KPI-Renderer + Cooling-Callbacks

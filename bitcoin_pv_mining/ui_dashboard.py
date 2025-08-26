@@ -321,9 +321,9 @@ def register_callbacks(app):
         sym = currency_symbol()
         color = price_color(v)
         if v is None:
-            text = "Strompreis: –"
+            text = "Energy Price: –"
         else:
-            text = f"Strompreis: {_fmt_price(v)} {sym}/kWh"
+            text = f"Energy Price: {_fmt_price(v)} {sym}/kWh"
         return html.Span([_dot(color), text])
 
     @app.callback(
