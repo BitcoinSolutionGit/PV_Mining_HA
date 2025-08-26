@@ -951,6 +951,55 @@ def register_callbacks(app):
 
         return sat_txt, eur_txt, prof_txt
 
+    @dash.callback(
+        Output("miners-data", "data", allow_duplicate=True),
+        Input({"type": "m-on", "mid": ALL}, "value"),
+        State({"type": "m-on", "mid": ALL}, "id"),
+        State({"type": "m-mode", "mid": ALL}, "value"),
+        State({"type": "m-enabled", "mid": ALL}, "value"),
+        State({"type": "m-act-on", "mid": ALL}, "value"),
+        State({"type": "m-act-off", "mid": ALL}, "value"),
+        prevent_initial_call=True
+    )
+    def _manual_switch(on_vals, on_ids, mode_vals, enabled_vals, act_on_vals, act_off_vals):
+        trg = callback_context.triggered_id
+        if not isinstance(trg, dict) or trg.get("type") != "m-on":
+            raise dash.exceptions.PreventUpdate
+        mid = trg.get("mid")
+
+        # Index des betroffenen Miners finden
+        try:
+            idx = next(i for i, sid in enumerate(on_ids) if isinstance(sid, dict) and sid.get("mid") == mid)
+        except StopIteration:
+            raise dash.exceptions.PreventUpdate
+
+        want_on = bool(on_vals[idx] and "on" in on_vals[idx])
+        is_auto = bool(mode_vals[idx] and "auto" in mode_vals[idx])
+        enabled = bool(enabled_vals[idx] and "on" in enabled_vals[idx])
+
+        # Nur im Manual-Mode und wenn enabled
+        if not enabled or is_auto:
+            raise dash.exceptions.PreventUpdate
+
+        act_on = (act_on_vals[idx] or "")
+        act_off = (act_off_vals[idx] or "")
+
+        # HA Script/Schalter ausführen
+        from services.ha_entities import call_action
+        if want_on and act_on:
+            ok = call_action(act_on, True)
+            print(f"[ui] miner {mid} ON via {act_on}: {ok}", flush=True)
+        elif (not want_on) and act_off:
+            ok = call_action(act_off, False)
+            print(f"[ui] miner {mid} OFF via {act_off}: {ok}", flush=True)
+
+        # Zustand im Store spiegeln
+        from services.miners_store import update_miner, list_miners
+        update_miner(mid, on=want_on)
+
+        return list_miners()
+
+
     # 10) KPI-Renderer + Cooling-Callbacks
     from dash import no_update
     from services.miners_store import list_miners
