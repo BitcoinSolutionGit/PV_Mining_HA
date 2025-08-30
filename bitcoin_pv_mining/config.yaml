@@ -1,5 +1,5 @@
 name: "Bitcoin PV-mining"
-version: "4.0.52"
+version: "0.4.53"
 slug: "bitcoin_pv_mining"
 description: "PV-based Bitcoin mining control with web UI"
 ingress: true
@@ -33,3 +33,4 @@ git_source:
   # https://github.com/sponsors/BitcoinSolutionGit
 
   # https://github.com/BitcoinSolutionGit/PV_Mining_HA
+

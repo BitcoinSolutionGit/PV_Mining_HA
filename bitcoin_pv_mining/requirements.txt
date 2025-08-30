@@ -2,6 +2,7 @@
 dash
 plotly
 PyYAML
+flask
 requests
 
 

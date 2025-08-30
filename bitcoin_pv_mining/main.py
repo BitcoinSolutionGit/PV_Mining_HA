@@ -2,6 +2,7 @@ import os
 import requests
 import dash
 import flask
+import urllib.parse
 
 from dash import html, dcc
 from dash.dependencies import Input, Output, State
@@ -11,9 +12,10 @@ from flask import request, redirect, send_file
 from ui_dashboard import layout as dashboard_layout, register_callbacks
 
 from services.btc_api import update_btc_data_periodically
-from services.license import verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
-from services.utils import get_addon_version
+from services.license import set_token, verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
+from services.utils import get_addon_version, load_state
 from services.power_planner import plan_and_allocate_auto
+from urllib.parse import urlparse
 
 from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
 from ui_pages.miners import layout as miners_layout, register_callbacks as reg_miners
@@ -30,6 +32,7 @@ start_heartbeat_loop(addon_version=get_addon_version())
 
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
+LICENSE_BASE_URL = os.getenv("LICENSE_BASE_URL", "https://license.bitcoinsolution.at")
 
 # GANZ OBEN zusätzlich:
 from ui_pages.settings import (
@@ -68,18 +71,22 @@ server = flask.Flask(__name__)
 
 def get_ingress_prefix():
     token = os.getenv("SUPERVISOR_TOKEN")
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
-        response = requests.get("http://supervisor/addons/self/info", headers=headers)
-        if response.status_code == 200:
-            ingress_url = response.json()["data"]["ingress_url"]
-            print(f"[INFO] Supervisor ingress URL: {ingress_url}")
-            return ingress_url
+        r = requests.get("http://supervisor/addons/self/info", headers=headers, timeout=5)
+        if r.status_code == 200:
+            ingress_url = r.json()["data"]["ingress_url"]  # volle URL
+            p = urlparse(ingress_url).path or "/"
+            if not p.endswith("/"):
+                p += "/"
+            print(f"[INFO] Ingress path: {p}")
+            return p
         else:
-            print(f"[WARN] Supervisor answer: {response.status_code}")
+            print(f"[WARN] Supervisor answer: {r.status_code}")
     except Exception as e:
-        print(f"[ERROR] Supervisor API error: {str(e)}")
-    return "/"  # Fallback
+        print(f"[ERROR] Supervisor API error: {e}")
+    return "/"
+
 
 prefix = get_ingress_prefix()
 if not prefix.endswith("/"):
@@ -128,10 +135,9 @@ def _fmt(x):
     except Exception:
         return str(x)
 
-# --- OAuth Placeholder Routes ---
+# --- OAuth Routes ---
 def _abs_url(path: str) -> str:
-    # Baut absolute URL inkl. Ingress-Prefix
-    base = request.host_url.rstrip('/')  # z.B. https://ha.local:8123/
+    base = request.host_url.rstrip('/')   # z.B. https://ha.local:8123
     p = prefix if prefix.endswith('/') else prefix + '/'
     if path.startswith('/'):
         path = path[1:]
@@ -139,19 +145,37 @@ def _abs_url(path: str) -> str:
 
 @app.server.route(f"{prefix}oauth/start")
 def oauth_start():
-    issue_token_and_enable(sponsor="demo_user", plan="monthly")
-    return redirect(prefix)
+    return_url = _abs_url("oauth/finish")  # wohin der Lizenzserver uns am Ende zurückschickt
+    install_id = load_state().get("install_id", "unknown-install")
+    url = (
+        f"{LICENSE_BASE_URL}/oauth/start"
+        f"?return_url={urllib.parse.quote(return_url, safe='')}"
+        f"&install_id={urllib.parse.quote(install_id, safe='')}"
+    )
+    return redirect(url, code=302)
 
-@app.server.route(f"{prefix}oauth/callback")
-def oauth_callback():
-    # HEUTE: keine echte Verarbeitung nötig – zurück zur App
-    return redirect(prefix)
+@app.server.route(f"{prefix}oauth/finish")
+def oauth_finish():
+    grant = request.args.get("grant", "")
+    if not grant:
+        return redirect(prefix)  # oder Fehlerseite
+    install_id = load_state().get("install_id", "unknown-install")
 
-    # SPÄTER:
-    # code = request.args.get("code", "")
-    # redirect_uri = _abs_url("oauth/callback")
-    # ok = complete_github_oauth(code, redirect_uri)
-    # return redirect(prefix)
+    try:
+        r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
+                          json={"grant": grant, "install_id": install_id},
+                          timeout=10)
+        ok_json = (r.status_code == 200 and r.headers.get("content-type","").startswith("application/json"))
+        js = r.json() if ok_json else {}
+        if js.get("ok") and js.get("token"):
+            set_token(js["token"])
+            verify_license()  # setzt premium_enabled & expires_at
+            return redirect(prefix)  # zurück ins Dashboard
+        print("[OAUTH] redeem failed:", r.text[:300], flush=True)
+        return redirect(prefix)
+    except Exception as e:
+        print("[OAUTH] redeem error:", e, flush=True)
+        return redirect(prefix)
 
 
 @app.server.route("/_dash-layout", methods=["GET"])
@@ -162,20 +186,20 @@ def dash_ping():
 def serve_icon():
     return send_from_directory(CONFIG_DIR, 'icon.png')
 
-@dash.callback(
-    Output("premium-enabled","data", allow_duplicate=True),
-    Input("btn-premium","n_clicks"),
-    prevent_initial_call=True
-)
-def on_click_premium(n):
-    if not n:
-        raise dash.exceptions.PreventUpdate
-    if has_valid_token_cached():
-        print("[LICENSE] click: token already valid, skipping issue", flush=True)
-        verify_license()
-    else:
-        issue_token_and_enable(sponsor="demo_user", plan="monthly")
-    return {"enabled": is_premium_enabled()}
+# @dash.callback(
+#     Output("premium-enabled","data", allow_duplicate=True),
+#     Input("btn-premium","n_clicks"),
+#     prevent_initial_call=True
+# )
+# def on_click_premium(n):
+#     if not n:
+#         raise dash.exceptions.PreventUpdate
+#     if has_valid_token_cached():
+#         print("[LICENSE] click: token already valid, skipping issue", flush=True)
+#         verify_license()
+#     else:
+#         issue_token_and_enable(sponsor="demo_user", plan="monthly")
+#     return {"enabled": is_premium_enabled()}
 
 @dash.callback(
     Output("btn-premium", "className"),
@@ -486,7 +510,12 @@ app.layout = html.Div([
 
         # Spacer + Premium-Button ganz rechts
         html.Div(style={"flex": "1"}),
-        html.Button("Activate Premium", id="btn-premium", n_clicks=0, className="custom-tab premium-btn"),
+        html.A("Activate Premium",
+               id="btn-premium",
+               href=f"{prefix}oauth/start",
+               className="custom-tab premium-btn",
+               target="_top")  # wichtig, damit der Redirect im selben Tab landet
+        ,
     ], id="tab-buttons", className="header-bar"),
 
     html.Div(id="tabs-content", style={"marginTop": "10px"})
