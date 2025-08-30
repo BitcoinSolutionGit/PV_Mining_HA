@@ -6,8 +6,8 @@
 
 ## Example Home Assistant YAMLs:
 
-### [`docs/examples/automations.yaml`](docs/examples/automations.yaml)
+### [`docs/examples/automations.yaml`](./bitcoin_pv_mining/docs/examples/automations.yaml)
 
-### [`docs/examples/configuration.yaml`](docs/examples/configuration.yaml)
+### [`docs/examples/configuration.yaml`](./bitcoin_pv_mining/docs/examples/configuration.yaml)
 
-### [`docs/examples/scripts.yaml`](docs/examples/scripts.yaml)
+### [`docs/examples/scripts.yaml`](./bitcoin_pv_mining/docs/examples/scripts.yaml)
