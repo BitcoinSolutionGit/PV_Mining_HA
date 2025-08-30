@@ -15,7 +15,7 @@ from services.btc_api import update_btc_data_periodically
 from services.license import set_token, verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
 from services.utils import get_addon_version, load_state
 from services.power_planner import plan_and_allocate_auto
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
 from ui_pages.miners import layout as miners_layout, register_callbacks as reg_miners
@@ -148,7 +148,7 @@ def oauth_start():
     return_url = _abs_url("oauth/finish")  # wohin der Lizenzserver uns am Ende zurückschickt
     install_id = load_state().get("install_id", "unknown-install")
     url = (
-        f"{LICENSE_BASE_URL}/oauth/start"
+        f"{LICENSE_BASE_URL}/oauth_start.php"
         f"?return_url={urllib.parse.quote(return_url, safe='')}"
         f"&install_id={urllib.parse.quote(install_id, safe='')}"
     )
@@ -156,26 +156,35 @@ def oauth_start():
 
 @app.server.route(f"{prefix}oauth/finish")
 def oauth_finish():
+    err   = request.args.get("error", "")
     grant = request.args.get("grant", "")
+
+    # Fehler vom Lizenzserver (z.B. tier_too_low, no_sponsor, …)
+    if err:
+        # Leite mit sichtbarer Meldung zurück ins UI
+        return redirect(f"{prefix}?premium_error={urllib.parse.quote(err)}", code=302)
+
+    # Erfolgsfall: Grant da → bei redeem.php eintauschen
     if not grant:
-        return redirect(prefix)  # oder Fehlerseite
-    install_id = load_state().get("install_id", "unknown-install")
+        return redirect(prefix)
 
     try:
+        install_id = load_state().get("install_id", "unknown-install")
         r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
                           json={"grant": grant, "install_id": install_id},
                           timeout=10)
-        ok_json = (r.status_code == 200 and r.headers.get("content-type","").startswith("application/json"))
-        js = r.json() if ok_json else {}
+        js = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
         if js.get("ok") and js.get("token"):
             set_token(js["token"])
-            verify_license()  # setzt premium_enabled & expires_at
-            return redirect(prefix)  # zurück ins Dashboard
-        print("[OAUTH] redeem failed:", r.text[:300], flush=True)
-        return redirect(prefix)
+            # verify setzt premium_enabled + cached expires_at
+            verify_license()
+            return redirect(f"{prefix}?premium=ok", code=302)
+        else:
+            return redirect(f"{prefix}?premium_error=redeem_failed", code=302)
     except Exception as e:
         print("[OAUTH] redeem error:", e, flush=True)
-        return redirect(prefix)
+        return redirect(f"{prefix}?premium_error=redeem_exception", code=302)
+
 
 
 @app.server.route("/_dash-layout", methods=["GET"])
@@ -216,6 +225,37 @@ def toggle_premium_button(data):
         return "custom-tab premium-btn premium-btn-active", "Premium Active"
     return "custom-tab premium-btn premium-btn-locked", "Activate Premium"
 
+@dash.callback(
+    Output("flash-area", "children"),
+    Input("url", "search"),
+    prevent_initial_call=False
+)
+def show_flash(search):
+    if not search:
+        return ""
+
+    qs = parse_qs(search.lstrip("?"))
+    if "premium_error" in qs:
+        code = (qs["premium_error"][0] or "").strip()
+        messages = {
+            "tier_too_low": "Sponsoring zu niedrig: mindestens 10 $ / Monat oder 100 $ einmalig.",
+            "no_sponsor":   "Kein aktives Sponsoring für BitcoinSolutionGit gefunden.",
+            "redeem_failed":"Lizenz konnte nicht eingelöst werden.",
+            "redeem_exception":"Netzwerk-/Serverfehler beim Einlösen der Lizenz.",
+        }
+        text = messages.get(code, f"Fehler: {code}")
+        return html.Div(text, style={
+            "background":"#ffecec","border":"1px solid #e74c3c","padding":"10px",
+            "borderRadius":"8px","fontWeight":"bold"
+        })
+
+    if "premium" in qs and qs["premium"][0] == "ok":
+        return html.Div("Premium aktiviert ✔️", style={
+            "background":"#eaffea","border":"1px solid #27ae60","padding":"10px",
+            "borderRadius":"8px","fontWeight":"bold"
+        })
+
+    return ""
 
 @dash.callback(
     Output("active-tab", "data"),
@@ -491,6 +531,9 @@ app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
     dcc.Store(id="premium-enabled", data={"enabled": is_premium_enabled()}),
     dcc.Store(id="prio-order", storage_type="local"),
+
+    dcc.Location(id="url", refresh=False),
+    html.Div(id="flash-area", style={"margin":"8px 0"}),
 
     # NEU: globaler Engine-Timer (unabhängig vom Tab)
     dcc.Interval(id="planner-engine", interval=10_000, n_intervals=0),  # alle 10s
