@@ -1,0 +1,83 @@
+
+default_config:
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+
+sensor:
+  # I Use the dynamic tariff from smartenergy - https://www.smartenergy.at/smartcontrol - you can change this to AVATAR or else
+  - platform: rest
+    name: SmartEnergy Forecast
+    unique_id: smartenergy_tariff_forecast
+    resource: https://apis.smartenergy.at/market/v1/price
+    value_template: "{{ value_json.data[0].value }}"
+    json_attributes:
+      - data
+    scan_interval: 900
+
+  # I am using this Smartmeter read out device: https://www.smartenergy.at/energylive
+        # with this api: https://www.smartenergy.at/api-schnittstelle-energylive
+  # replace "YOUR_ENERGY_COUNTERNUMBER_GOES_HERE" with your Energy-counter Number
+  # replace "YOUR API KEY GOES HERE" with your personal API Key
+  - platform: rest
+    name: energyLIVE Verbrauch kW
+    unique_id: energyLIVE_Verbrauch_kW
+    resource: https://backend.energylive.e-steiermark.com/api/v1/devices/"YOUR_ENERGY_COUNTERNUMBER_GOES_HERE"/measurements/latest
+    headers:
+      X-API-KEY: "YOUR API KEY GOES HERE"
+    unit_of_measurement: "kW"
+    device_class: power
+    state_class: measurement
+    value_template: >
+      {% set match = value_json | selectattr('measurement', 'equalto', '0100010700') | map(attribute='value') | list %}
+      {{ (match[0] | float(0)) / 1000 if match else 0 }}
+    scan_interval: 15
+
+  # replace "YOUR_ENERGY_COUNTERNUMBER_GOES_HERE" with your Energy-counter Number
+  # replace "YOUR API KEY GOES HERE" with your personal API Key
+  - platform: rest
+    name: energyLIVE Einspeisung kW
+    unique_id: energyLIVE_Einspeisung_kW
+    resource: https://backend.energylive.e-steiermark.com/api/v1/devices/"YOUR_ENERGY_COUNTERNUMBER_GOES_HERE"/measurements/latest
+    headers:
+      X-API-KEY: "YOUR API KEY GOES HERE"
+    unit_of_measurement: "kW"
+    device_class: power
+    state_class: measurement
+    value_template: >
+      {% set match = value_json | selectattr('measurement', 'equalto', '0100020700') | map(attribute='value') | list %}
+      {{ (match[0] | float(0)) / 1000 if match else 0 }}
+    scan_interval: 15
+
+
+
+
+input_number:
+  heating_rod_cache:
+    name: Heating Rod Cache
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
+
+  hot_water_cache:
+    name: Hot Water Cache
+    min: 0
+    max: 100
+    step: 0.01
+    unit_of_measurement: "°C"
+    mode: box
+
+
+
+input_boolean:
+  miner_cooling_toggle:
+    name: Miner Cooling aktiv
+    icon: mdi:air-conditioner
+
+  miner_001_toggle:
+    name: Miner 001 aktiv
+    icon: mdi:bitcoin

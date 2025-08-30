@@ -1,0 +1,54 @@
+
+# replace "YOUR_PHONES_NAME_HERE" with your phone Entity
+
+- alias: Message Miner Cooling on
+  trigger:
+  - platform: state
+    entity_id: input_boolean.miner_cooling_toggle
+    to: 'on'
+  condition: []
+  action:
+  - service: notify.mobile_app_"YOUR_PHONES_NAME_HERE"
+    data:
+      title: Miner Cooling ON
+      message: Miner Cooling ON
+  mode: single
+
+- alias: Message Miner Cooling off
+  trigger:
+  - platform: state
+    entity_id: input_boolean.miner_cooling_toggle
+    to: 'off'
+  condition: []
+  action:
+  - service: notify.mobile_app_"YOUR_PHONES_NAME_HERE"
+    data:
+      title: Miner Cooling OFF
+      message: Miner Cooling OFF
+  mode: single
+
+- alias: Message Miner 001 on
+  trigger:
+  - platform: state
+    entity_id: input_boolean.miner_001_toggle
+    to: 'on'
+  condition: []
+  action:
+  - service: notify.mobile_app_"YOUR_PHONES_NAME_HERE"
+    data:
+      title: Miner 001 ON
+      message: Miner 001 ON
+  mode: single
+
+- alias: Message Miner 001 off
+  trigger:
+  - platform: state
+    entity_id: input_boolean.miner_001_toggle
+    to: 'off'
+  condition: []
+  action:
+  - service: notify.mobile_app_"YOUR_PHONES_NAME_HERE"
+    data:
+      title: Miner 001 OFF
+      message: Miner 001 OFF
+  mode: single

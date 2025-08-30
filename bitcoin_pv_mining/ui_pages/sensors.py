@@ -3,6 +3,7 @@ from dash import html, dcc
 from dash.dependencies import Input, Output, State
 from services.ha_sensors import list_all_sensors
 from services.utils import load_yaml, save_yaml
+from ui_pages.common import footer_license
 
 CONFIG_DIR = "/config/pv_mining_addon"
 SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
@@ -63,7 +64,8 @@ def layout():
         ),
 
         html.Button("Save", id="save-sensors", style={"marginTop": "20px"}),
-        html.Div(id="save-sensors-status", style={"marginTop": "10px", "color": "green"})
+        html.Div(id="save-sensors-status", style={"marginTop": "10px", "color": "green"}),
+        footer_license()
     ])
 
 

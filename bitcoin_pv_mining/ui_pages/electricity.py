@@ -4,6 +4,7 @@ from dash import html, dcc
 from dash.dependencies import Input, Output, State
 from services.ha_sensors import list_all_sensors
 from services.electricity_store import resolve_sensor_id, set_mapping, get_var as elec_get_var, set_vars as elec_set_vars
+from ui_pages.common import footer_license
 
 CONFIG_DIR = "/config/pv_mining_addon"
 ELEC_DEF = os.path.join(CONFIG_DIR, "electricity.yaml")
@@ -98,7 +99,8 @@ def layout():
         ], style={"marginTop": "6px"}),
 
         html.Button("Save", id="save-electricity", style={"marginTop": "20px"}, className="custom-tab"),
-        html.Div(id="save-electricity-status", style={"marginTop": "10px", "color": "green"})
+        html.Div(id="save-electricity-status", style={"marginTop": "10px", "color": "green"}),
+        footer_license()
     ])
 
 

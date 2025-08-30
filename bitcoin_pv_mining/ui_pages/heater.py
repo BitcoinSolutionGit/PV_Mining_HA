@@ -8,7 +8,7 @@ from dash.dependencies import Input, Output, State
 
 from services.ha_sensors import list_all_input_numbers, get_sensor_value
 from services.heater_store import resolve_entity_id, set_mapping, get_var as heat_get_var, set_vars as heat_set_vars
-
+from ui_pages.common import footer_license
 
 def _num(value, default=None):
     try:
@@ -215,7 +215,8 @@ def layout():
                 marks=None, tooltip={"always_visible": False}
             ),
             html.Div(id="heater-override-status", style={"marginTop": "6px", "color": "green"})
-        ], style={"maxWidth": "520px"})
+        ], style={"maxWidth": "520px"}),
+        footer_license()
     ])
 
 

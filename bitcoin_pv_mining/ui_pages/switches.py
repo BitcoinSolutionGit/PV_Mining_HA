@@ -1,0 +1,1 @@
+from ui_pages.common import footer_license

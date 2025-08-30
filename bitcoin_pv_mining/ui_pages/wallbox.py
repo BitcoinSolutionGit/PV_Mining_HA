@@ -7,6 +7,7 @@ from services.wallbox_store import get_var as wb_get, set_vars as wb_set
 from services.ha_sensors import get_sensor_value
 from services.ha_entities import list_actions
 from services.electricity_store import currency_symbol
+from ui_pages.common import footer_license
 
 def _num(x, d=0.0):
     try: return float(x)
@@ -110,7 +111,8 @@ def layout():
         html.Button("Save", id="wb-save", className="custom-tab", style={"marginTop":"10px"}),
         html.Span(id="wb-save-status", style={"marginLeft":"10px","color":"green"}),
 
-        dcc.Interval(id="wb-refresh", interval=10_000, n_intervals=0)
+        dcc.Interval(id="wb-refresh", interval=10_000, n_intervals=0),
+        footer_license()
     ])
 
 def register_callbacks(app):

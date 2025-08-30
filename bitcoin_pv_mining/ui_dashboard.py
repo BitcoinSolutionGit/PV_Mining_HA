@@ -13,7 +13,7 @@ from services.heater_store import resolve_entity_id as heater_resolve_entity, ge
 from services.miners_store import list_miners
 from services.cooling_store import get_cooling
 from services.settings_store import get_var as set_get
-
+from ui_pages.common import footer_license
 
 
 
@@ -370,6 +370,7 @@ def layout():
             html.Div(id="btc-price", className="footer-stat"),
             html.Div(id="btc-hashrate", className="footer-stat"),
         ], className="footer-stats"),
-        dcc.Interval(id="btc-refresh", interval=60_000, n_intervals=0)
+        dcc.Interval(id="btc-refresh", interval=60_000, n_intervals=0),
+        footer_license()
     ])
 

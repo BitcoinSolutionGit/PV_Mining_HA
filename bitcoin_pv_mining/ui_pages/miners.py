@@ -17,7 +17,7 @@ from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 from services.cooling_store import get_cooling, set_cooling
 from services.ha_entities import list_actions, call_action, get_entity_state, is_on_like, list_ready_entities
-
+from ui_pages.common import footer_license
 
 # SMOKE-TEST für Orchestrator: in _engine_tick ganz am Ende (nach Ampel-Berechnung), zusätzlich:
 from services.consumers.orchestrator import log_dry_run_plan
@@ -307,6 +307,7 @@ def _cool_card(c: dict, sym: str, ha_actions: list[dict], ready_options: list[di
     ], style={"border":"2px solid #888","borderRadius":"8px","padding":"10px","background":"#fafafa"})
 
 
+
 def _miner_card_style(idx: int) -> dict:
     base = {"borderRadius": "8px", "padding": "10px", "background": "#fafafa"}
     if idx == 0:
@@ -392,7 +393,7 @@ def layout():
         dcc.Interval(id="miners-refresh", interval=10_000, n_intervals=0),
 
         dcc.Store(id="orchestrator", data={"cooling": {"state": "off", "until": 0}, "miners": {}}),
-
+        footer_license(),
     ])
 
 # ---------- render helpers ----------

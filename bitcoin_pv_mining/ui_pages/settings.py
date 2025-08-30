@@ -14,6 +14,7 @@ from services.cooling_store import get_cooling
 from services.battery_store import get_var as bat_get
 from services.wallbox_store import get_var as wb_get
 from services.heater_store import resolve_entity_id as heat_resolve, get_var as heat_get
+from ui_pages.common import footer_license
 
 PRIO_KEY = "priority_order"
 PRIO_KEY_JSON = "priority_order_json"
@@ -286,6 +287,7 @@ def _prio_row(item, idx, order):
         style=_row_styles()
     )
 
+
 # --------------------------------
 # Public API (used by main.py too)
 # --------------------------------
@@ -411,6 +413,7 @@ def layout():
         # Liste
         html.Div(id="prio-list", className="prio-list"),
         html.Div(id="prio-status", style={"marginTop": "6px", "color": "green"}),
+        footer_license(),
     ])
 
 # --------------------------------

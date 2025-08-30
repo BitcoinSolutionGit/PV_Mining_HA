@@ -7,7 +7,7 @@ from dash import html, dcc
 from dash.dependencies import Input, Output, State
 
 from flask import send_from_directory
-from flask import request, redirect
+from flask import request, redirect, send_file
 from ui_dashboard import layout as dashboard_layout, register_callbacks
 
 from services.btc_api import update_btc_data_periodically
@@ -22,6 +22,7 @@ from ui_pages.battery import layout as battery_layout, register_callbacks as reg
 from ui_pages.wallbox import layout as wallbox_layout, register_callbacks as reg_wallbox
 from ui_pages.heater import layout as heater_layout, register_callbacks as reg_heater
 from ui_pages.settings import layout as settings_layout, register_callbacks as reg_settings
+from ui_pages.common import footer_license
 
 # beim Start
 verify_license()
@@ -104,6 +105,21 @@ except Exception as e:
 from flask import send_from_directory
 
 print(f"[INFO] Dash runs with requests_pathname_prefix = {prefix}")
+
+server = app.server  # Dash-Server
+
+LICENSE_CANDIDATES = [
+    "/config/pv_mining_addon/LICENSE",                         # im HA-Config
+    os.path.join(os.path.dirname(__file__), "..", "LICENSE"),  # im Add-on/Repo
+]
+
+@server.route("/license")
+def _serve_license():
+    for p in LICENSE_CANDIDATES:
+        if os.path.exists(p):
+            return send_file(p, mimetype="text/plain")
+    return "LICENSE not found", 404
+
 
 # --- tiny formatter for engine logs ---
 def _fmt(x):
@@ -282,7 +298,6 @@ def style_miners_button(premium_data, active_tab):
         classes.append("custom-tab-selected")
     classes.append("wallbox-premium-ok" if enabled else "wallbox-premium-locked")
     return " ".join(classes)
-
 
 @dash.callback(
     Output("tabs-content", "children"),

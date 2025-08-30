@@ -1,0 +1,89 @@
+scr_miner_cooling_on:
+  alias: Script Miner Cooling ON
+  mode: restart
+  sequence:
+
+    - service: switch.turn_on
+      target:
+        entity_id: switch.pro1pm_r6_switch_0   # start cooling Fans
+    - delay: "00:00:10"
+
+    - service: switch.turn_on
+      target:
+        entity_id: switch.pro1pm_r5_switch_0   # start circulation pumps
+    - delay: "00:00:20"
+
+    - service: input_boolean.turn_on
+      data: {entity_id: input_boolean.miner_cooling_toggle}
+    - wait_template: "{{ is_state('input_boolean.miner_cooling_toggle','on') }}"
+      timeout: "00:00:05"
+      continue_on_timeout: true
+    - service: logbook.log
+      data: {name: "Cooling", message: "toggle -> ON"}
+
+
+scr_miner_cooling_off:
+  alias: Script Miner Cooling OFF
+  mode: restart
+  sequence:
+
+    - service: switch.turn_off
+      target:
+        entity_id: switch.pro1pm_r5_switch_0   # stop circulation pumps
+    - delay: "00:00:01"
+
+    - service: switch.turn_off
+      target:
+        entity_id: switch.pro1pm_r6_switch_0   # stop cooling Fans
+
+    - service: input_boolean.turn_off
+      data: {entity_id: input_boolean.miner_cooling_toggle}
+    - wait_template: "{{ is_state('input_boolean.miner_cooling_toggle','off') }}"
+      timeout: "00:00:05"
+      continue_on_timeout: true
+    - service: logbook.log
+      data: {name: "Cooling", message: "toggle -> OFF"}
+
+
+scr_miner_001_on:
+  alias: Script Miner 001 ON
+  mode: restart
+  sequence:
+
+    - service: switch.turn_on
+      target:
+        entity_id: switch.pro1_r3_switch_0 # switch Miner 1 On   ATTENTION: Shelly relay only switches the HIGH CURRENT RELAY for electrical safety!!
+
+    - delay: "00:00:02"
+
+    - service: input_boolean.turn_on
+      data: {entity_id: input_boolean.miner_001_toggle}
+    - wait_template: "{{ is_state('input_boolean.miner_001_toggle','on') }}"
+      timeout: "00:00:05"
+      continue_on_timeout: true
+    - service: logbook.log
+      data: {name: "Miner 001", message: "toggle -> ON"}
+
+
+scr_miner_001_off:
+  alias: Script Miner 001 OFF
+  mode: restart
+  sequence:
+
+    - service: switch.turn_off
+      target:
+        entity_id: switch.pro1_r3_switch_0 # switch Miner 1 OFF   ATTENTION: Shelly relay only switches the HIGH CURRENT RELAY for electrical safety!!
+
+    - delay: "00:00:02"
+
+    - service: input_boolean.turn_off
+      data: {entity_id: input_boolean.miner_001_toggle}
+    - wait_template: "{{ is_state('input_boolean.miner_001_toggle','off') }}"
+      timeout: "00:00:05"
+      continue_on_timeout: true
+    - service: logbook.log
+      data: {name: "Miner 001", message: "toggle -> OFF"}
+
+
+
+
