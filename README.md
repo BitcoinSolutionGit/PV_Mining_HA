@@ -1,8 +1,8 @@
 # PV Mining Add-on for Home Assistant
 
 ## Choose your language:
-### -  [Deutsch](./README_DE.md)
-### -  [English](./README_EN.md)
+### -  [Deutsch](Readme_DE.md)
+### -  [English](Readme_EN.md)
 
 ## Example Home Assistant YAMLs:
 
