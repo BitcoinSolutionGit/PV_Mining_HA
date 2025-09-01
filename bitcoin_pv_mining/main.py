@@ -41,6 +41,14 @@ from ui_pages.settings import (
     _prio_merge_with_stored as prio_merge,
 )
 
+def _abs_url(path: str) -> str:
+    # Baut absolute URL inkl. Ingress-Prefix
+    base = request.host_url.rstrip('/')  # z.B. https://ha.local:8123
+    p = prefix if prefix.endswith('/') else prefix + '/'
+    if path.startswith('/'):
+        path = path[1:]
+    return f"{base}{p}{path}"
+
 def resolve_icon_source():
     # 1) Container-Pfad
     c1 = "/app/icon.png"
@@ -145,13 +153,16 @@ def _abs_url(path: str) -> str:
 
 @app.server.route(f"{prefix}oauth/start")
 def oauth_start():
-    return_url = _abs_url("oauth/finish")  # wohin der Lizenzserver uns am Ende zurückschickt
+    # Zurück-URL (Ingress-URL) dynamisch bauen
+    return_url = _abs_url("oauth/finish")
     install_id = load_state().get("install_id", "unknown-install")
+
     url = (
         f"{LICENSE_BASE_URL}/oauth_start.php"
         f"?return_url={urllib.parse.quote(return_url, safe='')}"
         f"&install_id={urllib.parse.quote(install_id, safe='')}"
     )
+    print("[OAUTH] /oauth/start ->", url, flush=True)
     return redirect(url, code=302)
 
 @app.server.route(f"{prefix}oauth/finish")
@@ -238,10 +249,10 @@ def show_flash(search):
     if "premium_error" in qs:
         code = (qs["premium_error"][0] or "").strip()
         messages = {
-            "tier_too_low": "Sponsoring zu niedrig: mindestens 10 $ / Monat oder 100 $ einmalig.",
-            "no_sponsor":   "Kein aktives Sponsoring für BitcoinSolutionGit gefunden.",
-            "redeem_failed":"Lizenz konnte nicht eingelöst werden.",
-            "redeem_exception":"Netzwerk-/Serverfehler beim Einlösen der Lizenz.",
+            "tier_too_low":    "Sponsorship too low: at least $10/month or $100 one-time.",
+            "no_sponsor":      "No active sponsorship for BitcoinSolutionGit found.",
+            "redeem_failed":   "Could not redeem the license.",
+            "redeem_exception":"Network/server error while redeeming the license.",
         }
         text = messages.get(code, f"Fehler: {code}")
         return html.Div(text, style={
@@ -553,11 +564,12 @@ app.layout = html.Div([
 
         # Spacer + Premium-Button ganz rechts
         html.Div(style={"flex": "1"}),
-        html.A("Activate Premium",
-               id="btn-premium",
-               href=f"{prefix}oauth/start",
-               className="custom-tab premium-btn",
-               target="_top")  # wichtig, damit der Redirect im selben Tab landet
+        html.A(
+            html.Button("Activate Premium", id="btn-premium", n_clicks=0, className="custom-tab premium-btn"),
+            href=f"{prefix}oauth/start",
+            target="_blank",
+            rel="noopener"
+        )
         ,
     ], id="tab-buttons", className="header-bar"),
 
