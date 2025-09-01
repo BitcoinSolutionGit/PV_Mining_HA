@@ -122,6 +122,21 @@ print(f"[INFO] Dash runs with requests_pathname_prefix = {prefix}")
 
 server = app.server  # Dash-Server
 
+
+def _merge_qs_and_hash(search: str | None, hash_: str | None) -> dict:
+    """Liest sowohl ?a=b als auch #a=b und merged die Parameter."""
+    from urllib.parse import parse_qs
+    params = {}
+    if search:
+        params.update(parse_qs(search.lstrip("?")))
+    if hash_:
+        h = hash_.lstrip("#")
+        if h:
+            # parse_qs akzeptiert a=b&c=d
+            params.update(parse_qs(h))
+    return params
+
+
 LICENSE_CANDIDATES = [
     "/config/pv_mining_addon/LICENSE",                         # im HA-Config
     os.path.join(os.path.dirname(__file__), "..", "LICENSE"),  # im Add-on/Repo
@@ -185,11 +200,14 @@ def oauth_start_prefixed():
     return _oauth_start_impl()
 
 def _oauth_finish_impl():
+    print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
+
     err   = request.args.get("error", "")
     grant = request.args.get("grant", "")
 
     if err:
-        return redirect(f"{prefix}?premium_error={urllib.parse.quote(err)}", code=302)
+        # return redirect(f"{prefix}?premium_error={urllib.parse.quote(err)}", code=302)
+        return redirect(f"{prefix}?premium_error={urllib.parse.quote(err)}#premium_error={urllib.parse.quote(err)}", code=302)
 
     if not grant:
         return redirect(prefix)
@@ -203,12 +221,15 @@ def _oauth_finish_impl():
         if js.get("ok") and js.get("token"):
             set_token(js["token"])
             verify_license()
-            return redirect(f"{prefix}?premium=ok", code=302)
+            # return redirect(f"{prefix}?premium=ok", code=302)
+            return redirect(f"{prefix}?premium=ok#premium=ok", code=302)
         else:
-            return redirect(f"{prefix}?premium_error=redeem_failed", code=302)
+            # return redirect(f"{prefix}?premium_error=redeem_failed", code=302)
+            return redirect(f"{prefix}?premium_error=redeem_failed#premium_error=redeem_failed", code=302)
     except Exception as e:
         print("[OAUTH] redeem error:", e, flush=True)
-        return redirect(f"{prefix}?premium_error=redeem_exception", code=302)
+        # return redirect(f"{prefix}?premium_error=redeem_exception", code=302)
+        return redirect(f"{prefix}?premium_error=redeem_exception#premium_error=redeem_exception", code=302)
 
 # ✅ neu: ohne Prefix (falls return_url mal „nackt“ kommt)
 @server.route("/oauth/finish")
@@ -243,13 +264,14 @@ def toggle_premium_button(data):
 @dash.callback(
     Output("flash-area", "children"),
     Input("url", "search"),
+    Input("url", "hash"),
     prevent_initial_call=False
 )
-def show_flash(search):
-    if not search:
+def show_flash(search, hash_):
+    qs = _merge_qs_and_hash(search, hash_)
+    if not qs:
         return ""
 
-    qs = parse_qs(search.lstrip("?"))
     if "premium_error" in qs:
         code = (qs["premium_error"][0] or "").strip()
         messages = {
@@ -262,14 +284,14 @@ def show_flash(search):
             "redeem_failed":    "Could not redeem the license.",
             "redeem_exception": "Network/server error while redeeming the license.",
         }
-        text = messages.get(code, f"Fehler: {code}")
+        text = messages.get(code, f"Error: {code}")
         return html.Div(text, style={
             "background":"#ffecec","border":"1px solid #e74c3c","padding":"10px",
             "borderRadius":"8px","fontWeight":"bold"
         })
 
-    if "premium" in qs and qs["premium"][0] == "ok":
-        return html.Div("Premium aktiviert ✔️", style={
+    if qs.get("premium") == ["ok"]:
+        return html.Div("Premium activated ✔️", style={
             "background":"#eaffea","border":"1px solid #27ae60","padding":"10px",
             "borderRadius":"8px","fontWeight":"bold"
         })
@@ -277,16 +299,19 @@ def show_flash(search):
     return ""
 
 
+
 @dash.callback(
     Output("premium-enabled", "data"),
     Input("url", "search"),
+    Input("url", "hash"),
     prevent_initial_call=True
 )
-def refresh_premium_on_return(search):
-    qs = parse_qs(search.lstrip("?") if search else "")
+def refresh_premium_on_return(search, hash_):
+    qs = _merge_qs_and_hash(search, hash_)
     if qs.get("premium") == ["ok"]:
         verify_license()
     return {"enabled": is_premium_enabled()}
+
 
 
 
