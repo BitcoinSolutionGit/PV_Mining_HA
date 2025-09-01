@@ -42,8 +42,7 @@ from ui_pages.settings import (
 )
 
 def _abs_url(path: str) -> str:
-    # Baut absolute URL inkl. Ingress-Prefix
-    base = request.host_url.rstrip('/')  # z.B. https://ha.local:8123
+    base = request.host_url.rstrip('/')
     p = prefix if prefix.endswith('/') else prefix + '/'
     if path.startswith('/'):
         path = path[1:]
@@ -142,14 +141,6 @@ def _fmt(x):
         return f"{float(x):.3f}"
     except Exception:
         return str(x)
-
-# --- OAuth Routes ---
-def _abs_url(path: str) -> str:
-    base = request.host_url.rstrip('/')   # z.B. https://ha.local:8123
-    p = prefix if prefix.endswith('/') else prefix + '/'
-    if path.startswith('/'):
-        path = path[1:]
-    return f"{base}{p}{path}"
 
 @app.server.route(f"{prefix}oauth/start")
 def oauth_start():
