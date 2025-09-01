@@ -278,15 +278,16 @@ def show_flash(search):
 
 
 @dash.callback(
-    Output("premium-enabled", "data"),          # ← allow_duplicate weg
+    Output("premium-enabled", "data"),
     Input("url", "search"),
-    prevent_initial_call=True                   # ← initialen Aufruf unterdrücken
+    prevent_initial_call=True
 )
 def refresh_premium_on_return(search):
     qs = parse_qs(search.lstrip("?") if search else "")
     if qs.get("premium") == ["ok"]:
         verify_license()
     return {"enabled": is_premium_enabled()}
+
 
 
 @dash.callback(
@@ -356,6 +357,7 @@ def premium_upsell():
             rel="noopener"
         )
     ], style={"textAlign":"center", "padding":"20px"})
+
 
 
 @dash.callback(
