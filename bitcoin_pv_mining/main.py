@@ -8,7 +8,7 @@ from dash import html, dcc
 from dash.dependencies import Input, Output, State
 
 from flask import send_from_directory
-from flask import request, redirect, send_file
+from flask import request, redirect, send_file, Response
 from ui_dashboard import layout as dashboard_layout, register_callbacks
 
 from services.btc_api import update_btc_data_periodically
@@ -143,38 +143,55 @@ def _fmt(x):
         return str(x)
 
 def _oauth_start_impl():
-    # Ein Handler für beide Routen
+    # Externe OAuth-URL bauen
     return_url = _abs_url("oauth/finish")
     install_id = load_state().get("install_id", "unknown-install")
-    url = (
+    ext = (
         f"{LICENSE_BASE_URL}/oauth_start.php"
         f"?return_url={urllib.parse.quote(return_url, safe='')}"
         f"&install_id={urllib.parse.quote(install_id, safe='')}"
     )
-    print("[OAUTH] /oauth/start ->", url, " prefix=", prefix, flush=True)
-    return redirect(url, code=302)
+    print("[OAUTH] /oauth/start ->", ext, " prefix=", prefix, flush=True)
 
-# Route ohne Prefix (so sieht Flask den Pfad meist hinter Ingress)
+    # HTML: neues Tab öffnen (Top-Level), diesen Ingress-Tab zurück zur App schicken
+    html = f"""
+<!doctype html>
+<meta charset="utf-8">
+<title>Redirecting…</title>
+<body style="font-family: system-ui, sans-serif; padding: 16px;">
+  <p>Opening GitHub in a new tab…</p>
+  <p>If nothing happens, <a href="{ext}" target="_blank" rel="noopener">click here</a>.</p>
+  <script>
+    (function () {{
+      try {{
+        window.open("{ext}", "_blank", "noopener");
+        window.location.href = "{prefix}";
+      }} catch (e) {{
+        window.location.href = "{ext}";
+      }}
+    }})();
+  </script>
+</body>
+"""
+    return Response(html, mimetype="text/html")
+
+# Route ohne Prefix (Ingress sieht oft diesen Pfad)
 @server.route("/oauth/start")
 def oauth_start_root():
     return _oauth_start_impl()
 
-# Route MIT Prefix (falls Ingress den Pfad nicht strippt)
+# Route MIT Prefix (falls Ingress nicht strippt)
 @server.route(f"{prefix}oauth/start")
 def oauth_start_prefixed():
     return _oauth_start_impl()
 
-@app.server.route(f"{prefix}oauth/finish")
-def oauth_finish():
+def _oauth_finish_impl():
     err   = request.args.get("error", "")
     grant = request.args.get("grant", "")
 
-    # Fehler vom Lizenzserver (z.B. tier_too_low, no_sponsor, …)
     if err:
-        # Leite mit sichtbarer Meldung zurück ins UI
         return redirect(f"{prefix}?premium_error={urllib.parse.quote(err)}", code=302)
 
-    # Erfolgsfall: Grant da → bei redeem.php eintauschen
     if not grant:
         return redirect(prefix)
 
@@ -186,7 +203,6 @@ def oauth_finish():
         js = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
         if js.get("ok") and js.get("token"):
             set_token(js["token"])
-            # verify setzt premium_enabled + cached expires_at
             verify_license()
             return redirect(f"{prefix}?premium=ok", code=302)
         else:
@@ -194,6 +210,16 @@ def oauth_finish():
     except Exception as e:
         print("[OAUTH] redeem error:", e, flush=True)
         return redirect(f"{prefix}?premium_error=redeem_exception", code=302)
+
+# Finish ohne Prefix (robust, falls return_url mal ohne Prefix kommt)
+@server.route("/oauth/finish")
+def oauth_finish_root():
+    return _oauth_finish_impl()
+
+# Finish MIT Prefix (Standard, da return_url via _abs_url gebaut wird)
+@server.route(f"{prefix}oauth/finish")
+def oauth_finish_prefixed():
+    return _oauth_finish_impl()
 
 
 
@@ -234,10 +260,14 @@ def show_flash(search):
     if "premium_error" in qs:
         code = (qs["premium_error"][0] or "").strip()
         messages = {
-            "tier_too_low":    "Sponsorship too low: at least $10/month or $100 one-time.",
-            "no_sponsor":      "No active sponsorship for BitcoinSolutionGit found.",
-            "redeem_failed":   "Could not redeem the license.",
-            "redeem_exception":"Network/server error while redeeming the license.",
+            "tier_too_low":     "Sponsorship too low: at least $10/month or $100 one-time.",
+            "no_sponsor":       "No active sponsorship for BitcoinSolutionGit found.",
+            "oauth_denied":     "GitHub login/authorization required.",
+            "github_unauthorized": "GitHub rejected the request. Please sign in again.",
+            "github_api":       "GitHub API not reachable. Please try again later.",
+            "no_token":         "GitHub did not return a token. Please try again.",
+            "redeem_failed":    "Could not redeem the license.",
+            "redeem_exception": "Network/server error while redeeming the license.",
         }
         text = messages.get(code, f"Fehler: {code}")
         return html.Div(text, style={
@@ -252,6 +282,19 @@ def show_flash(search):
         })
 
     return ""
+
+
+@dash.callback(
+    Output("premium-enabled", "data", allow_duplicate=True),
+    Input("url", "search"),
+    prevent_initial_call=False
+)
+def refresh_premium_on_return(search):
+    qs = parse_qs(search.lstrip("?") if search else "")
+    if qs.get("premium") == ["ok"]:
+        verify_license()
+    return {"enabled": is_premium_enabled()}
+
 
 @dash.callback(
     Output("active-tab", "data"),
@@ -312,9 +355,14 @@ def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, premium_data):
 def premium_upsell():
     return html.Div([
         html.H3("Premium Feature"),
-        html.P("Dieses Feature ist mit Premium verfügbar."),
-        html.Button("Activate Premium", id="btn-premium", n_clicks=0, className="custom-tab premium-btn")
-    ], style={"textAlign":"center", "padding":"20px"})
+        html.P("This feature is available with Premium."),
+        html.A(
+            html.Button("Activate Premium", id="btn-premium-upsell",
+                        n_clicks=0, className="custom-tab premium-btn"),
+            href=f"{prefix}oauth/start",
+            rel="noopener"
+        )
+    ], style={"textAlign": "center", "padding": "20px"})
 
 
 @dash.callback(
@@ -387,7 +435,7 @@ def render_tab(tab, premium_data):
 
 register_callbacks(app)     # Dashboard
 reg_sensors(app)            # Sensors
-reg_electricity (app)       # electricity
+reg_electricity(app)        # electricity
 reg_miners(app)             # miners
 reg_battery(app)            # battery
 reg_heater(app)             # heater
