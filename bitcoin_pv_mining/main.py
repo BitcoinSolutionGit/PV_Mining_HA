@@ -153,10 +153,8 @@ def _abs_url(path: str) -> str:
 
 @app.server.route(f"{prefix}oauth/start")
 def oauth_start():
-    # Zurück-URL (Ingress-URL) dynamisch bauen
-    return_url = _abs_url("oauth/finish")
+    return_url = _abs_url("oauth/finish")  # absolut inkl. Ingress
     install_id = load_state().get("install_id", "unknown-install")
-
     url = (
         f"{LICENSE_BASE_URL}/oauth_start.php"
         f"?return_url={urllib.parse.quote(return_url, safe='')}"
@@ -206,20 +204,6 @@ def dash_ping():
 def serve_icon():
     return send_from_directory(CONFIG_DIR, 'icon.png')
 
-# @dash.callback(
-#     Output("premium-enabled","data", allow_duplicate=True),
-#     Input("btn-premium","n_clicks"),
-#     prevent_initial_call=True
-# )
-# def on_click_premium(n):
-#     if not n:
-#         raise dash.exceptions.PreventUpdate
-#     if has_valid_token_cached():
-#         print("[LICENSE] click: token already valid, skipping issue", flush=True)
-#         verify_license()
-#     else:
-#         issue_token_and_enable(sponsor="demo_user", plan="monthly")
-#     return {"enabled": is_premium_enabled()}
 
 @dash.callback(
     Output("btn-premium", "className"),
@@ -565,9 +549,10 @@ app.layout = html.Div([
         # Spacer + Premium-Button ganz rechts
         html.Div(style={"flex": "1"}),
         html.A(
-            html.Button("Activate Premium", id="btn-premium", n_clicks=0, className="custom-tab premium-btn"),
-            href=f"{prefix}oauth/start",
-            target="_blank",
+            html.Button("Activate Premium", id="btn-premium",
+                        n_clicks=0, className="custom-tab premium-btn"),
+            href=f"{prefix}oauth/start",  # <— interner Startendpunkt
+            # target="_blank",             # <— ENTFERNEN!
             rel="noopener"
         )
         ,
