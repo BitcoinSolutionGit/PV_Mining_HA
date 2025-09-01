@@ -199,37 +199,112 @@ def oauth_start_root():
 def oauth_start_prefixed():
     return _oauth_start_impl()
 
+# def _oauth_finish_impl():
+#     print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
+#
+#     err   = request.args.get("error", "")
+#     grant = request.args.get("grant", "")
+#
+#     if err:
+#         # return redirect(f"{prefix}?premium_error={urllib.parse.quote(err)}", code=302)
+#         return redirect(f"{prefix}?premium_error={urllib.parse.quote(err)}#premium_error={urllib.parse.quote(err)}", code=302)
+#
+#     if not grant:
+#         return redirect(prefix)
+#
+#     try:
+#         install_id = load_state().get("install_id", "unknown-install")
+#         r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
+#                           json={"grant": grant, "install_id": install_id},
+#                           timeout=10)
+#         js = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
+#         if js.get("ok") and js.get("token"):
+#             set_token(js["token"])
+#             verify_license()
+#             # return redirect(f"{prefix}?premium=ok", code=302)
+#             return redirect(f"{prefix}?premium=ok#premium=ok", code=302)
+#         else:
+#             # return redirect(f"{prefix}?premium_error=redeem_failed", code=302)
+#             return redirect(f"{prefix}?premium_error=redeem_failed#premium_error=redeem_failed", code=302)
+#     except Exception as e:
+#         print("[OAUTH] redeem error:", e, flush=True)
+#         # return redirect(f"{prefix}?premium_error=redeem_exception", code=302)
+#         return redirect(f"{prefix}?premium_error=redeem_exception#premium_error=redeem_exception", code=302)
+
 def _oauth_finish_impl():
     print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
+
+    import urllib.parse as _urlq
 
     err   = request.args.get("error", "")
     grant = request.args.get("grant", "")
 
-    if err:
-        # return redirect(f"{prefix}?premium_error={urllib.parse.quote(err)}", code=302)
-        return redirect(f"{prefix}?premium_error={urllib.parse.quote(err)}#premium_error={urllib.parse.quote(err)}", code=302)
+    status_kind = None   # "ok" | "error" | "noop"
+    status_code = ""     # z.B. "tier_too_low"
 
-    if not grant:
+    if err:
+        status_kind = "error"
+        status_code = err
+    elif not grant:
+        # kein Grant, einfach zurück (keine Meldung)
+        status_kind = "noop"
+    else:
+        try:
+            install_id = load_state().get("install_id", "unknown-install")
+            r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
+                              json={"grant": grant, "install_id": install_id},
+                              timeout=10)
+            js = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
+            if js.get("ok") and js.get("token"):
+                set_token(js["token"])
+                verify_license()
+                status_kind = "ok"
+            else:
+                status_kind = "error"
+                status_code = "redeem_failed"
+        except Exception as e:
+            print("[OAUTH] redeem error:", e, flush=True)
+            status_kind = "error"
+            status_code = "redeem_exception"
+
+    if status_kind == "noop":
+        # Neutral – keine Meldung
         return redirect(prefix)
 
-    try:
-        install_id = load_state().get("install_id", "unknown-install")
-        r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
-                          json={"grant": grant, "install_id": install_id},
-                          timeout=10)
-        js = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
-        if js.get("ok") and js.get("token"):
-            set_token(js["token"])
-            verify_license()
-            # return redirect(f"{prefix}?premium=ok", code=302)
-            return redirect(f"{prefix}?premium=ok#premium=ok", code=302)
-        else:
-            # return redirect(f"{prefix}?premium_error=redeem_failed", code=302)
-            return redirect(f"{prefix}?premium_error=redeem_failed#premium_error=redeem_failed", code=302)
-    except Exception as e:
-        print("[OAUTH] redeem error:", e, flush=True)
-        # return redirect(f"{prefix}?premium_error=redeem_exception", code=302)
-        return redirect(f"{prefix}?premium_error=redeem_exception#premium_error=redeem_exception", code=302)
+    # Ziel-URL für die UI (immer Query + Hash setzen)
+    if status_kind == "ok":
+        target = f"{prefix}?premium=ok#premium=ok"
+    else:
+        code_q = _urlq.quote(status_code, safe="")
+        target = f"{prefix}?premium_error={code_q}#premium_error={code_q}"
+
+    # HTML-Seite, die den ursprünglichen Tab aktualisiert (opener) und dieses Fenster schließt
+    html = f"""<!doctype html>
+<meta charset="utf-8">
+<title>Finishing…</title>
+<body style="font-family: system-ui, sans-serif; padding: 16px;">
+  <p>Returning to the add-on…</p>
+  <script>
+  (function() {{
+    var target = {target!r};
+    try {{
+      if (window.opener && !window.opener.closed) {{
+        try {{ window.opener.location.href = target; }} catch (e) {{}}
+        window.close();
+        return;
+      }}
+      if (window.top && window.top !== window) {{
+        try {{ window.top.location.href = target; return; }} catch (e) {{}}
+      }}
+      window.location.href = target;
+    }} catch (e) {{
+      window.location.href = target;
+    }}
+  }})();
+  </script>
+</body>"""
+    return Response(html, mimetype="text/html")
+
 
 # ✅ neu: ohne Prefix (falls return_url mal „nackt“ kommt)
 @server.route("/oauth/finish")
