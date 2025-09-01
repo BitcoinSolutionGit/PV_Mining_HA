@@ -143,7 +143,6 @@ def _fmt(x):
         return str(x)
 
 def _oauth_start_impl():
-    # Externe OAuth-URL bauen
     return_url = _abs_url("oauth/finish")
     install_id = load_state().get("install_id", "unknown-install")
     ext = (
@@ -153,7 +152,6 @@ def _oauth_start_impl():
     )
     print("[OAUTH] /oauth/start ->", ext, " prefix=", prefix, flush=True)
 
-    # HTML: neues Tab öffnen (Top-Level), diesen Ingress-Tab zurück zur App schicken
     html = f"""
 <!doctype html>
 <meta charset="utf-8">
@@ -174,6 +172,7 @@ def _oauth_start_impl():
 </body>
 """
     return Response(html, mimetype="text/html")
+
 
 # Route ohne Prefix (Ingress sieht oft diesen Pfad)
 @server.route("/oauth/start")
@@ -211,21 +210,15 @@ def _oauth_finish_impl():
         print("[OAUTH] redeem error:", e, flush=True)
         return redirect(f"{prefix}?premium_error=redeem_exception", code=302)
 
-# Finish ohne Prefix (robust, falls return_url mal ohne Prefix kommt)
+# ✅ neu: ohne Prefix (falls return_url mal „nackt“ kommt)
 @server.route("/oauth/finish")
 def oauth_finish_root():
     return _oauth_finish_impl()
 
-# Finish MIT Prefix (Standard, da return_url via _abs_url gebaut wird)
+# ✅ wie gehabt: mit Prefix
 @server.route(f"{prefix}oauth/finish")
 def oauth_finish_prefixed():
     return _oauth_finish_impl()
-
-
-
-@app.server.route("/_dash-layout", methods=["GET"])
-def dash_ping():
-    return {"status": "OK"}
 
 @app.server.route('/config-icon')
 def serve_icon():
@@ -285,9 +278,9 @@ def show_flash(search):
 
 
 @dash.callback(
-    Output("premium-enabled", "data", allow_duplicate=True),
+    Output("premium-enabled", "data"),          # ← allow_duplicate weg
     Input("url", "search"),
-    prevent_initial_call=False
+    prevent_initial_call=True                   # ← initialen Aufruf unterdrücken
 )
 def refresh_premium_on_return(search):
     qs = parse_qs(search.lstrip("?") if search else "")
@@ -362,7 +355,7 @@ def premium_upsell():
             href=f"{prefix}oauth/start",
             rel="noopener"
         )
-    ], style={"textAlign": "center", "padding": "20px"})
+    ], style={"textAlign":"center", "padding":"20px"})
 
 
 @dash.callback(
