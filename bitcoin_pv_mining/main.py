@@ -142,17 +142,27 @@ def _fmt(x):
     except Exception:
         return str(x)
 
-@app.server.route(f"{prefix}oauth/start")
-def oauth_start():
-    return_url = _abs_url("oauth/finish")  # absolut inkl. Ingress
+def _oauth_start_impl():
+    # Ein Handler für beide Routen
+    return_url = _abs_url("oauth/finish")
     install_id = load_state().get("install_id", "unknown-install")
     url = (
         f"{LICENSE_BASE_URL}/oauth_start.php"
         f"?return_url={urllib.parse.quote(return_url, safe='')}"
         f"&install_id={urllib.parse.quote(install_id, safe='')}"
     )
-    print("[OAUTH] /oauth/start ->", url, flush=True)
+    print("[OAUTH] /oauth/start ->", url, " prefix=", prefix, flush=True)
     return redirect(url, code=302)
+
+# Route ohne Prefix (so sieht Flask den Pfad meist hinter Ingress)
+@server.route("/oauth/start")
+def oauth_start_root():
+    return _oauth_start_impl()
+
+# Route MIT Prefix (falls Ingress den Pfad nicht strippt)
+@server.route(f"{prefix}oauth/start")
+def oauth_start_prefixed():
+    return _oauth_start_impl()
 
 @app.server.route(f"{prefix}oauth/finish")
 def oauth_finish():
@@ -542,8 +552,8 @@ app.layout = html.Div([
         html.A(
             html.Button("Activate Premium", id="btn-premium",
                         n_clicks=0, className="custom-tab premium-btn"),
-            href=f"{prefix}oauth/start",  # <— interner Startendpunkt
-            # target="_blank",             # <— ENTFERNEN!
+            href=f"{prefix}oauth/start",  # bleibt so
+            # kein target="_blank" – damit die HA-Session sicher bleibt
             rel="noopener"
         )
         ,
