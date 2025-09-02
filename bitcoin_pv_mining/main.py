@@ -3,6 +3,7 @@ import requests
 import dash
 import flask
 import urllib.parse
+import json
 
 from dash import html, dcc, no_update
 from dash.dependencies import Input, Output, State
@@ -157,6 +158,7 @@ def _fmt(x):
     except Exception:
         return str(x)
 
+
 def _oauth_start_impl():
     return_url = _abs_url("oauth/finish")
     install_id = load_state().get("install_id", "unknown-install")
@@ -167,6 +169,7 @@ def _oauth_start_impl():
     )
     print("[OAUTH] /oauth/start ->", ext, " prefix=", prefix, flush=True)
 
+    # Öffnet GitHub in NEUEM Tab, lässt den aktuellen Tab UNVERÄNDERT.
     html = f"""
 <!doctype html>
 <meta charset="utf-8">
@@ -178,16 +181,53 @@ def _oauth_start_impl():
     (function () {{
       try {{
         window.open("{ext}", "_blank", "noopener");
-        window.location.href = "{prefix}";
-      }} catch (e) {{
-        window.location.href = "{ext}";
-      }}
+      }} catch(e) {{}}
+      // WICHTIG: KEIN location.href = "{prefix}";
+      // Wir bleiben auf der aktuellen Seite, damit nichts flackert.
     }})();
   </script>
 </body>
 """
     return Response(html, mimetype="text/html")
 
+def _finish_notify(status: str, code: str | None = None) -> Response:
+    # status: "ok" | "error"
+    payload = {"type": "pvmining:oauth", "status": status}
+    if code:
+        payload["code"] = code
+    js_payload = json.dumps(payload)
+
+    html = f"""
+<!doctype html>
+<meta charset="utf-8">
+<title>Completing…</title>
+<body style="font-family: system-ui, sans-serif; padding:16px">
+  <p>Finishing sign-in…</p>
+  <script>
+    (function () {{
+      var data = {js_payload};
+      try {{
+        // Fallback-Kanal: löst im Haupt-Tab 'storage' Event aus (auch bei Mobile hilfreich)
+        localStorage.setItem('pvmining_oauth', JSON.stringify(data));
+      }} catch (_){{
+      }}
+      try {{
+        if (window.opener && !window.opener.closed) {{
+          // Primär: Nachricht an den Haupt-Tab
+          window.opener.postMessage(data, "*");
+          window.close();
+          return;
+        }}
+      }} catch (_){{
+      }}
+      // Fallback: navigiere in DIESEM Tab (hash verursacht keinen Full-Reload)
+      var h = (data.status === "ok") ? "#premium=ok" : ("#premium_error=" + encodeURIComponent(data.code || "unknown"));
+      window.location.href = "{prefix}" + h;
+    }})();
+  </script>
+</body>
+"""
+    return Response(html, mimetype="text/html")
 
 # Route ohne Prefix (Ingress sieht oft diesen Pfad)
 @server.route("/oauth/start")
@@ -199,85 +239,20 @@ def oauth_start_root():
 def oauth_start_prefixed():
     return _oauth_start_impl()
 
-# def _oauth_finish_impl():
-#     print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
-#
-#     err   = request.args.get("error", "")
-#     grant = request.args.get("grant", "")
-#
-#     if err:
-#         # return redirect(f"{prefix}?premium_error={urllib.parse.quote(err)}", code=302)
-#         return redirect(f"{prefix}?premium_error={urllib.parse.quote(err)}#premium_error={urllib.parse.quote(err)}", code=302)
-#
-#     if not grant:
-#         return redirect(prefix)
-#
-#     try:
-#         install_id = load_state().get("install_id", "unknown-install")
-#         r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
-#                           json={"grant": grant, "install_id": install_id},
-#                           timeout=10)
-#         js = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
-#         if js.get("ok") and js.get("token"):
-#             set_token(js["token"])
-#             verify_license()
-#             # return redirect(f"{prefix}?premium=ok", code=302)
-#             return redirect(f"{prefix}?premium=ok#premium=ok", code=302)
-#         else:
-#             # return redirect(f"{prefix}?premium_error=redeem_failed", code=302)
-#             return redirect(f"{prefix}?premium_error=redeem_failed#premium_error=redeem_failed", code=302)
-#     except Exception as e:
-#         print("[OAUTH] redeem error:", e, flush=True)
-#         # return redirect(f"{prefix}?premium_error=redeem_exception", code=302)
-#         return redirect(f"{prefix}?premium_error=redeem_exception#premium_error=redeem_exception", code=302)
-
-# --- NEU: kleine HTML-Antwort, die den Opener informiert & schließt ---
-def _finish_response_js(status: str, err_code: str = ""):
-    ok_url   = f"{prefix}?premium=ok#premium=ok"
-    err_hash = f"#premium_error={urllib.parse.quote(err_code)}" if err_code else ""
-    err_url  = f"{prefix}?premium_error={urllib.parse.quote(err_code)}{err_hash}"
-
-    html = f"""<!doctype html>
-<meta charset="utf-8">
-<title>Done</title>
-<body style="font-family: system-ui, sans-serif; padding:16px;">
-  <p>Returning to the add-on… You can close this tab.</p>
-  <script>
-  (function() {{
-    var isOk = { 'true' if status == 'ok' else 'false' };
-    var err  = {repr(err_code)};
-    var target = isOk ? {repr(ok_url)} : {repr(err_url)};
-    try {{
-      if (window.opener && !window.opener.closed) {{
-        try {{
-          window.opener.location.hash = isOk ? "#premium=ok" : ("#premium_error=" + encodeURIComponent(err || "unknown"));
-        }} catch (e) {{}}
-      }}
-    }} catch (e) {{}}
-    window.location.replace(target);
-    setTimeout(function(){{ try {{ window.close(); }} catch (e) {{}} }}, 150);
-  }})();
-  </script>
-</body>"""
-    return Response(html, mimetype="text/html")
-
-
 def _oauth_finish_impl():
     print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
 
     err   = request.args.get("error", "")
     grant = request.args.get("grant", "")
 
-    # Fehler vom Lizenzserver → direkt ins UI (QS + Hash als Ingress-Fallback)
     if err:
-        target = f"{prefix}?premium_error={urllib.parse.quote(err)}#premium_error={urllib.parse.quote(err)}"
-        return _finish_redirect(target)
+        # NICHT redirecten → nur Benachrichtigen
+        return _finish_notify("error", err)
 
-    # Kein Grant? Zurück zur App
     if not grant:
-        return _finish_redirect(prefix)
+        # nichts zu tun → UI informieren, aber ohne Navigationswechsel
+        return _finish_notify("error", "missing_grant")
 
-    # Erfolgsfall: Grant einlösen
     try:
         install_id = load_state().get("install_id", "unknown-install")
         r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
@@ -287,16 +262,12 @@ def _oauth_finish_impl():
         if js.get("ok") and js.get("token"):
             set_token(js["token"])
             verify_license()
-            target = f"{prefix}?premium=ok#premium=ok"
-            return _finish_redirect(target)
+            return _finish_notify("ok", None)
         else:
-            target = f"{prefix}?premium_error=redeem_failed#premium_error=redeem_failed"
-            return _finish_redirect(target)
+            return _finish_notify("error", "redeem_failed")
     except Exception as e:
         print("[OAUTH] redeem error:", e, flush=True)
-        target = f"{prefix}?premium_error=redeem_exception#premium_error=redeem_exception"
-        return _finish_redirect(target)
-
+        return _finish_notify("error", "redeem_exception")
 
 
 # ✅ neu: ohne Prefix (falls return_url mal „nackt“ kommt)
@@ -309,34 +280,21 @@ def oauth_finish_root():
 def oauth_finish_prefixed():
     return _oauth_finish_impl()
 
+
 @app.callback(
     Output("flash-area", "children"),
     Output("premium-enabled", "data"),
+    Input("url", "hash"),
     Input("flash-poll", "n_intervals"),
+    State("premium-enabled", "data"),
     prevent_initial_call=False
 )
-def poll_ui_flash(_n):
-    try:
-        st = load_state()
-    except Exception as e:
-        print("[FLASH] read error:", e, flush=True)
-        return no_update, {"enabled": is_premium_enabled()}
-
-    flash = st.get("ui_flash")
-    if not flash:
-        # Nichts Neues
-        return no_update, {"enabled": is_premium_enabled()}
-
-    # Flash einmalig konsumieren
-    try:
-        st.pop("ui_flash", None)
-        save_state(st)
-    except Exception as e:
-        print("[FLASH] clear error:", e, flush=True)
-
-    code  = (flash.get("code") or "").strip()
-    level = flash.get("level") or "error"
-
+def flash_and_premium(hash_, _n, premium_state):
+    """
+    Zeigt Toasts, wenn der Hash (#premium=ok | #premium_error=CODE) gesetzt wurde,
+    und aktualisiert premium-enabled NUR wenn sich der Wert ändert.
+    Zusätzlich: fallback auf serverseitiges ui_flash (one-shot), falls gesetzt.
+    """
     messages = {
         "tier_too_low":         "Sponsorship too low: at least $10/month or $100 one-time.",
         "no_sponsor":           "No active sponsorship for BitcoinSolutionGit found.",
@@ -348,22 +306,44 @@ def poll_ui_flash(_n):
         "redeem_exception":     "Network/server error while redeeming the license.",
         "premium_ok":           "Premium activated ✔️",
     }
-    text = messages.get(code, f"Status: {code or level}")
+    style_ok = {"background":"#eaffea","border":"1px solid #27ae60","padding":"10px","borderRadius":"8px","fontWeight":"bold"}
+    style_err= {"background":"#ffecec","border":"1px solid #e74c3c","padding":"10px","borderRadius":"8px","fontWeight":"bold"}
 
-    style_ok = {
-        "background":"#eaffea","border":"1px solid #27ae60",
-        "padding":"10px","borderRadius":"8px","fontWeight":"bold"
-    }
-    style_err = {
-        "background":"#ffecec","border":"1px solid #e74c3c",
-        "padding":"10px","borderRadius":"8px","fontWeight":"bold"
-    }
+    # 1) Hash auswerten (kommt via postMessage/storage aus /oauth/finish)
+    toast = None
+    if hash_:
+        h = (hash_ or "").lstrip("#")
+        if h == "premium=ok" or h.startswith("premium=ok"):
+            toast = html.Div(messages["premium_ok"], style=style_ok)
+        elif h.startswith("premium_error="):
+            code = h.split("=",1)[1]
+            text = messages.get(code, f"Error: {code}")
+            toast = html.Div(text, style=style_err)
 
-    # Premium-Flag frisch vom Server ziehen
-    premium = {"enabled": is_premium_enabled()}
+    # 2) Optionaler Fallback: serverseitiges ui_flash (one-shot)
+    if toast is None:
+        try:
+            st = load_state()
+            flash = st.get("ui_flash")
+            if flash:
+                code  = (flash.get("code") or "").strip()
+                level = flash.get("level") or "error"
+                # einmalig konsumieren
+                st.pop("ui_flash", None)
+                save_state(st)
+                if level == "ok":
+                    toast = html.Div(messages.get(code, "OK"), style=style_ok)
+                else:
+                    toast = html.Div(messages.get(code, f"Error: {code}"), style=style_err)
+        except Exception as e:
+            print("[FLASH] read error:", e, flush=True)
 
-    return html.Div(text, style=(style_ok if level == "ok" else style_err)), premium
+    # 3) premium-enabled nur aktualisieren, wenn sich der Wert tatsächlich ändert
+    current_enabled = bool((premium_state or {}).get("enabled"))
+    now_enabled = is_premium_enabled()
+    premium_out = {"enabled": now_enabled} if (now_enabled != current_enabled) else no_update
 
+    return (toast or no_update), premium_out
 
 
 @app.server.route('/config-icon')
@@ -386,93 +366,6 @@ def toggle_premium_button(data):
         return "custom-tab premium-btn premium-btn-active", "Premium Active"
     return "custom-tab premium-btn premium-btn-locked", "Activate Premium"
 
-# @app.callback(
-#     Output("flash-area", "children"),
-#     Input("url", "search"),
-#     Input("url", "hash"),
-#     Input("flash-poll", "n_intervals"),
-#     prevent_initial_call=False
-# )
-# def show_flash(search, hash_, _n):
-#     # 1) URL (Query + Hash) auswerten
-#     qs = _merge_qs_and_hash(search, hash_)
-#     if qs:
-#         if "premium_error" in qs:
-#             code = (qs["premium_error"][0] or "").strip()
-#             messages = {
-#                 "tier_too_low":        "Sponsorship too low: at least $10/month or $100 one-time.",
-#                 "no_sponsor":          "No active sponsorship for BitcoinSolutionGit found.",
-#                 "oauth_denied":        "GitHub login/authorization required.",
-#                 "github_unauthorized": "GitHub rejected the request. Please sign in again.",
-#                 "github_api":          "GitHub API not reachable. Please try again later.",
-#                 "no_token":            "GitHub did not return a token. Please try again.",
-#                 "redeem_failed":       "Could not redeem the license.",
-#                 "redeem_exception":    "Network/server error while redeeming the license.",
-#             }
-#             text = messages.get(code, f"Error: {code}")
-#             return html.Div(text, style={
-#                 "background":"#ffecec","border":"1px solid #e74c3c","padding":"10px",
-#                 "borderRadius":"8px","fontWeight":"bold"
-#             })
-#         if qs.get("premium") == ["ok"]:
-#             return html.Div("Premium activated ✔️", style={
-#                 "background":"#eaffea","border":"1px solid #27ae60","padding":"10px",
-#                 "borderRadius":"8px","fontWeight":"bold"
-#             })
-#
-#     # 2) Serverseitiges Flash lesen & verbrauchen
-#     try:
-#         st = load_state()
-#         flash = st.get("ui_flash")
-#         if flash:
-#             kind = (flash.get("kind") or "").lower()
-#             code = flash.get("code") or ""
-#             # sofort löschen (one-shot)
-#             st["ui_flash"] = None
-#             save_state(st)
-#
-#             if kind == "success" and code == "premium_ok":
-#                 return html.Div("Premium activated ✔️", style={
-#                     "background":"#eaffea","border":"1px solid #27ae60","padding":"10px",
-#                     "borderRadius":"8px","fontWeight":"bold"
-#                 })
-#
-#             if kind == "error":
-#                 messages = {
-#                     "tier_too_low":        "Sponsorship too low: at least $10/month or $100 one-time.",
-#                     "no_sponsor":          "No active sponsorship for BitcoinSolutionGit found.",
-#                     "oauth_denied":        "GitHub login/authorization required.",
-#                     "github_unauthorized": "GitHub rejected the request. Please sign in again.",
-#                     "github_api":          "GitHub API not reachable. Please try again later.",
-#                     "no_token":            "GitHub did not return a token. Please try again.",
-#                     "redeem_failed":       "Could not redeem the license.",
-#                     "redeem_exception":    "Network/server error while redeeming the license.",
-#                 }
-#                 text = messages.get(code, f"Error: {code}")
-#                 return html.Div(text, style={
-#                     "background":"#ffecec","border":"1px solid #e74c3c","padding":"10px",
-#                     "borderRadius":"8px","fontWeight":"bold"
-#                 })
-#     except Exception as e:
-#         print("[FLASH] read error:", e, flush=True)
-#
-#     return ""
-
-
-# @app.callback(
-#     Output("premium-enabled", "data"),
-#     Input("url", "search"),
-#     Input("url", "hash"),
-#     prevent_initial_call=True
-# )
-# def refresh_premium_on_return(search, hash_):
-#     qs = _merge_qs_and_hash(search, hash_)
-#     if qs.get("premium") == ["ok"]:
-#         verify_license()
-#     return {"enabled": is_premium_enabled()}
-
-
-
 
 @app.callback(
     Output("active-tab", "data"),
@@ -492,7 +385,7 @@ def toggle_premium_button(data):
     Input("btn-heater", "n_clicks"),
     Input("btn-wallbox", "n_clicks"),
     Input("btn-settings","n_clicks"),
-    Input("premium-enabled", "data"),
+    State("premium-enabled", "data"),
     prevent_initial_call=True
 )
 def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, premium_data):
@@ -542,31 +435,6 @@ def premium_upsell():
         )
     ], style={"textAlign":"center", "padding":"20px"})
 
-def _finish_redirect(target_url: str) -> Response:
-    html = f"""
-            <!doctype html>
-            <meta charset="utf-8">
-            <title>Completing…</title>
-            <body style="font-family: system-ui, sans-serif; padding:16px">
-              <p>Finishing sign-in…</p>
-              <script>
-                (function () {{
-                  var target = "{target_url}";
-                  try {{
-                    if (window.opener && !window.opener.closed) {{
-                      // Update the original HA tab and close this one
-                      window.opener.location.href = target;
-                      window.close();
-                      return;
-                    }}
-                  }} catch (e) {{}}
-                  // Fallback: navigate in this tab
-                  window.location.href = target;
-                }})();
-              </script>
-            </body>
-            """
-    return Response(html, mimetype="text/html")
 
 @app.callback(
     Output("btn-battery", "className", allow_duplicate=True),
@@ -769,6 +637,31 @@ app.index_string = '''
             {%config%}
             {%scripts%}
             {%renderer%}
+            <script>
+              (function(){
+                function applyResult(data){
+                  try{
+                    if (!data || data.type !== 'pvmining:oauth') return;
+                    if (data.status === 'ok') {
+                      // Hash ändern → kein Full-Reload, nur deine Dash-Callback "show_flash"
+                      location.hash = 'premium=ok';
+                    } else if (data.status === 'error') {
+                      location.hash = 'premium_error=' + encodeURIComponent(data.code || 'unknown');
+                    }
+                  }catch(_){}
+                }
+            
+                window.addEventListener('message', function(ev){
+                  applyResult(ev && ev.data);
+                });
+            
+                window.addEventListener('storage', function(ev){
+                  if (ev && ev.key === 'pvmining_oauth') {
+                    try{ applyResult(JSON.parse(ev.newValue || '{}')); }catch(_){}
+                  }
+                });
+              })();
+            </script>
         </footer>
     </body>
 </html>
