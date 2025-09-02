@@ -168,25 +168,11 @@ def _oauth_start_impl():
         f"&install_id={urllib.parse.quote(install_id, safe='')}"
     )
     print("[OAUTH] /oauth/start ->", ext, " prefix=", prefix, flush=True)
-
-    # NEU: direkter Redirect für target=_blank Fälle
     if request.args.get("direct") == "1":
         return redirect(ext, code=302)
+    # optionaler Fallback-Screen (kannst du auch weglassen)
+    return Response(f'<!doctype html><a href="{ext}" target="_blank">Open GitHub</a>', mimetype="text/html")
 
-    # Fallback-Seite (falls du sie behalten willst); Anker OHNE rel="noopener"
-    html = f"""
-<!doctype html>
-<meta charset="utf-8">
-<title>Redirecting…</title>
-<body style="font-family: system-ui, sans-serif; padding: 16px;">
-  <p>Opening GitHub in a new tab…</p>
-  <p>If nothing happens, <a href="{ext}" target="_blank">click here</a>.</p>
-  <script>
-    try {{ window.open("{ext}", "_blank"); }} catch(e) {{}}
-  </script>
-</body>
-"""
-    return Response(html, mimetype="text/html")
 
 
 def _finish_notify(status: str, code: str | None = None) -> Response:
@@ -241,12 +227,10 @@ def oauth_start_prefixed():
 
 def _oauth_finish_impl():
     print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
-
     err   = request.args.get("error", "")
     grant = request.args.get("grant", "")
 
     st = load_state()
-
     if err:
         st["ui_flash"] = {"level": "error", "code": err}
         save_state(st)
@@ -278,8 +262,6 @@ def _oauth_finish_impl():
         st["ui_flash"] = {"level": "error", "code": "redeem_exception"}
         save_state(st)
         return jsonify({"ok": False, "error": "redeem_exception"})
-
-
 
 # ✅ neu: ohne Prefix (falls return_url mal „nackt“ kommt)
 @server.route("/oauth/finish")
@@ -650,28 +632,25 @@ app.index_string = '''
             {%renderer%}
             <script>
               (function(){
-                var prefix = "{{requests_pathname_prefix}}"; // Dash gibt das korrekt aus
                 function applyResult(data){
                   try{
                     if (!data || data.type !== 'pvmining:oauth') return;
             
                     if (data.status === 'ok' && data.grant) {
-                      // Grant serverseitig einlösen (gleiches Origin -> Cookie ok)
-                      fetch(prefix + 'oauth/finish?grant=' + encodeURIComponent(data.grant), { credentials: 'include' })
-                        .catch(function(){ /* optional logging */ });
-                      return; // keine URL-Änderung nötig – Poll zeigt Toast
+                      // Einlösen im selben Tab / gleicher Origin -> Cookie ok
+                      fetch('oauth/finish?grant=' + encodeURIComponent(data.grant), { credentials: 'include' })
+                        .catch(function(){});
+                      return;
                     }
                     if (data.status === 'error') {
-                      fetch(prefix + 'oauth/finish?error=' + encodeURIComponent(data.code || 'unknown'), { credentials: 'include' })
-                        .catch(function(){ /* optional logging */ });
+                      fetch('oauth/finish?error=' + encodeURIComponent(data.code || 'unknown'), { credentials: 'include' })
+                        .catch(function(){});
                       return;
                     }
                   }catch(_){}
                 }
             
                 window.addEventListener('message', function(ev){ applyResult(ev && ev.data); });
-            
-                // storage-Fallback kannst du lassen; schickt dieselbe applyResult() los
                 window.addEventListener('storage', function(ev){
                   if (ev && ev.key === 'pvmining_oauth') {
                     try{ applyResult(JSON.parse(ev.newValue || '{}')); }catch(_){}
@@ -715,11 +694,9 @@ app.layout = html.Div([
         html.A(
             html.Button("Activate Premium", id="btn-premium",
                         n_clicks=0, className="custom-tab premium-btn"),
-            href=f"{prefix}oauth/start?direct=1",  # ⬅ direct=1 (siehe Patch B)
-            target="_blank",  # ⬅ im User-Click: echter neuer Tab
-            # rel NICHT setzen -> KEIN noopener, damit window.opener funktioniert
+            href=f"{prefix}oauth/start?direct=1",
+            target="_blank",  # ⬅ wichtig
         )
-
         ,
     ], id="tab-buttons", className="header-bar"),
 
