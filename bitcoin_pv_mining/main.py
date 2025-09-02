@@ -4,7 +4,7 @@ import dash
 import flask
 import urllib.parse
 
-from dash import html, dcc
+from dash import html, dcc, no_update
 from dash.dependencies import Input, Output, State
 
 from flask import send_from_directory
@@ -13,7 +13,7 @@ from ui_dashboard import layout as dashboard_layout, register_callbacks
 
 from services.btc_api import update_btc_data_periodically
 from services.license import set_token, verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
-from services.utils import get_addon_version, load_state, save_state
+from services.utils import get_addon_version, load_state, save_state, iso_now
 from services.power_planner import plan_and_allocate_auto
 from urllib.parse import urlparse, parse_qs
 
@@ -233,7 +233,6 @@ def oauth_start_prefixed():
 
 # --- NEU: kleine HTML-Antwort, die den Opener informiert & schließt ---
 def _finish_response_js(status: str, err_code: str = ""):
-    # Ziel-URLs inkl. Hash, damit dcc.Location(hash=...) triggert
     ok_url   = f"{prefix}?premium=ok#premium=ok"
     err_hash = f"#premium_error={urllib.parse.quote(err_code)}" if err_code else ""
     err_url  = f"{prefix}?premium_error={urllib.parse.quote(err_code)}{err_hash}"
@@ -251,12 +250,10 @@ def _finish_response_js(status: str, err_code: str = ""):
     try {{
       if (window.opener && !window.opener.closed) {{
         try {{
-          // Hash setzen → dcc.Location(hash) im Hauptfenster triggert
           window.opener.location.hash = isOk ? "#premium=ok" : ("#premium_error=" + encodeURIComponent(err || "unknown"));
         }} catch (e) {{}}
       }}
     }} catch (e) {{}}
-    // Fallback: in diesem Tab zurücknavigieren
     window.location.replace(target);
     setTimeout(function(){{ try {{ window.close(); }} catch (e) {{}} }}, 150);
   }})();
@@ -271,14 +268,20 @@ def _oauth_finish_impl():
     err   = request.args.get("error", "")
     grant = request.args.get("grant", "")
 
-    # Fehler direkt zurückmelden (Opener-Hash + Fallback-Redirect)
+    # Fehlerfall: Flash setzen, UI informieren
     if err:
+        try:
+            st = load_state()
+            st["ui_flash"] = {"level": "error", "code": err, "ts": iso_now()}
+            save_state(st)
+        except Exception as e:
+            print("[OAUTH] ui_flash write failed (err):", e, flush=True)
         return _finish_response_js(status="err", err_code=err)
 
     if not grant:
-        # Nichts zu tun – zurück zur App
         return redirect(prefix)
 
+    # Erfolgsfall: redeem → Token → verify → Flash=ok
     try:
         install_id = load_state().get("install_id", "unknown-install")
         r = requests.post(
@@ -290,12 +293,29 @@ def _oauth_finish_impl():
         if js.get("ok") and js.get("token"):
             set_token(js["token"])
             verify_license()
-            # Erfolg: Opener informieren
+            try:
+                st = load_state()
+                st["ui_flash"] = {"level": "ok", "code": "premium_ok", "ts": iso_now()}
+                save_state(st)
+            except Exception as e:
+                print("[OAUTH] ui_flash write failed (ok):", e, flush=True)
             return _finish_response_js(status="ok")
         else:
+            try:
+                st = load_state()
+                st["ui_flash"] = {"level": "error", "code": "redeem_failed", "ts": iso_now()}
+                save_state(st)
+            except Exception as e:
+                print("[OAUTH] ui_flash write failed (redeem_failed):", e, flush=True)
             return _finish_response_js(status="err", err_code="redeem_failed")
     except Exception as e:
-        print("[OAUTH] redeem error:", e, flush=True)
+        print("[OAUTH] redeem exception:", e, flush=True)
+        try:
+            st = load_state()
+            st["ui_flash"] = {"level": "error", "code": "redeem_exception", "ts": iso_now()}
+            save_state(st)
+        except Exception as e2:
+            print("[OAUTH] ui_flash write failed (exception):", e2, flush=True)
         return _finish_response_js(status="err", err_code="redeem_exception")
 
 
@@ -309,12 +329,69 @@ def oauth_finish_root():
 def oauth_finish_prefixed():
     return _oauth_finish_impl()
 
+@app.callback(
+    Output("flash-area", "children"),
+    Output("premium-enabled", "data"),
+    Input("flash-poll", "n_intervals"),
+    prevent_initial_call=False
+)
+def poll_ui_flash(_n):
+    try:
+        st = load_state()
+    except Exception as e:
+        print("[FLASH] read error:", e, flush=True)
+        return no_update, {"enabled": is_premium_enabled()}
+
+    flash = st.get("ui_flash")
+    if not flash:
+        # Nichts Neues
+        return no_update, {"enabled": is_premium_enabled()}
+
+    # Flash einmalig konsumieren
+    try:
+        st.pop("ui_flash", None)
+        save_state(st)
+    except Exception as e:
+        print("[FLASH] clear error:", e, flush=True)
+
+    code  = (flash.get("code") or "").strip()
+    level = flash.get("level") or "error"
+
+    messages = {
+        "tier_too_low":         "Sponsorship too low: at least $10/month or $100 one-time.",
+        "no_sponsor":           "No active sponsorship for BitcoinSolutionGit found.",
+        "oauth_denied":         "GitHub login/authorization required.",
+        "github_unauthorized":  "GitHub rejected the request. Please sign in again.",
+        "github_api":           "GitHub API not reachable. Please try again later.",
+        "no_token":             "GitHub did not return a token. Please try again.",
+        "redeem_failed":        "Could not redeem the license.",
+        "redeem_exception":     "Network/server error while redeeming the license.",
+        "premium_ok":           "Premium activated ✔️",
+    }
+    text = messages.get(code, f"Status: {code or level}")
+
+    style_ok = {
+        "background":"#eaffea","border":"1px solid #27ae60",
+        "padding":"10px","borderRadius":"8px","fontWeight":"bold"
+    }
+    style_err = {
+        "background":"#ffecec","border":"1px solid #e74c3c",
+        "padding":"10px","borderRadius":"8px","fontWeight":"bold"
+    }
+
+    # Premium-Flag frisch vom Server ziehen
+    premium = {"enabled": is_premium_enabled()}
+
+    return html.Div(text, style=(style_ok if level == "ok" else style_err)), premium
+
+
+
 @app.server.route('/config-icon')
 def serve_icon():
     return send_from_directory(CONFIG_DIR, 'icon.png')
 
 
-@dash.callback(
+@app.callback(
     Output("btn-premium", "className"),
     Output("btn-premium", "children"),
     Input("premium-enabled", "data")
@@ -329,95 +406,95 @@ def toggle_premium_button(data):
         return "custom-tab premium-btn premium-btn-active", "Premium Active"
     return "custom-tab premium-btn premium-btn-locked", "Activate Premium"
 
-@dash.callback(
-    Output("flash-area", "children"),
-    Input("url", "search"),
-    Input("url", "hash"),
-    Input("flash-poll", "n_intervals"),
-    prevent_initial_call=False
-)
-def show_flash(search, hash_, _n):
-    # 1) URL (Query + Hash) auswerten
-    qs = _merge_qs_and_hash(search, hash_)
-    if qs:
-        if "premium_error" in qs:
-            code = (qs["premium_error"][0] or "").strip()
-            messages = {
-                "tier_too_low":        "Sponsorship too low: at least $10/month or $100 one-time.",
-                "no_sponsor":          "No active sponsorship for BitcoinSolutionGit found.",
-                "oauth_denied":        "GitHub login/authorization required.",
-                "github_unauthorized": "GitHub rejected the request. Please sign in again.",
-                "github_api":          "GitHub API not reachable. Please try again later.",
-                "no_token":            "GitHub did not return a token. Please try again.",
-                "redeem_failed":       "Could not redeem the license.",
-                "redeem_exception":    "Network/server error while redeeming the license.",
-            }
-            text = messages.get(code, f"Error: {code}")
-            return html.Div(text, style={
-                "background":"#ffecec","border":"1px solid #e74c3c","padding":"10px",
-                "borderRadius":"8px","fontWeight":"bold"
-            })
-        if qs.get("premium") == ["ok"]:
-            return html.Div("Premium activated ✔️", style={
-                "background":"#eaffea","border":"1px solid #27ae60","padding":"10px",
-                "borderRadius":"8px","fontWeight":"bold"
-            })
-
-    # 2) Serverseitiges Flash lesen & verbrauchen
-    try:
-        st = load_state()
-        flash = st.get("ui_flash")
-        if flash:
-            kind = (flash.get("kind") or "").lower()
-            code = flash.get("code") or ""
-            # sofort löschen (one-shot)
-            st["ui_flash"] = None
-            save_state(st)
-
-            if kind == "success" and code == "premium_ok":
-                return html.Div("Premium activated ✔️", style={
-                    "background":"#eaffea","border":"1px solid #27ae60","padding":"10px",
-                    "borderRadius":"8px","fontWeight":"bold"
-                })
-
-            if kind == "error":
-                messages = {
-                    "tier_too_low":        "Sponsorship too low: at least $10/month or $100 one-time.",
-                    "no_sponsor":          "No active sponsorship for BitcoinSolutionGit found.",
-                    "oauth_denied":        "GitHub login/authorization required.",
-                    "github_unauthorized": "GitHub rejected the request. Please sign in again.",
-                    "github_api":          "GitHub API not reachable. Please try again later.",
-                    "no_token":            "GitHub did not return a token. Please try again.",
-                    "redeem_failed":       "Could not redeem the license.",
-                    "redeem_exception":    "Network/server error while redeeming the license.",
-                }
-                text = messages.get(code, f"Error: {code}")
-                return html.Div(text, style={
-                    "background":"#ffecec","border":"1px solid #e74c3c","padding":"10px",
-                    "borderRadius":"8px","fontWeight":"bold"
-                })
-    except Exception as e:
-        print("[FLASH] read error:", e, flush=True)
-
-    return ""
-
-
-@dash.callback(
-    Output("premium-enabled", "data"),
-    Input("url", "search"),
-    Input("url", "hash"),
-    prevent_initial_call=True
-)
-def refresh_premium_on_return(search, hash_):
-    qs = _merge_qs_and_hash(search, hash_)
-    if qs.get("premium") == ["ok"]:
-        verify_license()
-    return {"enabled": is_premium_enabled()}
+# @app.callback(
+#     Output("flash-area", "children"),
+#     Input("url", "search"),
+#     Input("url", "hash"),
+#     Input("flash-poll", "n_intervals"),
+#     prevent_initial_call=False
+# )
+# def show_flash(search, hash_, _n):
+#     # 1) URL (Query + Hash) auswerten
+#     qs = _merge_qs_and_hash(search, hash_)
+#     if qs:
+#         if "premium_error" in qs:
+#             code = (qs["premium_error"][0] or "").strip()
+#             messages = {
+#                 "tier_too_low":        "Sponsorship too low: at least $10/month or $100 one-time.",
+#                 "no_sponsor":          "No active sponsorship for BitcoinSolutionGit found.",
+#                 "oauth_denied":        "GitHub login/authorization required.",
+#                 "github_unauthorized": "GitHub rejected the request. Please sign in again.",
+#                 "github_api":          "GitHub API not reachable. Please try again later.",
+#                 "no_token":            "GitHub did not return a token. Please try again.",
+#                 "redeem_failed":       "Could not redeem the license.",
+#                 "redeem_exception":    "Network/server error while redeeming the license.",
+#             }
+#             text = messages.get(code, f"Error: {code}")
+#             return html.Div(text, style={
+#                 "background":"#ffecec","border":"1px solid #e74c3c","padding":"10px",
+#                 "borderRadius":"8px","fontWeight":"bold"
+#             })
+#         if qs.get("premium") == ["ok"]:
+#             return html.Div("Premium activated ✔️", style={
+#                 "background":"#eaffea","border":"1px solid #27ae60","padding":"10px",
+#                 "borderRadius":"8px","fontWeight":"bold"
+#             })
+#
+#     # 2) Serverseitiges Flash lesen & verbrauchen
+#     try:
+#         st = load_state()
+#         flash = st.get("ui_flash")
+#         if flash:
+#             kind = (flash.get("kind") or "").lower()
+#             code = flash.get("code") or ""
+#             # sofort löschen (one-shot)
+#             st["ui_flash"] = None
+#             save_state(st)
+#
+#             if kind == "success" and code == "premium_ok":
+#                 return html.Div("Premium activated ✔️", style={
+#                     "background":"#eaffea","border":"1px solid #27ae60","padding":"10px",
+#                     "borderRadius":"8px","fontWeight":"bold"
+#                 })
+#
+#             if kind == "error":
+#                 messages = {
+#                     "tier_too_low":        "Sponsorship too low: at least $10/month or $100 one-time.",
+#                     "no_sponsor":          "No active sponsorship for BitcoinSolutionGit found.",
+#                     "oauth_denied":        "GitHub login/authorization required.",
+#                     "github_unauthorized": "GitHub rejected the request. Please sign in again.",
+#                     "github_api":          "GitHub API not reachable. Please try again later.",
+#                     "no_token":            "GitHub did not return a token. Please try again.",
+#                     "redeem_failed":       "Could not redeem the license.",
+#                     "redeem_exception":    "Network/server error while redeeming the license.",
+#                 }
+#                 text = messages.get(code, f"Error: {code}")
+#                 return html.Div(text, style={
+#                     "background":"#ffecec","border":"1px solid #e74c3c","padding":"10px",
+#                     "borderRadius":"8px","fontWeight":"bold"
+#                 })
+#     except Exception as e:
+#         print("[FLASH] read error:", e, flush=True)
+#
+#     return ""
 
 
+# @app.callback(
+#     Output("premium-enabled", "data"),
+#     Input("url", "search"),
+#     Input("url", "hash"),
+#     prevent_initial_call=True
+# )
+# def refresh_premium_on_return(search, hash_):
+#     qs = _merge_qs_and_hash(search, hash_)
+#     if qs.get("premium") == ["ok"]:
+#         verify_license()
+#     return {"enabled": is_premium_enabled()}
 
 
-@dash.callback(
+
+
+@app.callback(
     Output("active-tab", "data"),
     Output("btn-dashboard", "className"),
     Output("btn-sensors", "className"),
@@ -487,7 +564,7 @@ def premium_upsell():
 
 
 
-@dash.callback(
+@app.callback(
     Output("btn-battery", "className", allow_duplicate=True),
     Input("premium-enabled", "data"),
     Input("active-tab", "data"),
@@ -501,7 +578,7 @@ def style_miners_button(premium_data, active_tab):
     classes.append("battery-premium-ok" if enabled else "battery-premium-locked")
     return " ".join(classes)
 
-@dash.callback(
+@app.callback(
     Output("btn-heater", "className", allow_duplicate=True),
     Input("premium-enabled", "data"),
     Input("active-tab", "data"),
@@ -515,7 +592,7 @@ def style_miners_button(premium_data, active_tab):
     classes.append("heater-premium-ok" if enabled else "heater-premium-locked")
     return " ".join(classes)
 
-@dash.callback(
+@app.callback(
     Output("btn-wallbox", "className", allow_duplicate=True),
     Input("premium-enabled", "data"),
     Input("active-tab", "data"),
@@ -529,7 +606,7 @@ def style_miners_button(premium_data, active_tab):
     classes.append("wallbox-premium-ok" if enabled else "wallbox-premium-locked")
     return " ".join(classes)
 
-@dash.callback(
+@app.callback(
     Output("tabs-content", "children"),
     Input("active-tab", "data"),
     Input("premium-enabled", "data")
@@ -734,7 +811,7 @@ app.layout = html.Div([
     html.Div(id="tabs-content", style={"marginTop": "10px"})
 ])
 
-@dash.callback(
+@app.callback(
     Output("planner-heartbeat", "children"),
     Input("planner-engine", "n_intervals"),
     State("premium-enabled", "data"),

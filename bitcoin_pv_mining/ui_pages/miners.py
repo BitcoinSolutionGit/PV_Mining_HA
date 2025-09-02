@@ -495,7 +495,7 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
 def register_callbacks(app):
     sym = currency_symbol()
 
-    @dash.callback(
+    @app.callback(
         Output("orchestrator", "data"),
         Output("cool-ampel", "children"),
         Input("miners-refresh", "n_intervals"),
@@ -749,7 +749,7 @@ def register_callbacks(app):
 
     # 8) Save pro Miner (ALL statt MATCH)
 
-    @dash.callback(
+    @app.callback(
         Output("miners-data", "data", allow_duplicate=True),
         Input({"type": "m-save", "mid": ALL}, "n_clicks"),
         State({"type": "m-save", "mid": ALL}, "id"),
@@ -1024,7 +1024,7 @@ def register_callbacks(app):
     from dash import no_update
     from services.miners_store import list_miners
 
-    @dash.callback(
+    @app.callback(
         Output("cool-on", "style"),
         Output("cool-on", "value"),
         Output("cool-lock-note", "children"),
