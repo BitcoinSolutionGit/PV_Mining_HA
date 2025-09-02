@@ -8,8 +8,8 @@ import json
 from dash import html, dcc, no_update
 from dash.dependencies import Input, Output, State
 
-from flask import send_from_directory
-from flask import request, redirect, send_file, Response
+
+from flask import request, redirect, send_file, Response, jsonify
 from ui_dashboard import layout as dashboard_layout, register_callbacks
 
 from services.btc_api import update_btc_data_periodically
@@ -169,26 +169,25 @@ def _oauth_start_impl():
     )
     print("[OAUTH] /oauth/start ->", ext, " prefix=", prefix, flush=True)
 
-    # Öffnet GitHub in NEUEM Tab, lässt den aktuellen Tab UNVERÄNDERT.
+    # NEU: direkter Redirect für target=_blank Fälle
+    if request.args.get("direct") == "1":
+        return redirect(ext, code=302)
+
+    # Fallback-Seite (falls du sie behalten willst); Anker OHNE rel="noopener"
     html = f"""
 <!doctype html>
 <meta charset="utf-8">
 <title>Redirecting…</title>
 <body style="font-family: system-ui, sans-serif; padding: 16px;">
   <p>Opening GitHub in a new tab…</p>
-  <p>If nothing happens, <a href="{ext}" target="_blank" rel="noopener">click here</a>.</p>
+  <p>If nothing happens, <a href="{ext}" target="_blank">click here</a>.</p>
   <script>
-    (function () {{
-      try {{
-        window.open("{ext}", "_blank");  // kein "noopener"
-      }} catch(e) {{}}
-      // WICHTIG: KEIN location.href = "{prefix}";
-      // Wir bleiben auf der aktuellen Seite, damit nichts flackert.
-    }})();
+    try {{ window.open("{ext}", "_blank"); }} catch(e) {{}}
   </script>
 </body>
 """
     return Response(html, mimetype="text/html")
+
 
 def _finish_notify(status: str, code: str | None = None) -> Response:
     # status: "ok" | "error"
@@ -239,19 +238,24 @@ def oauth_start_root():
 def oauth_start_prefixed():
     return _oauth_start_impl()
 
+
 def _oauth_finish_impl():
     print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
 
     err   = request.args.get("error", "")
     grant = request.args.get("grant", "")
 
+    st = load_state()
+
     if err:
-        # NICHT redirecten → nur Benachrichtigen
-        return _finish_notify("error", err)
+        st["ui_flash"] = {"level": "error", "code": err}
+        save_state(st)
+        return jsonify({"ok": True})
 
     if not grant:
-        # nichts zu tun → UI informieren, aber ohne Navigationswechsel
-        return _finish_notify("error", "missing_grant")
+        st["ui_flash"] = {"level": "error", "code": "missing_grant"}
+        save_state(st)
+        return jsonify({"ok": True})
 
     try:
         install_id = load_state().get("install_id", "unknown-install")
@@ -262,12 +266,19 @@ def _oauth_finish_impl():
         if js.get("ok") and js.get("token"):
             set_token(js["token"])
             verify_license()
-            return _finish_notify("ok", None)
+            st["ui_flash"] = {"level": "ok", "code": "premium_ok"}
+            save_state(st)
+            return jsonify({"ok": True})
         else:
-            return _finish_notify("error", "redeem_failed")
+            st["ui_flash"] = {"level": "error", "code": "redeem_failed"}
+            save_state(st)
+            return jsonify({"ok": False, "error": "redeem_failed"})
     except Exception as e:
         print("[OAUTH] redeem error:", e, flush=True)
-        return _finish_notify("error", "redeem_exception")
+        st["ui_flash"] = {"level": "error", "code": "redeem_exception"}
+        save_state(st)
+        return jsonify({"ok": False, "error": "redeem_exception"})
+
 
 
 # ✅ neu: ohne Prefix (falls return_url mal „nackt“ kommt)
@@ -639,27 +650,28 @@ app.index_string = '''
             {%renderer%}
             <script>
               (function(){
-                var prefix = "{{requests_pathname_prefix}}"; // Dash setzt das, alternativ per Python f-string dein `prefix`
+                var prefix = "{{requests_pathname_prefix}}"; // Dash gibt das korrekt aus
                 function applyResult(data){
                   try{
                     if (!data || data.type !== 'pvmining:oauth') return;
             
                     if (data.status === 'ok' && data.grant) {
-                      // Grant im Backend einlösen (gleiche Origin -> Ingress-Cookie vorhanden)
+                      // Grant serverseitig einlösen (gleiches Origin -> Cookie ok)
                       fetch(prefix + 'oauth/finish?grant=' + encodeURIComponent(data.grant), { credentials: 'include' })
-                        .then(function(){ location.hash = 'premium=ok'; })
-                        .catch(function(){ location.hash = 'premium_error=redeem_exception'; });
-                      return;
+                        .catch(function(){ /* optional logging */ });
+                      return; // keine URL-Änderung nötig – Poll zeigt Toast
                     }
                     if (data.status === 'error') {
-                      location.hash = 'premium_error=' + encodeURIComponent(data.code || 'unknown');
+                      fetch(prefix + 'oauth/finish?error=' + encodeURIComponent(data.code || 'unknown'), { credentials: 'include' })
+                        .catch(function(){ /* optional logging */ });
                       return;
                     }
                   }catch(_){}
                 }
             
                 window.addEventListener('message', function(ev){ applyResult(ev && ev.data); });
-                // storage-Fallback kann bleiben, funktioniert aber nur same-origin.
+            
+                // storage-Fallback kannst du lassen; schickt dieselbe applyResult() los
                 window.addEventListener('storage', function(ev){
                   if (ev && ev.key === 'pvmining_oauth') {
                     try{ applyResult(JSON.parse(ev.newValue || '{}')); }catch(_){}
@@ -703,10 +715,11 @@ app.layout = html.Div([
         html.A(
             html.Button("Activate Premium", id="btn-premium",
                         n_clicks=0, className="custom-tab premium-btn"),
-            href=f"{prefix}oauth/start",  # bleibt so
-            # kein target="_blank" – damit die HA-Session sicher bleibt
-            rel="noopener"
+            href=f"{prefix}oauth/start?direct=1",  # ⬅ direct=1 (siehe Patch B)
+            target="_blank",  # ⬅ im User-Click: echter neuer Tab
+            # rel NICHT setzen -> KEIN noopener, damit window.opener funktioniert
         )
+
         ,
     ], id="tab-buttons", className="header-bar"),
 
