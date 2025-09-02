@@ -340,7 +340,9 @@ def flash_and_premium(hash_, _n, premium_state):
         "no_token":             "GitHub did not return a token. Please try again.",
         "redeem_failed":        "Could not redeem the license.",
         "redeem_exception":     "Network/server error while redeeming the license.",
-        "premium_ok":           "Premium activated ✔️",
+        "missing_grant": "Login did not complete correctly. Please try again.",
+        "premium_ok":           "Premium activated.",
+        # ✔️
     }
     style_ok = {"background":"#eaffea","border":"1px solid #27ae60","padding":"10px","borderRadius":"8px","fontWeight":"bold"}
     style_err= {"background":"#ffecec","border":"1px solid #e74c3c","padding":"10px","borderRadius":"8px","fontWeight":"bold"}
@@ -675,45 +677,29 @@ app.index_string = '''
             {%renderer%}
             <script>
               (function(){
-                function callFinish(endpoint) {
-                  try {
-                    fetch(endpoint, { credentials: 'include' }).catch(function(){});
-                  } catch(_){}
+                function applyResult(data){
+                  try{
+                    if (!data || data.type !== 'pvmining:oauth') return;
+                    if (data.status === 'ok') {
+                      // Triggert deinen Dash-Callback (Input("url","hash"))
+                      location.hash = 'premium=ok';
+                    } else if (data.status === 'error') {
+                      location.hash = 'premium_error=' + encodeURIComponent(data.code || 'unknown');
+                    }
+                  }catch(_){}
                 }
             
-                function handlePayload(data){
-                  if (!data || data.type !== 'pvmining:oauth') return;
-                  if (data.status === 'ok' && data.grant) {
-                    callFinish('oauth/finish?grant=' + encodeURIComponent(data.grant));
-                    return;
-                  }
-                  if (data.status === 'error') {
-                    callFinish('oauth/finish?error=' + encodeURIComponent(data.code || 'unknown'));
-                    return;
-                  }
-                }
-            
-                // 1) postMessage von oauth_callback.php
+                // 1) Nachricht aus dem neuen Tab (/oauth/finish) entgegennehmen
                 window.addEventListener('message', function(ev){
-                  try { handlePayload(ev && ev.data); } catch(_){}
+                  applyResult(ev && ev.data);
                 });
             
-                // 2) Hash-Fallback: oauth_callback.php setzt window.opener.location.hash
-                function handleHash(){
-                  var h = (location.hash || '').replace(/^#/, '');
-                  if (!h) return;
-                  var qs = new URLSearchParams(h);
-                  if (qs.has('grant')) {
-                    callFinish('oauth/finish?grant=' + encodeURIComponent(qs.get('grant') || ''));
-                  } else if (qs.has('premium_error')) {
-                    callFinish('oauth/finish?error=' + encodeURIComponent(qs.get('premium_error') || 'unknown'));
+                // 2) Fallback: storage-Event (tritt in allen offenen Tabs auf)
+                window.addEventListener('storage', function(ev){
+                  if (ev && ev.key === 'pvmining_oauth') {
+                    try { applyResult(JSON.parse(ev.newValue || '{}')); } catch(_){}
                   }
-                  // Hash wieder leeren, damit nichts flackert
-                  try { history.replaceState(null, '', location.pathname + location.search + '#'); } catch(_){}
-                }
-                window.addEventListener('hashchange', handleHash);
-                // Beim Laden einmal prüfen (falls Tab schon offen war)
-                handleHash();
+                });
               })();
             </script>
         </footer>
