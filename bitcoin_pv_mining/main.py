@@ -180,7 +180,7 @@ def _oauth_start_impl():
   <script>
     (function () {{
       try {{
-        window.open("{ext}", "_blank", "noopener");
+        window.open("{ext}", "_blank");  // kein "noopener"
       }} catch(e) {{}}
       // WICHTIG: KEIN location.href = "{prefix}";
       // Wir bleiben auf der aktuellen Seite, damit nichts flackert.
@@ -639,22 +639,27 @@ app.index_string = '''
             {%renderer%}
             <script>
               (function(){
+                var prefix = "{{requests_pathname_prefix}}"; // Dash setzt das, alternativ per Python f-string dein `prefix`
                 function applyResult(data){
                   try{
                     if (!data || data.type !== 'pvmining:oauth') return;
-                    if (data.status === 'ok') {
-                      // Hash ändern → kein Full-Reload, nur deine Dash-Callback "show_flash"
-                      location.hash = 'premium=ok';
-                    } else if (data.status === 'error') {
+            
+                    if (data.status === 'ok' && data.grant) {
+                      // Grant im Backend einlösen (gleiche Origin -> Ingress-Cookie vorhanden)
+                      fetch(prefix + 'oauth/finish?grant=' + encodeURIComponent(data.grant), { credentials: 'include' })
+                        .then(function(){ location.hash = 'premium=ok'; })
+                        .catch(function(){ location.hash = 'premium_error=redeem_exception'; });
+                      return;
+                    }
+                    if (data.status === 'error') {
                       location.hash = 'premium_error=' + encodeURIComponent(data.code || 'unknown');
+                      return;
                     }
                   }catch(_){}
                 }
             
-                window.addEventListener('message', function(ev){
-                  applyResult(ev && ev.data);
-                });
-            
+                window.addEventListener('message', function(ev){ applyResult(ev && ev.data); });
+                // storage-Fallback kann bleiben, funktioniert aber nur same-origin.
                 window.addEventListener('storage', function(ev){
                   if (ev && ev.key === 'pvmining_oauth') {
                     try{ applyResult(JSON.parse(ev.newValue || '{}')); }catch(_){}
