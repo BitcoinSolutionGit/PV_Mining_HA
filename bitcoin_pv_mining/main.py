@@ -13,7 +13,7 @@ from ui_dashboard import layout as dashboard_layout, register_callbacks
 
 from services.btc_api import update_btc_data_periodically
 from services.license import set_token, verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
-from services.utils import get_addon_version, load_state
+from services.utils import get_addon_version, load_state, save_state
 from services.power_planner import plan_and_allocate_auto
 from urllib.parse import urlparse, parse_qs
 
@@ -231,79 +231,72 @@ def oauth_start_prefixed():
 #         # return redirect(f"{prefix}?premium_error=redeem_exception", code=302)
 #         return redirect(f"{prefix}?premium_error=redeem_exception#premium_error=redeem_exception", code=302)
 
-def _oauth_finish_impl():
-    print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
+# --- NEU: kleine HTML-Antwort, die den Opener informiert & schließt ---
+def _finish_response_js(status: str, err_code: str = ""):
+    # Ziel-URLs inkl. Hash, damit dcc.Location(hash=...) triggert
+    ok_url   = f"{prefix}?premium=ok#premium=ok"
+    err_hash = f"#premium_error={urllib.parse.quote(err_code)}" if err_code else ""
+    err_url  = f"{prefix}?premium_error={urllib.parse.quote(err_code)}{err_hash}"
 
-    import urllib.parse as _urlq
-
-    err   = request.args.get("error", "")
-    grant = request.args.get("grant", "")
-
-    status_kind = None   # "ok" | "error" | "noop"
-    status_code = ""     # z.B. "tier_too_low"
-
-    if err:
-        status_kind = "error"
-        status_code = err
-    elif not grant:
-        # kein Grant, einfach zurück (keine Meldung)
-        status_kind = "noop"
-    else:
-        try:
-            install_id = load_state().get("install_id", "unknown-install")
-            r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
-                              json={"grant": grant, "install_id": install_id},
-                              timeout=10)
-            js = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
-            if js.get("ok") and js.get("token"):
-                set_token(js["token"])
-                verify_license()
-                status_kind = "ok"
-            else:
-                status_kind = "error"
-                status_code = "redeem_failed"
-        except Exception as e:
-            print("[OAUTH] redeem error:", e, flush=True)
-            status_kind = "error"
-            status_code = "redeem_exception"
-
-    if status_kind == "noop":
-        # Neutral – keine Meldung
-        return redirect(prefix)
-
-    # Ziel-URL für die UI (immer Query + Hash setzen)
-    if status_kind == "ok":
-        target = f"{prefix}?premium=ok#premium=ok"
-    else:
-        code_q = _urlq.quote(status_code, safe="")
-        target = f"{prefix}?premium_error={code_q}#premium_error={code_q}"
-
-    # HTML-Seite, die den ursprünglichen Tab aktualisiert (opener) und dieses Fenster schließt
     html = f"""<!doctype html>
 <meta charset="utf-8">
-<title>Finishing…</title>
-<body style="font-family: system-ui, sans-serif; padding: 16px;">
-  <p>Returning to the add-on…</p>
+<title>Done</title>
+<body style="font-family: system-ui, sans-serif; padding:16px;">
+  <p>Returning to the add-on… You can close this tab.</p>
   <script>
   (function() {{
-    var target = {target!r};
+    var isOk = { 'true' if status == 'ok' else 'false' };
+    var err  = {repr(err_code)};
+    var target = isOk ? {repr(ok_url)} : {repr(err_url)};
     try {{
       if (window.opener && !window.opener.closed) {{
-        try {{ window.opener.location.href = target; }} catch (e) {{}}
-        window.close();
-        return;
+        try {{
+          // Hash setzen → dcc.Location(hash) im Hauptfenster triggert
+          window.opener.location.hash = isOk ? "#premium=ok" : ("#premium_error=" + encodeURIComponent(err || "unknown"));
+        }} catch (e) {{}}
       }}
-      if (window.top && window.top !== window) {{
-        try {{ window.top.location.href = target; return; }} catch (e) {{}}
-      }}
-      window.location.href = target;
-    }} catch (e) {{
-      window.location.href = target;
-    }}
+    }} catch (e) {{}}
+    // Fallback: in diesem Tab zurücknavigieren
+    window.location.replace(target);
+    setTimeout(function(){{ try {{ window.close(); }} catch (e) {{}} }}, 150);
   }})();
   </script>
 </body>"""
     return Response(html, mimetype="text/html")
+
+
+def _oauth_finish_impl():
+    print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
+
+    err   = request.args.get("error", "")
+    grant = request.args.get("grant", "")
+
+    # Fehler direkt zurückmelden (Opener-Hash + Fallback-Redirect)
+    if err:
+        return _finish_response_js(status="err", err_code=err)
+
+    if not grant:
+        # Nichts zu tun – zurück zur App
+        return redirect(prefix)
+
+    try:
+        install_id = load_state().get("install_id", "unknown-install")
+        r = requests.post(
+            f"{LICENSE_BASE_URL}/redeem.php",
+            json={"grant": grant, "install_id": install_id},
+            timeout=10
+        )
+        js = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
+        if js.get("ok") and js.get("token"):
+            set_token(js["token"])
+            verify_license()
+            # Erfolg: Opener informieren
+            return _finish_response_js(status="ok")
+        else:
+            return _finish_response_js(status="err", err_code="redeem_failed")
+    except Exception as e:
+        print("[OAUTH] redeem error:", e, flush=True)
+        return _finish_response_js(status="err", err_code="redeem_exception")
 
 
 # ✅ neu: ohne Prefix (falls return_url mal „nackt“ kommt)
@@ -340,39 +333,73 @@ def toggle_premium_button(data):
     Output("flash-area", "children"),
     Input("url", "search"),
     Input("url", "hash"),
+    Input("flash-poll", "n_intervals"),
     prevent_initial_call=False
 )
-def show_flash(search, hash_):
+def show_flash(search, hash_, _n):
+    # 1) URL (Query + Hash) auswerten
     qs = _merge_qs_and_hash(search, hash_)
-    if not qs:
-        return ""
+    if qs:
+        if "premium_error" in qs:
+            code = (qs["premium_error"][0] or "").strip()
+            messages = {
+                "tier_too_low":        "Sponsorship too low: at least $10/month or $100 one-time.",
+                "no_sponsor":          "No active sponsorship for BitcoinSolutionGit found.",
+                "oauth_denied":        "GitHub login/authorization required.",
+                "github_unauthorized": "GitHub rejected the request. Please sign in again.",
+                "github_api":          "GitHub API not reachable. Please try again later.",
+                "no_token":            "GitHub did not return a token. Please try again.",
+                "redeem_failed":       "Could not redeem the license.",
+                "redeem_exception":    "Network/server error while redeeming the license.",
+            }
+            text = messages.get(code, f"Error: {code}")
+            return html.Div(text, style={
+                "background":"#ffecec","border":"1px solid #e74c3c","padding":"10px",
+                "borderRadius":"8px","fontWeight":"bold"
+            })
+        if qs.get("premium") == ["ok"]:
+            return html.Div("Premium activated ✔️", style={
+                "background":"#eaffea","border":"1px solid #27ae60","padding":"10px",
+                "borderRadius":"8px","fontWeight":"bold"
+            })
 
-    if "premium_error" in qs:
-        code = (qs["premium_error"][0] or "").strip()
-        messages = {
-            "tier_too_low":     "Sponsorship too low: at least $10/month or $100 one-time.",
-            "no_sponsor":       "No active sponsorship for BitcoinSolutionGit found.",
-            "oauth_denied":     "GitHub login/authorization required.",
-            "github_unauthorized": "GitHub rejected the request. Please sign in again.",
-            "github_api":       "GitHub API not reachable. Please try again later.",
-            "no_token":         "GitHub did not return a token. Please try again.",
-            "redeem_failed":    "Could not redeem the license.",
-            "redeem_exception": "Network/server error while redeeming the license.",
-        }
-        text = messages.get(code, f"Error: {code}")
-        return html.Div(text, style={
-            "background":"#ffecec","border":"1px solid #e74c3c","padding":"10px",
-            "borderRadius":"8px","fontWeight":"bold"
-        })
+    # 2) Serverseitiges Flash lesen & verbrauchen
+    try:
+        st = load_state()
+        flash = st.get("ui_flash")
+        if flash:
+            kind = (flash.get("kind") or "").lower()
+            code = flash.get("code") or ""
+            # sofort löschen (one-shot)
+            st["ui_flash"] = None
+            save_state(st)
 
-    if qs.get("premium") == ["ok"]:
-        return html.Div("Premium activated ✔️", style={
-            "background":"#eaffea","border":"1px solid #27ae60","padding":"10px",
-            "borderRadius":"8px","fontWeight":"bold"
-        })
+            if kind == "success" and code == "premium_ok":
+                return html.Div("Premium activated ✔️", style={
+                    "background":"#eaffea","border":"1px solid #27ae60","padding":"10px",
+                    "borderRadius":"8px","fontWeight":"bold"
+                })
+
+            if kind == "error":
+                messages = {
+                    "tier_too_low":        "Sponsorship too low: at least $10/month or $100 one-time.",
+                    "no_sponsor":          "No active sponsorship for BitcoinSolutionGit found.",
+                    "oauth_denied":        "GitHub login/authorization required.",
+                    "github_unauthorized": "GitHub rejected the request. Please sign in again.",
+                    "github_api":          "GitHub API not reachable. Please try again later.",
+                    "no_token":            "GitHub did not return a token. Please try again.",
+                    "redeem_failed":       "Could not redeem the license.",
+                    "redeem_exception":    "Network/server error while redeeming the license.",
+                }
+                text = messages.get(code, f"Error: {code}")
+                return html.Div(text, style={
+                    "background":"#ffecec","border":"1px solid #e74c3c","padding":"10px",
+                    "borderRadius":"8px","fontWeight":"bold"
+                })
+    except Exception as e:
+        print("[FLASH] read error:", e, flush=True)
 
     return ""
-
 
 
 @dash.callback(
@@ -670,6 +697,8 @@ app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
     dcc.Store(id="premium-enabled", data={"enabled": is_premium_enabled()}),
     dcc.Store(id="prio-order", storage_type="local"),
+
+    dcc.Interval(id="flash-poll", interval=2000, n_intervals=0),
 
     dcc.Location(id="url", refresh=False),
     html.Div(id="flash-area", style={"margin":"8px 0"}),
