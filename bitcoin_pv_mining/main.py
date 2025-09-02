@@ -183,35 +183,35 @@ def _finish_notify(status: str, code: str | None = None) -> Response:
     js_payload = json.dumps(payload)
 
     html = f"""
-<!doctype html>
-<meta charset="utf-8">
-<title>Completing…</title>
-<body style="font-family: system-ui, sans-serif; padding:16px">
-  <p>Finishing sign-in…</p>
-  <script>
-    (function () {{
-      var data = {js_payload};
-      try {{
-        // Fallback-Kanal: löst im Haupt-Tab 'storage' Event aus (auch bei Mobile hilfreich)
-        localStorage.setItem('pvmining_oauth', JSON.stringify(data));
-      }} catch (_){{
-      }}
-      try {{
-        if (window.opener && !window.opener.closed) {{
-          // Primär: Nachricht an den Haupt-Tab
-          window.opener.postMessage(data, "*");
-          window.close();
-          return;
-        }}
-      }} catch (_){{
-      }}
-      // Fallback: navigiere in DIESEM Tab (hash verursacht keinen Full-Reload)
-      var h = (data.status === "ok") ? "#premium=ok" : ("#premium_error=" + encodeURIComponent(data.code || "unknown"));
-      window.location.href = "{prefix}" + h;
-    }})();
-  </script>
-</body>
-"""
+            <!doctype html>
+            <meta charset="utf-8">
+            <title>Completing…</title>
+            <body style="font-family: system-ui, sans-serif; padding:16px">
+              <p>Finishing sign-in…</p>
+              <script>
+                (function () {{
+                  var data = {js_payload};
+                  try {{
+                    // Fallback-Kanal: löst im Haupt-Tab 'storage' Event aus (auch bei Mobile hilfreich)
+                    localStorage.setItem('pvmining_oauth', JSON.stringify(data));
+                  }} catch (_){{
+                  }}
+                  try {{
+                    if (window.opener && !window.opener.closed) {{
+                      // Primär: Nachricht an den Haupt-Tab
+                      window.opener.postMessage(data, "*");
+                      window.close();
+                      return;
+                    }}
+                  }} catch (_){{
+                  }}
+                  // Fallback: navigiere in DIESEM Tab (hash verursacht keinen Full-Reload)
+                  var h = (data.status === "ok") ? "#premium=ok" : ("#premium_error=" + encodeURIComponent(data.code || "unknown"));
+                  window.location.href = "{prefix}" + h;
+                }})();
+              </script>
+            </body>
+            """
     return Response(html, mimetype="text/html")
 
 # Route ohne Prefix (Ingress sieht oft diesen Pfad)
@@ -225,21 +225,66 @@ def oauth_start_prefixed():
     return _oauth_start_impl()
 
 
+# def _oauth_finish_impl():
+#     print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
+#     err   = request.args.get("error", "")
+#     grant = request.args.get("grant", "")
+#
+#     st = load_state()
+#     if err:
+#         st["ui_flash"] = {"level": "error", "code": err}
+#         save_state(st)
+#         return jsonify({"ok": True})
+#
+#     if not grant:
+#         st["ui_flash"] = {"level": "error", "code": "missing_grant"}
+#         save_state(st)
+#         return jsonify({"ok": True})
+#
+#     try:
+#         install_id = load_state().get("install_id", "unknown-install")
+#         r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
+#                           json={"grant": grant, "install_id": install_id},
+#                           timeout=10)
+#         js = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
+#         if js.get("ok") and js.get("token"):
+#             set_token(js["token"])
+#             verify_license()
+#             st["ui_flash"] = {"level": "ok", "code": "premium_ok"}
+#             save_state(st)
+#             return jsonify({"ok": True})
+#         else:
+#             st["ui_flash"] = {"level": "error", "code": "redeem_failed"}
+#             save_state(st)
+#             return jsonify({"ok": False, "error": "redeem_failed"})
+#     except Exception as e:
+#         print("[OAUTH] redeem error:", e, flush=True)
+#         st["ui_flash"] = {"level": "error", "code": "redeem_exception"}
+#         save_state(st)
+#         return jsonify({"ok": False, "error": "redeem_exception"})
+
+def _flash(level: str, code: str) -> None:
+    try:
+        st = load_state()
+        st["ui_flash"] = {"level": level, "code": code, "ts": iso_now()}
+        save_state(st)
+    except Exception as e:
+        print("[FLASH] write error:", e, flush=True)
+
+
 def _oauth_finish_impl():
     print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
+
     err   = request.args.get("error", "")
     grant = request.args.get("grant", "")
 
-    st = load_state()
     if err:
-        st["ui_flash"] = {"level": "error", "code": err}
-        save_state(st)
-        return jsonify({"ok": True})
+        _flash("error", err)                  # <— NEU
+        return _finish_notify("error", err)
 
     if not grant:
-        st["ui_flash"] = {"level": "error", "code": "missing_grant"}
-        save_state(st)
-        return jsonify({"ok": True})
+        _flash("error", "missing_grant")      # <— NEU
+        return _finish_notify("error", "missing_grant")
 
     try:
         install_id = load_state().get("install_id", "unknown-install")
@@ -250,18 +295,16 @@ def _oauth_finish_impl():
         if js.get("ok") and js.get("token"):
             set_token(js["token"])
             verify_license()
-            st["ui_flash"] = {"level": "ok", "code": "premium_ok"}
-            save_state(st)
-            return jsonify({"ok": True})
+            _flash("ok", "premium_ok")        # <— NEU
+            return _finish_notify("ok", None)
         else:
-            st["ui_flash"] = {"level": "error", "code": "redeem_failed"}
-            save_state(st)
-            return jsonify({"ok": False, "error": "redeem_failed"})
+            _flash("error", "redeem_failed")  # <— NEU
+            return _finish_notify("error", "redeem_failed")
     except Exception as e:
         print("[OAUTH] redeem error:", e, flush=True)
-        st["ui_flash"] = {"level": "error", "code": "redeem_exception"}
-        save_state(st)
-        return jsonify({"ok": False, "error": "redeem_exception"})
+        _flash("error", "redeem_exception")   # <— NEU
+        return _finish_notify("error", "redeem_exception")
+
 
 # ✅ neu: ohne Prefix (falls return_url mal „nackt“ kommt)
 @server.route("/oauth/finish")
