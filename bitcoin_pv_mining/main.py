@@ -632,30 +632,45 @@ app.index_string = '''
             {%renderer%}
             <script>
               (function(){
-                function applyResult(data){
-                  try{
-                    if (!data || data.type !== 'pvmining:oauth') return;
-            
-                    if (data.status === 'ok' && data.grant) {
-                      // Einlösen im selben Tab / gleicher Origin -> Cookie ok
-                      fetch('oauth/finish?grant=' + encodeURIComponent(data.grant), { credentials: 'include' })
-                        .catch(function(){});
-                      return;
-                    }
-                    if (data.status === 'error') {
-                      fetch('oauth/finish?error=' + encodeURIComponent(data.code || 'unknown'), { credentials: 'include' })
-                        .catch(function(){});
-                      return;
-                    }
-                  }catch(_){}
+                function callFinish(endpoint) {
+                  try {
+                    fetch(endpoint, { credentials: 'include' }).catch(function(){});
+                  } catch(_){}
                 }
             
-                window.addEventListener('message', function(ev){ applyResult(ev && ev.data); });
-                window.addEventListener('storage', function(ev){
-                  if (ev && ev.key === 'pvmining_oauth') {
-                    try{ applyResult(JSON.parse(ev.newValue || '{}')); }catch(_){}
+                function handlePayload(data){
+                  if (!data || data.type !== 'pvmining:oauth') return;
+                  if (data.status === 'ok' && data.grant) {
+                    callFinish('oauth/finish?grant=' + encodeURIComponent(data.grant));
+                    return;
                   }
+                  if (data.status === 'error') {
+                    callFinish('oauth/finish?error=' + encodeURIComponent(data.code || 'unknown'));
+                    return;
+                  }
+                }
+            
+                // 1) postMessage von oauth_callback.php
+                window.addEventListener('message', function(ev){
+                  try { handlePayload(ev && ev.data); } catch(_){}
                 });
+            
+                // 2) Hash-Fallback: oauth_callback.php setzt window.opener.location.hash
+                function handleHash(){
+                  var h = (location.hash || '').replace(/^#/, '');
+                  if (!h) return;
+                  var qs = new URLSearchParams(h);
+                  if (qs.has('grant')) {
+                    callFinish('oauth/finish?grant=' + encodeURIComponent(qs.get('grant') || ''));
+                  } else if (qs.has('premium_error')) {
+                    callFinish('oauth/finish?error=' + encodeURIComponent(qs.get('premium_error') || 'unknown'));
+                  }
+                  // Hash wieder leeren, damit nichts flackert
+                  try { history.replaceState(null, '', location.pathname + location.search + '#'); } catch(_){}
+                }
+                window.addEventListener('hashchange', handleHash);
+                // Beim Laden einmal prüfen (falls Tab schon offen war)
+                handleHash();
               })();
             </script>
         </footer>
