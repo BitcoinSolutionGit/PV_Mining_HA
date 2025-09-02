@@ -268,55 +268,35 @@ def _oauth_finish_impl():
     err   = request.args.get("error", "")
     grant = request.args.get("grant", "")
 
-    # Fehlerfall: Flash setzen, UI informieren
+    # Fehler vom Lizenzserver → direkt ins UI (QS + Hash als Ingress-Fallback)
     if err:
-        try:
-            st = load_state()
-            st["ui_flash"] = {"level": "error", "code": err, "ts": iso_now()}
-            save_state(st)
-        except Exception as e:
-            print("[OAUTH] ui_flash write failed (err):", e, flush=True)
-        return _finish_response_js(status="err", err_code=err)
+        target = f"{prefix}?premium_error={urllib.parse.quote(err)}#premium_error={urllib.parse.quote(err)}"
+        return _finish_redirect(target)
 
+    # Kein Grant? Zurück zur App
     if not grant:
-        return redirect(prefix)
+        return _finish_redirect(prefix)
 
-    # Erfolgsfall: redeem → Token → verify → Flash=ok
+    # Erfolgsfall: Grant einlösen
     try:
         install_id = load_state().get("install_id", "unknown-install")
-        r = requests.post(
-            f"{LICENSE_BASE_URL}/redeem.php",
-            json={"grant": grant, "install_id": install_id},
-            timeout=10
-        )
+        r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
+                          json={"grant": grant, "install_id": install_id},
+                          timeout=10)
         js = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
         if js.get("ok") and js.get("token"):
             set_token(js["token"])
             verify_license()
-            try:
-                st = load_state()
-                st["ui_flash"] = {"level": "ok", "code": "premium_ok", "ts": iso_now()}
-                save_state(st)
-            except Exception as e:
-                print("[OAUTH] ui_flash write failed (ok):", e, flush=True)
-            return _finish_response_js(status="ok")
+            target = f"{prefix}?premium=ok#premium=ok"
+            return _finish_redirect(target)
         else:
-            try:
-                st = load_state()
-                st["ui_flash"] = {"level": "error", "code": "redeem_failed", "ts": iso_now()}
-                save_state(st)
-            except Exception as e:
-                print("[OAUTH] ui_flash write failed (redeem_failed):", e, flush=True)
-            return _finish_response_js(status="err", err_code="redeem_failed")
+            target = f"{prefix}?premium_error=redeem_failed#premium_error=redeem_failed"
+            return _finish_redirect(target)
     except Exception as e:
-        print("[OAUTH] redeem exception:", e, flush=True)
-        try:
-            st = load_state()
-            st["ui_flash"] = {"level": "error", "code": "redeem_exception", "ts": iso_now()}
-            save_state(st)
-        except Exception as e2:
-            print("[OAUTH] ui_flash write failed (exception):", e2, flush=True)
-        return _finish_response_js(status="err", err_code="redeem_exception")
+        print("[OAUTH] redeem error:", e, flush=True)
+        target = f"{prefix}?premium_error=redeem_exception#premium_error=redeem_exception"
+        return _finish_redirect(target)
+
 
 
 # ✅ neu: ohne Prefix (falls return_url mal „nackt“ kommt)
@@ -562,7 +542,31 @@ def premium_upsell():
         )
     ], style={"textAlign":"center", "padding":"20px"})
 
-
+def _finish_redirect(target_url: str) -> Response:
+    html = f"""
+            <!doctype html>
+            <meta charset="utf-8">
+            <title>Completing…</title>
+            <body style="font-family: system-ui, sans-serif; padding:16px">
+              <p>Finishing sign-in…</p>
+              <script>
+                (function () {{
+                  var target = "{target_url}";
+                  try {{
+                    if (window.opener && !window.opener.closed) {{
+                      // Update the original HA tab and close this one
+                      window.opener.location.href = target;
+                      window.close();
+                      return;
+                    }}
+                  }} catch (e) {{}}
+                  // Fallback: navigate in this tab
+                  window.location.href = target;
+                }})();
+              </script>
+            </body>
+            """
+    return Response(html, mimetype="text/html")
 
 @app.callback(
     Output("btn-battery", "className", allow_duplicate=True),
