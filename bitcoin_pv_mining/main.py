@@ -173,10 +173,12 @@ def _fmt(x):
 def debug_test_pending():
     try:
         install_id = load_state().get("install_id", "unknown-install")
-        url = f"{LICENSE_BASE_URL}/pending/get.php?install_id={urllib.parse.quote(install_id, safe='')}"
+        url = f"{LICENSE_BASE_URL}/var/pending/get.php?install_id={urllib.parse.quote(install_id, safe='')}"
         r = requests.get(url, timeout=8)  # timeout etwas höher
         txt = f"URL: {url}\nHTTP {r.status_code}\n\n{r.text[:2000]}"
+        print(f"[MOBILE-OAUTH] pending poll: {url}", flush=True)
         return Response(txt, mimetype="text/plain", status=(200 if r.ok else 502))
+
     except Exception as e:
         return Response(f"URL: {url}\nEXC: {repr(e)}", mimetype="text/plain", status=502)
 
