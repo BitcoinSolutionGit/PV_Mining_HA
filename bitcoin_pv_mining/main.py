@@ -100,6 +100,10 @@ prefix = get_ingress_prefix()
 if not prefix.endswith("/"):
     prefix += "/"
 
+# ← HIER definieren
+IS_INGRESS = prefix.startswith("/api/hassio_ingress/")
+print(f"[INFO] IS_INGRESS={IS_INGRESS} prefix={prefix}")
+
 app = dash.Dash(
     __name__,
     server=server,
@@ -160,7 +164,8 @@ def _fmt(x):
 
 
 def _oauth_start_impl():
-    return_url = _abs_url("oauth/finish")
+    # return_url = _abs_url("oauth/finish")
+    return_url = _abs_url("")
     install_id = load_state().get("install_id", "unknown-install")
     ext = (
         f"{LICENSE_BASE_URL}/oauth_start.php"
@@ -676,48 +681,26 @@ app.index_string = '''
             {%scripts%}
             {%renderer%}
             <script>
-(function () {
-  function emitFromPayload(data) {
-    if (!data || data.type !== 'pvmining:oauth') return;
-    if (data.status === 'ok') {
-      // show success toast
-      location.hash = 'premium=ok';
-    } else {
-      // show error toast with code
-      location.hash = 'premium_error=' + encodeURIComponent(data.code || 'unknown');
-    }
-  }
-
-  // 1) Primary: message from the popup/finish page
-  window.addEventListener('message', function (ev) {
-    try { emitFromPayload(ev && ev.data); } catch (_) {}
-  });
-
-  // 2) Fallback: changes written by the finish page to localStorage
-  window.addEventListener('storage', function (ev) {
-    if (ev && ev.key === 'pvmining_oauth') {
-      try { emitFromPayload(JSON.parse(ev.newValue || '{}')); } catch (_) {}
-    }
-  });
-
-  // 3) Existing fallback: if oauth_callback set a hash (#grant=... or #premium_error=...)
-  function handleHash() {
-    var h = (location.hash || '').replace(/^#/, '');
-    if (!h) return;
-    var qs = new URLSearchParams(h);
-    if (qs.has('grant')) {
-      try { fetch('oauth/finish?grant=' + encodeURIComponent(qs.get('grant') || ''), { credentials: 'include' }); } catch (_) {}
-    } else if (qs.has('premium_error')) {
-      try { fetch('oauth/finish?error=' + encodeURIComponent(qs.get('premium_error') || 'unknown'), { credentials: 'include' }); } catch (_) {}
-    }
-    // clear hash to avoid flicker / repeated triggers
-    try { history.replaceState(null, '', location.pathname + location.search + '#'); } catch (_) {}
-  }
-  window.addEventListener('hashchange', handleHash);
-  handleHash();
-})();
-</script>
-
+                (function(){
+                  function callFinish(endpoint) {
+                    try { fetch(endpoint, { credentials: 'include' }); } catch(_) {}
+                  }
+                  function handleHash(){
+                    var h = (location.hash || '').replace(/^#/, '');
+                    if (!h) return;
+                    var qs = new URLSearchParams(h);
+                    if (qs.has('grant')) {
+                      callFinish('oauth/finish?grant=' + encodeURIComponent(qs.get('grant') || ''));
+                    } else if (qs.has('premium_error')) {
+                      callFinish('oauth/finish?error=' + encodeURIComponent(qs.get('premium_error') || 'unknown'));
+                    }
+                    // Hash entfernen → kein Flackern/keine Endlosschleife
+                    try { history.replaceState(null, '', location.pathname + location.search + '#'); } catch(_){}
+                  }
+                  window.addEventListener('hashchange', handleHash);
+                  handleHash(); // einmal beim Laden
+                })();
+            </script>
         </footer>
     </body>
 </html>
@@ -754,8 +737,9 @@ app.layout = html.Div([
         html.A(
             html.Button("Activate Premium", id="btn-premium",
                         n_clicks=0, className="custom-tab premium-btn"),
-            href=f"{prefix}oauth/start?direct=1",
-            target="_blank",  # ⬅ wichtig
+            href=f"{prefix}oauth/start?direct=1",  # 302 in denselben Tab
+            target=None if IS_INGRESS else "_blank",  # HA: kein neues Tab, lokal: neues Tab
+            # rel NICHT auf "noopener" setzen, sonst fehlt opener im Dev-Flow
         )
         ,
     ], id="tab-buttons", className="header-bar"),
