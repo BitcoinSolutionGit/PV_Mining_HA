@@ -304,19 +304,6 @@ def oauth_pending_proxy_root():
 def oauth_pending_proxy_prefixed():
     return _oauth_pending_proxy_impl()
 
-# def _oauth_pending_proxy_impl():
-#     try:
-#         install_id = load_state().get("install_id", "unknown-install")
-#         url = f"{LICENSE_BASE_URL}/var/pending/get.php?install_id={urllib.parse.quote(install_id, safe='')}"
-#         print(f"[MOBILE-OAUTH] pending poll: {url}", flush=True)
-#         r = requests.get(url, timeout=5)
-#         resp = r.content
-#         code = r.status_code
-#         ct   = r.headers.get("content-type", "application/json")
-#         return Response(resp, status=code, mimetype=ct)
-#     except Exception as e:
-#         print(f"[MOBILE-OAUTH] pending proxy error: {e}", flush=True)
-#         return jsonify({"status":"error","code":"pending_proxy_exception"}), 200
 def _oauth_pending_proxy_impl():
     try:
         install_id = load_state().get("install_id", "unknown-install")
@@ -341,7 +328,11 @@ def _oauth_pending_proxy_impl():
                 ct = "application/json"
 
         print(f"[MOBILE-OAUTH] pending poll: {url} -> {r.status_code} ct={ct}", flush=True)
-        return Response(r.content, status=r.status_code, mimetype=ct)
+        resp = Response(r.content, status=r.status_code, mimetype=ct)
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
 
     except Exception as e:
         # Nur bei echten Verbindungsfehlern liefern wir einen JSON-Fehler zurück.
@@ -782,7 +773,7 @@ app.index_string = '''
                     function pollOnce(){
                       if (Date.now() > oauthPollDeadline){ stopMobilePolling(); dbg('poll:timeout'); return; }
                       dbg('poll:tick');
-                      fetch('oauth/pending',{credentials:'include'})
+                      fetch('oauth/pending?t=' + Date.now(), { credentials: 'include', cache: 'no-store' })
                         .then(r=>r.ok?r.json():Promise.reject(new Error('http '+r.status)))
                         .then(j=>{
                           dbg('poll:' + JSON.stringify(j));
