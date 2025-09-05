@@ -100,7 +100,6 @@ prefix = get_ingress_prefix()
 if not prefix.endswith("/"):
     prefix += "/"
 
-# ← HIER definieren
 IS_INGRESS = prefix.startswith("/api/hassio_ingress/")
 print(f"[INFO] IS_INGRESS={IS_INGRESS} prefix={prefix}")
 
@@ -164,8 +163,7 @@ def _fmt(x):
 
 
 def _oauth_start_impl():
-    # return_url = _abs_url("oauth/finish")
-    return_url = _abs_url("")
+    return_url = _abs_url("")  # Basispfad, nicht /oauth/finish
     install_id = load_state().get("install_id", "unknown-install")
     ext = (
         f"{LICENSE_BASE_URL}/oauth_start.php"
@@ -173,10 +171,11 @@ def _oauth_start_impl():
         f"&install_id={urllib.parse.quote(install_id, safe='')}"
     )
     print("[OAUTH] /oauth/start ->", ext, " prefix=", prefix, flush=True)
-    if request.args.get("direct") == "1":
-        return redirect(ext, code=302)
-    # optionaler Fallback-Screen (kannst du auch weglassen)
-    return Response(f'<!doctype html><a href="{ext}" target="_blank">Open GitHub</a>', mimetype="text/html")
+    return redirect(ext, code=302)
+    # if request.args.get("direct") == "1":
+    #     return redirect(ext, code=302)
+    # # optionaler Fallback-Screen (kannst du auch weglassen)
+    # return Response(f'<!doctype html><a href="{ext}" target="_blank">Open GitHub</a>', mimetype="text/html")
 
 
 
@@ -737,9 +736,9 @@ app.layout = html.Div([
         html.A(
             html.Button("Activate Premium", id="btn-premium",
                         n_clicks=0, className="custom-tab premium-btn"),
-            href=f"{prefix}oauth/start?direct=1",  # 302 in denselben Tab
-            target=None if IS_INGRESS else "_blank",  # HA: kein neues Tab, lokal: neues Tab
-            # rel NICHT auf "noopener" setzen, sonst fehlt opener im Dev-Flow
+            href=f"{prefix}oauth/start?direct=1",  # 302 weiter zur Lizenz-Seite
+            target="_blank",  # <<< WICHTIG: in HA IMMER neues Tab
+            # KEIN rel="noopener" setzen, damit window.opener existiert!
         )
         ,
     ], id="tab-buttons", className="header-bar"),
