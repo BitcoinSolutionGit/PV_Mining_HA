@@ -308,13 +308,14 @@ def _cool_card(c: dict, sym: str, ha_actions: list[dict], ready_options: list[di
 
 
 
-def _miner_card_style(idx: int) -> dict:
-    base = {"borderRadius": "8px", "padding": "10px", "background": "#fafafa"}
+def _miner_card_style(idx: int, premium_on: bool) -> dict:
+    base = {"borderRadius": "8px", "padding": "10px", "background": "#fafafa", "border": "2px solid"}
     if idx == 0:
-        # Miner 1: grauer Rahmen wie Cooling
-        return {**base, "border": "2px solid #888"}
-    # Miner 2..n: grüner Premium-Rahmen
-    return {**base, "border": "2px solid #27ae60"}
+        # Miner 1: neutral wie Cooling
+        return {**base, "borderColor": "#888"}
+    # Miner 2..n: bunt wie die Premium-Buttons (grün = ok, rot = locked)
+    return {**base, "borderColor": ("#27ae60" if premium_on else "#e74c3c")}
+
 
 # ---------- layout ----------
 def layout():
@@ -489,7 +490,7 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
         html.Div(id={"type":"m-kpi-profit","mid":mid}, style={"marginTop":"2px"}),
 
         html.Button("Save", id={"type":"m-save","mid":mid}, className="custom-tab", style={"marginTop":"8px"})
-    ], style=_miner_card_style(idx))
+    ], style=_miner_card_style(idx, premium_on))
 
 # ---------- callbacks ----------
 def register_callbacks(app):
@@ -532,17 +533,20 @@ def register_callbacks(app):
         # Auto: nur wenn mind. ein Auto-Miner mit Cooling-Pflicht JETZT profitabel wäre
         profitable_auto_needs_cooling = False
         if mode_auto:
-            for m in (list_miners() or []):
+            prem = is_premium_enabled()
+            for idx, m in enumerate(list_miners() or []):
+                # ⬇️ Ohne Premium nur Miner 1 berücksichtigen
+                if (not prem) and idx >= 1:
+                    continue
                 if not m.get("enabled"):
                     continue
                 if str(m.get("mode") or "").lower() != "auto":
                     continue
                 if not m.get("require_cooling"):
                     continue
-                # if _is_profitable_for_start(m, cooling_running_now):
-                #     profitable_auto_needs_cooling = True
                 if _is_profitable_for_start(m, cooling_running_now=bool(cool.get("on"))):
                     dry("miner:profit", name=m.get("name"), mid=m.get("id"))
+                    profitable_auto_needs_cooling = True
                     break
 
         # Manual: respektiere den manuellen on/off-Schalter

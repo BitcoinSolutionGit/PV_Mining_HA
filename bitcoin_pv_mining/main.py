@@ -603,7 +603,8 @@ def render_tab(tab, premium_data):
     if tab == "sensors":
         return sensors_layout()
     if tab == "miners":
-        return miners_layout() if enabled else premium_upsell()
+        # ⬇️ früher: return miners_layout() if enabled else premium_upsell()
+        return miners_layout()  # Miners-Tab ist immer sichtbar (Miner 2+ werden innen gegated)
     if tab == "electricity":
         return electricity_layout()
     if tab == "battery":

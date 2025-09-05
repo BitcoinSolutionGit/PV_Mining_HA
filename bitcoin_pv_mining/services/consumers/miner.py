@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional, List
 from services.consumers.base import BaseConsumer, Desire, Ctx
-
+from services.license import is_premium_enabled
 from services.miners_store import list_miners, update_miner
 from services.settings_store import get_var as set_get
 from services.electricity_store import get_var as elec_get
@@ -26,6 +26,21 @@ def _num(x, d=0.0) -> float:
         return float(x)
     except (TypeError, ValueError):
         return d
+
+def _free_miner_id() -> Optional[str]:
+    """
+    Der 'freie' Miner ist der erste in der Liste (bzw. älteste, falls gewünscht).
+    Fallback: None, wenn keine Miner existieren.
+    """
+    try:
+        miners = list_miners() or []
+        if not miners:
+            return None
+        # stabil: erster Eintrag in der YAML-Liste ist "Miner 1"
+        return miners[0].get("id")
+    except Exception:
+        return None
+
 
 def _pv_cost_per_kwh() -> float:
     """Opportunitätskosten der PV gemäß Settings (zero | feedin)."""
@@ -71,8 +86,14 @@ def _cooling_running_now() -> bool:
         return False
 
 def _eligible_miners() -> List[dict]:
+    free_id = _free_miner_id()
+    prem = is_premium_enabled()
+
     out = []
     for m in (list_miners() or []):
+        # ⬇️ Gate: ohne Premium nur der "freie" Miner darf mitspielen
+        if not prem and m.get("id") != free_id:
+            continue
         if not _truthy(m.get("enabled"), False):
             continue
         if str(m.get("mode") or "manual").lower() != "auto":
@@ -112,6 +133,12 @@ class MinerConsumer(BaseConsumer):
                 break
         if not m:
             return Desire(False, 0.0, 0.0, reason="not found")
+
+        # ⬇️ Gate: ohne Premium nur der freie Miner liefert Desire
+        if not is_premium_enabled():
+            free_id = _free_miner_id()
+            if m.get("id") != free_id:
+                return Desire(False, 0.0, 0.0, reason="premium required")
 
         if not _truthy(m.get("enabled"), False):
             return Desire(False, 0.0, 0.0, reason="disabled")
@@ -178,6 +205,13 @@ class MinerConsumer(BaseConsumer):
         if not m:
             print(f"[miner {self.miner_id}] apply skipped: not found", flush=True)
             return
+
+        # ⬇️ Gate: ohne Premium keine Schalthandlungen für Miner > 1
+        if not is_premium_enabled():
+            free_id = _free_miner_id()
+            if m.get("id") != free_id:
+                print(f"[miner {self.miner_id}] premium required - skipping apply", flush=True)
+                return
 
         pkw = _num(m.get("power_kw"), 0.0)
         on_ent  = m.get("action_on_entity", "") or ""
