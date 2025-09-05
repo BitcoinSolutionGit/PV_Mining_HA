@@ -753,6 +753,7 @@ app.index_string = '''
                         .then(r => r.json())
                         .then(j => { 
                           try { window.open(j.url, '_blank'); } catch(_) {} 
+                          try { startMobilePolling(); } catch(_) {} 
                         });
                     }
                   });

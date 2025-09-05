@@ -1,5 +1,5 @@
 name: "Bitcoin PV-mining"
-version: "0.4.83"
+version: "0.4.84"
 slug: "bitcoin_pv_mining"
 description: "PV-based Bitcoin mining control with web UI"
 ingress: true
@@ -24,6 +24,9 @@ git_source:
   branch: "main"
   yamls_dir: "yamls"
   token_env: "GITLAB_TOKEN"
+
+environment:
+  ENABLE_MOBILE_POLLING: "1"
 
   # input_boolean.bitcoin_miner1_toggle switchen zum einschalten
   # oder direkt das script: bitcoin_miner1_ein:
