@@ -489,14 +489,8 @@ def premium_upsell():
     return html.Div([
         html.H3("Premium Feature"),
         html.P("This feature is available with Premium."),
-        html.A(
-            html.Button("Activate Premium", id="btn-premium-upsell",
-                        n_clicks=0, className="custom-tab premium-btn"),
-            href=f"{prefix}oauth/start",
-            rel="noopener"
-        )
-        # html.Button("Activate Premium", id="btn-premium",
-        #             n_clicks=0, className="custom-tab premium-btn"),
+        html.Button("Activate Premium", id="btn-premium-upsell",
+                    n_clicks=0, className="custom-tab premium-btn"),
     ], style={"textAlign":"center", "padding":"20px"})
 
 
@@ -708,6 +702,8 @@ app.index_string = '''
                   
                   // --- Mobile Polling (Out-of-band) ---
                   const MOBILE_POLLING_ENABLED = !!(window.__MOBILE_POLLING__); // falls config.js geladen; sonst false
+                  console.log('MOBILE_POLLING_ENABLED', MOBILE_POLLING_ENABLED); 
+                  
                     let oauthPollTimer = null;
                     let oauthPollStarted = false;
                     let oauthPollDeadline = 0;
@@ -791,6 +787,9 @@ app.index_string = '''
                 })();
             </script>
         </footer>
+        
+        <div id="poll-debug" style="position:fixed;bottom:8px;left:8px;font:12px monospace;opacity:.6"></div>
+
     </body>
 </html>
 '''
