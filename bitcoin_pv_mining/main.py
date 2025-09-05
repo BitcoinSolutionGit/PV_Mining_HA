@@ -179,44 +179,51 @@ def _oauth_start_impl():
 
 
 
+from flask import Response
+import json
+
 def _finish_notify(status: str, code: str | None = None) -> Response:
-    # status: "ok" | "error"
+    # Payload für postMessage
     payload = {"type": "pvmining:oauth", "status": status}
     if code:
         payload["code"] = code
     js_payload = json.dumps(payload)
 
-    html = f"""
-            <!doctype html>
-            <meta charset="utf-8">
-            <title>Completing…</title>
-            <body style="font-family: system-ui, sans-serif; padding:16px">
-              <p>Finishing sign-in…</p>
-              <script>
-                (function () {{
-                  var data = {js_payload};
-                  try {{
-                    // Fallback-Kanal: löst im Haupt-Tab 'storage' Event aus (auch bei Mobile hilfreich)
-                    localStorage.setItem('pvmining_oauth', JSON.stringify(data));
-                  }} catch (_){{
-                  }}
-                  try {{
-                    if (window.opener && !window.opener.closed) {{
-                      // Primär: Nachricht an den Haupt-Tab
-                      window.opener.postMessage(data, "*");
-                      window.close();
-                      return;
-                    }}
-                  }} catch (_){{
-                  }}
-                  // Fallback: navigiere in DIESEM Tab (hash verursacht keinen Full-Reload)
-                  var h = (data.status === "ok") ? "#premium=ok" : ("#premium_error=" + encodeURIComponent(data.code || "unknown"));
-                  window.location.href = "{prefix}" + h;
-                }})();
-              </script>
-            </body>
-            """
+    # WICHTIG: Alle JS-Klammern verdoppeln ({{ }}) außer dem {js_payload} Platzhalter.
+    html = (
+        "<!doctype html>"
+        "<meta charset='utf-8'>"
+        "<title>Completing…</title>"
+        "<body style='font-family: system-ui, sans-serif; padding:16px'>"
+        "<p>Finishing sign-in…</p>"
+        "<script>"
+        "(function () {{"
+        "  var data = {js_payload};"
+        "  try {{"
+        "    if (window.opener && !window.opener.closed) {{"
+        "      try {{ window.opener.postMessage(data, '*'); }} catch (_) {{}}"
+        "      try {{"
+        "        if (data.status === 'ok') {{"
+        "          // Für deine Dash-Callback-Logik: zeigt Success-Toast"
+        "          window.opener.location.hash = 'premium=ok';"
+        "        }} else {{"
+        "          window.opener.location.hash = 'premium_error=' + encodeURIComponent(data.code || 'unknown');"
+        "        }}"
+        "      }} catch (_) {{}}"
+        "      window.close();"
+        "      return;"
+        "    }}"
+        "  }} catch (_) {{}}"
+        "  // Kein Redirect zur Ingress-URL hier (vermeidet 401 im Popup)"
+        "  document.body.innerHTML = '<p>Login finished. Please return to the app tab.</p>';"
+        "}})();"
+        "</script>"
+        "</body>"
+    ).format(js_payload=js_payload)
+
     return Response(html, mimetype="text/html")
+
+
 
 # Route ohne Prefix (Ingress sieht oft diesen Pfad)
 @server.route("/oauth/start")
@@ -228,44 +235,27 @@ def oauth_start_root():
 def oauth_start_prefixed():
     return _oauth_start_impl()
 
+# === NEW: build external OAuth URL without touching HA in the new tab ===
+@server.route("/oauth/link")
+def oauth_link_root():
+    return _oauth_link_impl()
 
-# def _oauth_finish_impl():
-#     print("[OAUTH] /oauth/finish args=", dict(request.args), flush=True)
-#     err   = request.args.get("error", "")
-#     grant = request.args.get("grant", "")
-#
-#     st = load_state()
-#     if err:
-#         st["ui_flash"] = {"level": "error", "code": err}
-#         save_state(st)
-#         return jsonify({"ok": True})
-#
-#     if not grant:
-#         st["ui_flash"] = {"level": "error", "code": "missing_grant"}
-#         save_state(st)
-#         return jsonify({"ok": True})
-#
-#     try:
-#         install_id = load_state().get("install_id", "unknown-install")
-#         r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
-#                           json={"grant": grant, "install_id": install_id},
-#                           timeout=10)
-#         js = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
-#         if js.get("ok") and js.get("token"):
-#             set_token(js["token"])
-#             verify_license()
-#             st["ui_flash"] = {"level": "ok", "code": "premium_ok"}
-#             save_state(st)
-#             return jsonify({"ok": True})
-#         else:
-#             st["ui_flash"] = {"level": "error", "code": "redeem_failed"}
-#             save_state(st)
-#             return jsonify({"ok": False, "error": "redeem_failed"})
-#     except Exception as e:
-#         print("[OAUTH] redeem error:", e, flush=True)
-#         st["ui_flash"] = {"level": "error", "code": "redeem_exception"}
-#         save_state(st)
-#         return jsonify({"ok": False, "error": "redeem_exception"})
+@server.route(f"{prefix}oauth/link")
+def oauth_link_prefixed():
+    return _oauth_link_impl()
+
+def _oauth_link_impl():
+    # return_url = Basispfad deines Add-ons (HA-Ingress), NICHT /oauth/finish
+    base = request.host_url.rstrip("/")
+    ret  = f"{base}{prefix}"  # z.B. http://ha:8123/api/hassio_ingress/<token>/
+    install_id = load_state().get("install_id", "unknown-install")
+    ext = (
+        f"{LICENSE_BASE_URL}/oauth_start.php"
+        f"?return_url={urllib.parse.quote(ret, safe='')}"
+        f"&install_id={urllib.parse.quote(install_id, safe='')}"
+    )
+    return flask.jsonify({"url": ext})
+
 
 def _flash(level: str, code: str) -> None:
     try:
@@ -681,11 +671,36 @@ app.index_string = '''
             {%renderer%}
             <script>
                 (function(){
-                  function callFinish(endpoint) {
-                    try { fetch(endpoint, { credentials: 'include' }); } catch(_) {}
+                  function callFinish(url){ try{ fetch(url, {credentials:'include'}); }catch(_){} }
+                
+                  // Öffne die externe OAuth-URL in neuem Tab (mit opener)
+                  document.addEventListener('click', function(ev){
+                    var t = ev.target;
+                    if (t && t.id === 'btn-premium') {
+                      ev.preventDefault();
+                      fetch('oauth/link', {credentials:'include'})
+                        .then(r => r.json())
+                        .then(j => { try { window.open(j.url, '_blank'); } catch(_) {} });
+                    }
+                  });
+                
+                  // Ergebnis entgegennehmen -> Add-on intern abschließen -> Toast
+                  function handlePayload(data){
+                    if (!data || data.type !== 'pvmining:oauth') return;
+                    if (data.status === 'ok' && data.grant) {
+                      callFinish('oauth/finish?grant=' + encodeURIComponent(data.grant));
+                      return;
+                    }
+                    if (data.status === 'error') {
+                      callFinish('oauth/finish?error=' + encodeURIComponent(data.code || 'unknown'));
+                      return;
+                    }
                   }
+                  window.addEventListener('message', function(ev){ try { handlePayload(ev && ev.data); } catch(_){} });
+                
+                  // Hash-Fallback (falls der Popup-Tab opener.hash setzt)
                   function handleHash(){
-                    var h = (location.hash || '').replace(/^#/, '');
+                    var h = (location.hash || '').slice(1);
                     if (!h) return;
                     var qs = new URLSearchParams(h);
                     if (qs.has('grant')) {
@@ -693,13 +708,12 @@ app.index_string = '''
                     } else if (qs.has('premium_error')) {
                       callFinish('oauth/finish?error=' + encodeURIComponent(qs.get('premium_error') || 'unknown'));
                     }
-                    // Hash entfernen → kein Flackern/keine Endlosschleife
                     try { history.replaceState(null, '', location.pathname + location.search + '#'); } catch(_){}
                   }
                   window.addEventListener('hashchange', handleHash);
-                  handleHash(); // einmal beim Laden
+                  handleHash();
                 })();
-            </script>
+                </script>
         </footer>
     </body>
 </html>
@@ -733,14 +747,9 @@ app.layout = html.Div([
 
         # Spacer + Premium-Button ganz rechts
         html.Div(style={"flex": "1"}),
-        html.A(
-            html.Button("Activate Premium", id="btn-premium",
-                        n_clicks=0, className="custom-tab premium-btn"),
-            href=f"{prefix}oauth/start?direct=1",  # 302 weiter zur Lizenz-Seite
-            target="_blank",  # <<< WICHTIG: in HA IMMER neues Tab
-            # KEIN rel="noopener" setzen, damit window.opener existiert!
-        )
-        ,
+        # Im Layout: Button ohne href/target
+        html.Button("Activate Premium", id="btn-premium",
+                    n_clicks=0, className="custom-tab premium-btn"),
     ], id="tab-buttons", className="header-bar"),
 
     html.Div(id="tabs-content", style={"marginTop": "10px"})
