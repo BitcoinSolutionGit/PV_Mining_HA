@@ -297,19 +297,51 @@ def oauth_pending_proxy_root():
 def oauth_pending_proxy_prefixed():
     return _oauth_pending_proxy_impl()
 
+# def _oauth_pending_proxy_impl():
+#     try:
+#         install_id = load_state().get("install_id", "unknown-install")
+#         url = f"{LICENSE_BASE_URL}/var/pending/get.php?install_id={urllib.parse.quote(install_id, safe='')}"
+#         print(f"[MOBILE-OAUTH] pending poll: {url}", flush=True)
+#         r = requests.get(url, timeout=5)
+#         resp = r.content
+#         code = r.status_code
+#         ct   = r.headers.get("content-type", "application/json")
+#         return Response(resp, status=code, mimetype=ct)
+#     except Exception as e:
+#         print(f"[MOBILE-OAUTH] pending proxy error: {e}", flush=True)
+#         return jsonify({"status":"error","code":"pending_proxy_exception"}), 200
 def _oauth_pending_proxy_impl():
     try:
         install_id = load_state().get("install_id", "unknown-install")
-        url = f"{LICENSE_BASE_URL}/pending/get.php?install_id={urllib.parse.quote(install_id, safe='')}"
-        print(f"[MOBILE-OAUTH] pending poll: {url}", flush=True)
-        r = requests.get(url, timeout=5)
-        resp = r.content
-        code = r.status_code
-        ct   = r.headers.get("content-type", "application/json")
-        return Response(resp, status=code, mimetype=ct)
+        url = f"{LICENSE_BASE_URL}/var/pending/get.php?install_id={urllib.parse.quote(install_id, safe='')}"
+        headers = {
+            "User-Agent": "pv-mining-addon/1.0 (+https://bitcoinsolution.at)",
+            "Accept": "application/json",
+        }
+        r = requests.get(url, headers=headers, timeout=8)
+
+        # Content-Type „aufräumen“ (einige Hoster schicken text/plain oder gar nichts)
+        ct = r.headers.get("content-type", "")
+        if not ct or not ct.startswith("application/json"):
+            try:
+                txt = r.text.strip()
+                if txt.startswith("{") or txt.startswith("["):
+                    ct = "application/json"
+                else:
+                    # Lass notfalls den vom Hoster gelieferten Typ stehen (HTML/403 etc.)
+                    ct = ct or "text/html"
+            except Exception:
+                ct = "application/json"
+
+        print(f"[MOBILE-OAUTH] pending poll: {url} -> {r.status_code} ct={ct}", flush=True)
+        return Response(r.content, status=r.status_code, mimetype=ct)
+
     except Exception as e:
-        print(f"[MOBILE-OAUTH] pending proxy error: {e}", flush=True)
-        return jsonify({"status":"error","code":"pending_proxy_exception"}), 200
+        # Nur bei echten Verbindungsfehlern liefern wir einen JSON-Fehler zurück.
+        # Dein Frontend ignoriert 'pending_proxy_exception' und pollt weiter.
+        print(f"[MOBILE-OAUTH] pending proxy error: {repr(e)}", flush=True)
+        return jsonify({"status": "error", "code": "pending_proxy_exception"}), 200
+
 
 
 def _flash(level: str, code: str) -> None:
