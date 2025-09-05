@@ -167,6 +167,28 @@ def _fmt(x):
     except Exception:
         return str(x)
 
+# HIER
+@server.route("/debug/test_pending")
+@server.route(f"{prefix}debug/test_pending")
+def debug_test_pending():
+    try:
+        install_id = load_state().get("install_id", "unknown-install")
+        url = f"{LICENSE_BASE_URL}/pending/get.php?install_id={urllib.parse.quote(install_id, safe='')}"
+        r = requests.get(url, timeout=8)  # timeout etwas höher
+        txt = f"URL: {url}\nHTTP {r.status_code}\n\n{r.text[:2000]}"
+        return Response(txt, mimetype="text/plain", status=(200 if r.ok else 502))
+    except Exception as e:
+        return Response(f"URL: {url}\nEXC: {repr(e)}", mimetype="text/plain", status=502)
+
+# HIER
+@server.route("/debug/clear_flash")
+@server.route(f"{prefix}debug/clear_flash")
+def debug_clear_flash():
+    st = load_state()
+    st.pop("ui_flash", None)
+    save_state(st)
+    return "OK"
+
 
 def _oauth_start_impl():
     return_url = _abs_url("")  # Basispfad, nicht /oauth/finish
@@ -277,6 +299,7 @@ def _oauth_pending_proxy_impl():
     try:
         install_id = load_state().get("install_id", "unknown-install")
         url = f"{LICENSE_BASE_URL}/pending/get.php?install_id={urllib.parse.quote(install_id, safe='')}"
+        print(f"[MOBILE-OAUTH] pending poll: {url}", flush=True)
         r = requests.get(url, timeout=5)
         resp = r.content
         code = r.status_code
@@ -724,6 +747,10 @@ app.index_string = '''
                               callFinish('oauth/finish?grant=' + encodeURIComponent(j.grant));
                               try { location.hash = 'premium=ok'; } catch(_) {}
                             } else if (j.status === 'error') {
+                              if (j.code === 'pending_proxy_exception') {
+                                // Netzwerk hiccup – weiter versuchen, KEIN callFinish, KEIN Toast
+                                return;
+                              }
                               stopMobilePolling();
                               callFinish('oauth/finish?error=' + encodeURIComponent(j.code || 'unknown'));
                               try { location.hash = 'premium_error=' + encodeURIComponent(j.code || 'unknown'); } catch(_) {}
