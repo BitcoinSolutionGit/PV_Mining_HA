@@ -34,8 +34,8 @@ start_heartbeat_loop(addon_version=get_addon_version())
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
 LICENSE_BASE_URL = os.getenv("LICENSE_BASE_URL", "https://license.bitcoinsolution.at")
+ENABLE_MOBILE_POLLING = os.getenv("ENABLE_MOBILE_POLLING", "0") == "1"
 
-# GANZ OBEN zusätzlich:
 from ui_pages.settings import (
     _prio_available_items as prio_available_items,
     _load_prio_ids as prio_load_ids,
@@ -102,6 +102,12 @@ if not prefix.endswith("/"):
 
 IS_INGRESS = prefix.startswith("/api/hassio_ingress/")
 print(f"[INFO] IS_INGRESS={IS_INGRESS} prefix={prefix}")
+
+@server.route("/oauth/config.js")
+@server.route(f"{prefix}oauth/config.js")
+def oauth_config_js():
+    val = "true" if ENABLE_MOBILE_POLLING else "false"
+    return Response(f"window.__MOBILE_POLLING__={val};", mimetype="application/javascript")
 
 app = dash.Dash(
     __name__,
@@ -244,6 +250,8 @@ def oauth_link_root():
 def oauth_link_prefixed():
     return _oauth_link_impl()
 
+
+
 def _oauth_link_impl():
     # return_url = Basispfad deines Add-ons (HA-Ingress), NICHT /oauth/finish
     base = request.host_url.rstrip("/")
@@ -255,6 +263,28 @@ def _oauth_link_impl():
         f"&install_id={urllib.parse.quote(install_id, safe='')}"
     )
     return flask.jsonify({"url": ext})
+
+
+@server.route("/oauth/pending")
+def oauth_pending_proxy_root():
+    return _oauth_pending_proxy_impl()
+
+@server.route(f"{prefix}oauth/pending")
+def oauth_pending_proxy_prefixed():
+    return _oauth_pending_proxy_impl()
+
+def _oauth_pending_proxy_impl():
+    try:
+        install_id = load_state().get("install_id", "unknown-install")
+        url = f"{LICENSE_BASE_URL}/pending/get.php?install_id={urllib.parse.quote(install_id, safe='')}"
+        r = requests.get(url, timeout=5)
+        resp = r.content
+        code = r.status_code
+        ct   = r.headers.get("content-type", "application/json")
+        return Response(resp, status=code, mimetype=ct)
+    except Exception as e:
+        print(f"[MOBILE-OAUTH] pending proxy error: {e}", flush=True)
+        return jsonify({"status":"error","code":"pending_proxy_exception"}), 200
 
 
 def _flash(level: str, code: str) -> None:
@@ -465,6 +495,8 @@ def premium_upsell():
             href=f"{prefix}oauth/start",
             rel="noopener"
         )
+        # html.Button("Activate Premium", id="btn-premium",
+        #             n_clicks=0, className="custom-tab premium-btn"),
     ], style={"textAlign":"center", "padding":"20px"})
 
 
@@ -669,18 +701,59 @@ app.index_string = '''
             {%config%}
             {%scripts%}
             {%renderer%}
+            <script src="oauth/config.js"></script>
             <script>
                 (function(){
                   function callFinish(url){ try{ fetch(url, {credentials:'include'}); }catch(_){} }
+                  
+                  // --- Mobile Polling (Out-of-band) ---
+                  const MOBILE_POLLING_ENABLED = !!(window.__MOBILE_POLLING__); // falls config.js geladen; sonst false
+                    let oauthPollTimer = null;
+                    let oauthPollStarted = false;
+                    let oauthPollDeadline = 0;
+                    
+                    function startMobilePolling(){
+                      if (!MOBILE_POLLING_ENABLED || oauthPollStarted) return;
+                      oauthPollStarted = true;
+                      oauthPollDeadline = Date.now() + 2 * 60 * 1000; // 2 Min Timeout
+                    
+                      function pollOnce(){
+                        if (Date.now() > oauthPollDeadline) { stopMobilePolling(); return; }
+                        fetch('oauth/pending', {credentials:'include'})
+                          .then(r => r.ok ? r.json() : Promise.reject(new Error("http "+r.status)))
+                          .then(j => {
+                            if (!j || !j.status) return;
+                            if (j.status === 'ok' && j.grant) {
+                              stopMobilePolling();
+                              callFinish('oauth/finish?grant=' + encodeURIComponent(j.grant));
+                              try { location.hash = 'premium=ok'; } catch(_) {}
+                            } else if (j.status === 'error') {
+                              stopMobilePolling();
+                              callFinish('oauth/finish?error=' + encodeURIComponent(j.code || 'unknown'));
+                              try { location.hash = 'premium_error=' + encodeURIComponent(j.code || 'unknown'); } catch(_) {}
+                            }
+                          })
+                          .catch(() => {});
+                      }
+                      oauthPollTimer = setInterval(pollOnce, 1500);
+                      pollOnce();
+                    }
+                    
+                    function stopMobilePolling(){
+                      try { if (oauthPollTimer) clearInterval(oauthPollTimer); } catch(_){}
+                      oauthPollTimer = null;
+                    }         
                 
                   // Öffne die externe OAuth-URL in neuem Tab (mit opener)
                   document.addEventListener('click', function(ev){
                     var t = ev.target;
-                    if (t && t.id === 'btn-premium') {
+                    if (t && (t.id === 'btn-premium' || t.id === 'btn-premium-upsell')) {
                       ev.preventDefault();
                       fetch('oauth/link', {credentials:'include'})
                         .then(r => r.json())
-                        .then(j => { try { window.open(j.url, '_blank'); } catch(_) {} });
+                        .then(j => { 
+                          try { window.open(j.url, '_blank'); } catch(_) {} 
+                        });
                     }
                   });
                 
@@ -697,7 +770,9 @@ app.index_string = '''
                     }
                   }
                   window.addEventListener('message', function(ev){ try { handlePayload(ev && ev.data); } catch(_){} });
-                
+                    
+                    
+                    
                   // Hash-Fallback (falls der Popup-Tab opener.hash setzt)
                   function handleHash(){
                     var h = (location.hash || '').slice(1);
@@ -713,7 +788,7 @@ app.index_string = '''
                   window.addEventListener('hashchange', handleHash);
                   handleHash();
                 })();
-                </script>
+            </script>
         </footer>
     </body>
 </html>
