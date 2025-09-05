@@ -191,6 +191,13 @@ def debug_clear_flash():
     save_state(st)
     return "OK"
 
+# HIER
+@server.route("/debug/install_id")
+@server.route(f"{prefix}debug/install_id")
+def debug_install_id():
+    return Response(load_state().get("install_id","<none>"), mimetype="text/plain")
+
+
 
 def _oauth_start_impl():
     return_url = _abs_url("")  # Basispfad, nicht /oauth/finish
@@ -755,63 +762,58 @@ app.index_string = '''
             <script src="oauth/config.js"></script>
             <script>
                 (function(){
-                  function callFinish(url){ try{ fetch(url, {credentials:'include'}); }catch(_){} }
-                  
-                  // --- Mobile Polling (Out-of-band) ---
-                  const MOBILE_POLLING_ENABLED = !!(window.__MOBILE_POLLING__); // falls config.js geladen; sonst false
-                  console.log('MOBILE_POLLING_ENABLED', MOBILE_POLLING_ENABLED); 
-                  
-                    let oauthPollTimer = null;
-                    let oauthPollStarted = false;
-                    let oauthPollDeadline = 0;
-                    
-                    function startMobilePolling(){
-                      if (!MOBILE_POLLING_ENABLED || oauthPollStarted) return;
-                      oauthPollStarted = true;
-                      oauthPollDeadline = Date.now() + 2 * 60 * 1000; // 2 Min Timeout
-                    
-                      function pollOnce(){
-                        if (Date.now() > oauthPollDeadline) { stopMobilePolling(); return; }
-                        fetch('oauth/pending', {credentials:'include'})
-                          .then(r => r.ok ? r.json() : Promise.reject(new Error("http "+r.status)))
-                          .then(j => {
-                            if (!j || !j.status) return;
-                            if (j.status === 'ok' && j.grant) {
-                              stopMobilePolling();
-                              callFinish('oauth/finish?grant=' + encodeURIComponent(j.grant));
-                              try { location.hash = 'premium=ok'; } catch(_) {}
-                            } else if (j.status === 'error') {
-                              if (j.code === 'pending_proxy_exception') {
-                                // Netzwerk hiccup – weiter versuchen, KEIN callFinish, KEIN Toast
-                                return;
-                              }
-                              stopMobilePolling();
-                              callFinish('oauth/finish?error=' + encodeURIComponent(j.code || 'unknown'));
-                              try { location.hash = 'premium_error=' + encodeURIComponent(j.code || 'unknown'); } catch(_) {}
-                            }
-                          })
-                          .catch(() => {});
-                      }
-                      oauthPollTimer = setInterval(pollOnce, 1500);
-                      pollOnce();
-                    }
-                    
-                    function stopMobilePolling(){
-                      try { if (oauthPollTimer) clearInterval(oauthPollTimer); } catch(_){}
-                      oauthPollTimer = null;
-                    }         
+                  function callFinish(url){ try{ fetch(url,{credentials:'include'}); }catch(_){} }
                 
-                  // Öffne die externe OAuth-URL in neuem Tab (mit opener)
+                  // Debug-Overlay
+                  function dbg(s){ try{ document.getElementById('poll-debug').textContent = s; }catch(_){} }
+                
+                  const MOBILE_POLLING_ENABLED =
+                    (typeof window.__MOBILE_POLLING__ !== 'undefined') ? !!window.__MOBILE_POLLING__ : true;
+                  dbg('poll-enabled=' + MOBILE_POLLING_ENABLED);
+                
+                  let oauthPollTimer=null, oauthPollStarted=false, oauthPollDeadline=0;
+                
+                  function startMobilePolling(){
+                    if (!MOBILE_POLLING_ENABLED || oauthPollStarted) return;
+                    oauthPollStarted = true;
+                    oauthPollDeadline = Date.now() + 2*60*1000;
+                    dbg('poll:start');
+                
+                    function pollOnce(){
+                      if (Date.now() > oauthPollDeadline){ stopMobilePolling(); dbg('poll:timeout'); return; }
+                      dbg('poll:tick');
+                      fetch('oauth/pending',{credentials:'include'})
+                        .then(r=>r.ok?r.json():Promise.reject(new Error('http '+r.status)))
+                        .then(j=>{
+                          dbg('poll:' + JSON.stringify(j));
+                          if (!j || !j.status) return;
+                          if (j.status === 'ok' && j.grant){
+                            stopMobilePolling();
+                            callFinish('oauth/finish?grant=' + encodeURIComponent(j.grant));
+                            try{ location.hash='premium=ok'; }catch(_){}
+                          } else if (j.status === 'error'){
+                            if (j.code === 'pending_proxy_exception'){ return; } // weiterpoll'en
+                            stopMobilePolling();
+                            callFinish('oauth/finish?error=' + encodeURIComponent(j.code || 'unknown'));
+                            try{ location.hash='premium_error=' + encodeURIComponent(j.code || 'unknown'); }catch(_){}
+                          }
+                        })
+                        .catch(e=>{ dbg('poll:err ' + e); });
+                    }
+                    oauthPollTimer = setInterval(pollOnce, 1500);
+                    pollOnce();
+                  }
+                  function stopMobilePolling(){ try{ if(oauthPollTimer) clearInterval(oauthPollTimer); }catch(_){}
+                    oauthPollTimer=null;
+                  }
+                
                   document.addEventListener('click', function(ev){
                     var t = ev.target;
-                    if (t && (t.id === 'btn-premium' || t.id === 'btn-premium-upsell')) {
+                    if (t && (t.id === 'btn-premium' || t.id === 'btn-premium-upsell')){
                       ev.preventDefault();
-                      fetch('oauth/link', {credentials:'include'})
-                        .then(r => r.json())
-                        .then(j => { 
-                          try { window.open(j.url, '_blank'); } catch(_) {} 
-                          try { startMobilePolling(); } catch(_) {} 
-                        });
+                      fetch('oauth/link',{credentials:'include'})
+                        .then(r=>r.json())
+                        .then(j=>{ try{ window.open(j.url,'_blank'); }catch(_){}; try{ startMobilePolling(); }catch(_){}; });
                     }
                   });
                 
