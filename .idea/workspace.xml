@@ -5,10 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V0.5.00">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/services/consumers/miner.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/services/consumers/miner.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages/miners.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages/miners.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
