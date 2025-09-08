@@ -103,15 +103,6 @@ if not prefix.endswith("/"):
 IS_INGRESS = prefix.startswith("/api/hassio_ingress/")
 print(f"[INFO] IS_INGRESS={IS_INGRESS} prefix={prefix}")
 
-@server.route("/debug/install_id")
-@server.route(f"{prefix}debug/install_id")
-def debug_install_id():
-    try:
-        iid = load_state().get("install_id", "unknown-install")
-        return Response(iid + "\n", mimetype="text/plain")
-    except Exception as e:
-        return Response("unknown-install\n", mimetype="text/plain", status=500)
-
 @server.route("/oauth/config.js")
 @server.route(f"{prefix}oauth/config.js")
 def oauth_config_js():
