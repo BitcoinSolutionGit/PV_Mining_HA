@@ -474,9 +474,9 @@ def layout():
                 href="https://www.bitcoinsolution.at",
                 target="_blank",
                 rel="noopener noreferrer",
-                style={"textDecoration": "none"}  # optional: Link ohne Unterstreichung
+                style={"textDecoration": "none"}
             )
-        ]),
+        ], className="page-title"),
 
         dcc.Graph(id="sankey-diagram", figure=go.Figure()),
 

@@ -530,14 +530,11 @@ def serve_icon():
     Input("premium-enabled", "data")
 )
 def toggle_premium_button(data):
-    enabled = bool((data or {}).get("enabled"))
-    if enabled:
-        # Button ausblenden ODER als „aktiv“ markieren – du kannst hier entscheiden:
-        # Variante A: ganz ausblenden:
-        # return "custom-tab premium-btn premium-btn-hidden", "Premium Active"
-        # Variante B: sichtbar, aber als aktiv:
-        return "custom-tab premium-btn premium-btn-active", "Premium Active"
-    return "custom-tab premium-btn premium-btn-locked", "Activate Premium"
+    base = "custom-tab premium-btn premium-right"  # <-- premium-right bleibt IMMER dran
+    if bool((data or {}).get("enabled")):
+        return f"{base} premium-btn-active", "Premium Active"
+    return f"{base} premium-btn-locked", "Activate Premium"
+
 
 
 @app.callback(
@@ -661,6 +658,17 @@ def _show_dev_tab() -> bool:
     except Exception:
         return False
 
+@app.callback(
+    Output("tabs-content", "className"),
+    Input("active-tab", "data"),
+    prevent_initial_call=False
+)
+def _pad_content(active_tab):
+    base = "content-area"
+    # Auf dem Dashboard kein Extra-Pad, sonst schon
+    return base if active_tab == "dashboard" else f"{base} extra-pad"
+
+
 @server.route("/debug/clear_token")
 @server.route(f"{prefix}debug/clear_token")
 def debug_clear_token():
@@ -729,18 +737,22 @@ app.index_string = '''
                 color: black;
                 font-family: Arial, sans-serif;
             }
+
+            /* Basis-Look der Tabs */
             .custom-tab {
                 background-color: #eee;
                 border: 1px solid #ccc;
                 border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 14px;
                 cursor: pointer;
                 transition: all 0.2s ease-in-out;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                height: 36px;      /* einheitliche Höhe */
+                padding: 0 14px;   /* horizontales Padding */
+                font-size: 14px;
             }
-            .custom-tab:hover {
-                background-color: #ddd;
-            }
+            .custom-tab:hover { background-color: #ddd; }
             .custom-tab-selected {
                 background-color: #ccc;
                 color: black;
@@ -748,37 +760,21 @@ app.index_string = '''
                 border: 2px solid #999;
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
             }
-            @media (max-width: 600px) {
-                .custom-tab {
-                    font-size: 12px;
-                    padding: 4px 8px;
-                }
-            }
-            .header-bar {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                gap: 12px;
-                flex-wrap: wrap;
-                padding: 8px;
-            }
-            .header-icon {
-                width: 32px;
-                height: 32px;
-            }
-            
+
+            /* Premium-Button-Styles */
             .premium-btn {
                 background: linear-gradient(#2ecc71, #27ae60);
                 color: white;
                 font-weight: bold;
                 border: 1px solid #1e874b;
+                height: 36px;      /* gleiche Höhe wie Tabs */
+                padding: 0 14px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
             }
-            .premium-btn:hover {
-                filter: brightness(1.05);
-            }
-            .premium-btn-hidden {
-                display: none;
-            }
+            .premium-btn:hover { filter: brightness(1.05); }
+            .premium-btn-hidden { display: none; }
             .premium-btn-active {
                 background: #e0ffe9;
                 color: #1e874b;
@@ -791,54 +787,141 @@ app.index_string = '''
                 font-weight: bold;
                 border: 1px solid #b71c1c;
             }
-            .premium-btn-locked:hover {
-                filter: brightness(1.05);
+            .premium-btn-locked:hover { filter: brightness(1.05); }
+
+            /* Header-Container */
+            .header-bar { position: relative; }
+
+            :root { --header-side-pad: 140px; }
+            
+            /* Desktop: Icon absolut, Tabs zentriert, kaum Abstand nach unten */
+            @media (min-width: 900px) {
+              .header-bar{
+                position: relative;             /* Anker für das Icon */
+                display: flex;
+                justify-content: center;        /* Tabs zentriert */
+                align-items: center;
+                gap: 12px;
+                padding: 6px var(--header-side-pad) 2px var(--header-side-pad);   /* links Platz fürs große Icon */
+                margin-bottom: 0;               /* KEIN zusätzlicher Leerraum */
+              }
+              .header-icon{
+                position: absolute;             /* nimmt keine Höhe ein */
+                left: 10px;
+                top: 6px;
+                width: 96px;
+                height: 96px;
+                pointer-events: none;
+              }
+              .page-title{
+                margin: 2px 0 0;                /* direkt unter die Tabs */
+                line-height: 1.2;
+                font-size: clamp(26px, 2.4vw, 36px);
+                text-align: center;
+              }
             }
-            /* --- Battery-Button: Rahmenfarbe nach Premium-Status --- */
+
+            /* Mobile/Tablet: Icon wieder normal, Tabs wrappen; kleiner Abstand unten ok */
+            @media (max-width: 899px) {
+              .header-bar{
+                position: relative;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 12px;
+                padding: 8px 12px;              /* kein extra linker Platz nötig */
+                margin-bottom: 4px;
+              }
+              .header-icon{
+                position: static;               /* normaler Flow */
+                width: 32px;
+                height: 32px;
+              }
+              .page-title{ margin: 4px 0 0; }
+            }
+
+            /* Premium-Button ganz rechts im Flex-Header */
+            .header-bar .premium-right {
+            position: absolute;
+            right: calc(12px - var(--header-side-pad));
+            top: 6px;
+              margin-left: auto !important;   /* schiebt ihn an den rechten Rand */
+            }
+
+            /* Premium-Rahmenfarben an Buttons (Battery/Heater/Wallbox) */
             .custom-tab.battery-premium-ok { border-color: #27ae60 !important; }
             .custom-tab.battery-premium-locked { border-color: #e74c3c !important; }
-            /* Wenn der Tab ausgewählt ist, überschreibt diese Regel die Standardauswahlfarbe */
             .custom-tab.battery-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
             .custom-tab.battery-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
-            /* --- heater-Button: Rahmenfarbe nach Premium-Status --- */
+
             .custom-tab.heater-premium-ok { border-color: #27ae60 !important; }
             .custom-tab.heater-premium-locked { border-color: #e74c3c !important; }
-            /* Wenn der Tab ausgewählt ist, überschreibt diese Regel die Standardauswahlfarbe */
             .custom-tab.heater-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
             .custom-tab.heater-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
-            /* --- Wallbox-Button: Rahmenfarbe nach Premium-Status --- */
+
             .custom-tab.wallbox-premium-ok { border-color: #27ae60 !important; }
             .custom-tab.wallbox-premium-locked { border-color: #e74c3c !important; }
-            /* Wenn der Tab ausgewählt ist, überschreibt diese Regel die Standardauswahlfarbe */
             .custom-tab.wallbox-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
             .custom-tab.wallbox-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
-            
+
             /* Footer metrics — row on desktop, vertical stack on phones */
             .footer-stats {
               display: flex;
-              flex-wrap: wrap;             /* Desktop/Laptop: in einer Reihe, darf bei wenig Platz umbrechen */
+              flex-wrap: wrap;
               justify-content: center;
               gap: 40px;
               margin-top: 20px;
               width: 100%;
             }
-            .footer-stat {
-              font-weight: bold;
-              text-align: center;
+            .footer-stat { font-weight: bold; text-align: center; }
+            @media (max-width: 680px) {
+              .footer-stats { flex-direction: column; align-items: center; gap: 8px; }
+              .footer-stat { flex: 0 0 auto; width: 100%; }
+            }
+
+            /* Abstände zwischen Tabs + Premium rechts */
+            .header-bar { gap: 12px; }                       /* moderner Browser: einfacher Weg */
+
+            /* Fallback für Browser/Setups ohne flex-gap (setzt explizite Margins) */
+            .header-bar .custom-tab { margin: 0 8px; }       /* kleiner horizontaler Abstand */
+            .header-bar .custom-tab:first-of-type { margin-left: 0; }
+
+            .header-bar .spacer { flex: 1 1 auto; min-width: 12px; }  /* schiebt Premium nach rechts */
+
+            /* Mobile darf’s etwas enger sein */
+            @media (max-width: 899px) {
+              .header-bar .custom-tab { margin: 4px 6px; }
+              .header-bar .premium-btn { margin-left: 6px; }
             }
             
-            /* Phone: untereinander (einspaltig) */
-            @media (max-width: 680px) {
-              .footer-stats {
-                flex-direction: column;    /* stapeln */
-                align-items: center;       /* zentriert wie bisher */
-                gap: 8px;
-              }
-              .footer-stat {
-                flex: 0 0 auto;
-                width: 100%;
+            /* Premium-Button fix an den rechten Rand (Desktop) */
+            @media (min-width: 900px){
+              .header-bar { position: relative; }
+              .header-bar .premium-right{
+                position: absolute;
+                right: 12px;
+                top: 6px;
+                margin-left: 0 !important; /* überstimmt frühere margin-left-Regel */
               }
             }
+            
+            /* Mobil/Tablet: im Flow lassen, nach rechts schieben */
+            @media (max-width: 899px){
+              .header-bar .premium-right{
+                position: static;
+                margin-left: auto !important;
+              }
+            }
+            
+            /* Grundabstand für alle Seiten */
+            .content-area { margin-top: 10px; }
+            
+            /* Nur Desktop: Nicht-Dashboard etwas weiter nach unten schieben,
+               damit das große Icon nichts überlappt */
+            @media (min-width: 900px) {
+              .content-area.extra-pad { margin-top: 64px; } /* bei Bedarf 56–80px feinjustieren */
+            }
+
         </style>
     </head>
     <body>
@@ -851,22 +934,22 @@ app.index_string = '''
             <script>
                 (function(){
                   function callFinish(url){ try{ fetch(url,{credentials:'include'}); }catch(_){} }
-                
+
                   // Debug-Overlay
                   function dbg(s){ try{ document.getElementById('poll-debug').textContent = s; }catch(_){} }
-                
+
                   const MOBILE_POLLING_ENABLED =
                     (typeof window.__MOBILE_POLLING__ !== 'undefined') ? !!window.__MOBILE_POLLING__ : true;
                   dbg('poll-enabled=' + MOBILE_POLLING_ENABLED);
-                
+
                   let oauthPollTimer=null, oauthPollStarted=false, oauthPollDeadline=0;
-                
+
                   function startMobilePolling(){
                     if (!MOBILE_POLLING_ENABLED || oauthPollStarted) return;
                     oauthPollStarted = true;
                     oauthPollDeadline = Date.now() + 2*60*1000;
                     dbg('poll:start');
-                
+
                     function pollOnce(){
                       if (Date.now() > oauthPollDeadline){ stopMobilePolling(); dbg('poll:timeout'); return; }
                       dbg('poll:tick');
@@ -894,7 +977,7 @@ app.index_string = '''
                   function stopMobilePolling(){ try{ if(oauthPollTimer) clearInterval(oauthPollTimer); }catch(_){}
                     oauthPollTimer=null;
                   }
-                
+
                   document.addEventListener('click', function(ev){
                     var t = ev.target;
                     if (t && (t.id === 'btn-premium' || t.id === 'btn-premium-upsell')){
@@ -904,7 +987,7 @@ app.index_string = '''
                         .then(j=>{ try{ window.open(j.url,'_blank'); }catch(_){}; try{ startMobilePolling(); }catch(_){}; });
                     }
                   });
-                
+
                   // Ergebnis entgegennehmen -> Add-on intern abschließen -> Toast
                   function handlePayload(data){
                     if (!data || data.type !== 'pvmining:oauth') return;
@@ -918,9 +1001,7 @@ app.index_string = '''
                     }
                   }
                   window.addEventListener('message', function(ev){ try { handlePayload(ev && ev.data); } catch(_){} });
-                    
-                    
-                    
+
                   // Hash-Fallback (falls der Popup-Tab opener.hash setzt)
                   function handleHash(){
                     var h = (location.hash || '').slice(1);
@@ -938,7 +1019,7 @@ app.index_string = '''
                 })();
             </script>
         </footer>
-        
+
         <div id="poll-debug" style="position:fixed;bottom:8px;left:8px;font:12px monospace;opacity:.6"></div>
 
     </body>
@@ -960,24 +1041,31 @@ app.layout = html.Div([
 
     html.Div([
         html.Img(src=f"{prefix}config-icon", className="header-icon"),
-        html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab custom-tab-selected", **{"data-tab": "dashboard"}),
-        html.Button("Sensors", id="btn-sensors", n_clicks=0, className="custom-tab", **{"data-tab": "sensors"}),
-        html.Button("Miners", id="btn-miners", n_clicks=0, className="custom-tab", **{"data-tab": "miners"}),
-        html.Button("Electricity", id="btn-electricity", n_clicks=0, className="custom-tab", **{"data-tab": "electricity"}),
-        html.Button("Battery", id="btn-battery", n_clicks=0, className="custom-tab", **{"data-tab": "battery"}, style=({} if SHOW_BATTERY_TAB else {"display":"none"})),
-        html.Button("Water Heater", id="btn-heater", n_clicks=0, className="custom-tab", **{"data-tab": "heater"}),
-        html.Button("Wall-Box", id="btn-wallbox", n_clicks=0, className="custom-tab", **{"data-tab": "wallbox"}, style=({} if SHOW_WALLBOX_TAB else {"display":"none"})),
-        html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab":"settings"}),
-        html.Button("Dev", id="btn-dev", n_clicks=0, className="custom-tab", style=({} if SHOW_DEV_TAB else {"display":"none"})),
 
-        # Spacer + Premium-Button ganz rechts
-        html.Div(style={"flex": "1"}),
-        # Im Layout: Button ohne href/target
+        # zentrierte Tab-Gruppe
+        html.Div([
+            html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab custom-tab-selected", **{"data-tab": "dashboard"}),
+            html.Button("Sensors", id="btn-sensors", n_clicks=0, className="custom-tab", **{"data-tab": "sensors"}),
+            html.Button("Miners", id="btn-miners", n_clicks=0, className="custom-tab", **{"data-tab": "miners"}),
+            html.Button("Electricity", id="btn-electricity", n_clicks=0, className="custom-tab", **{"data-tab": "electricity"}),
+            html.Button("Battery", id="btn-battery", n_clicks=0, className="custom-tab", **{"data-tab": "battery"}),
+            html.Button("Water Heater", id="btn-heater", n_clicks=0, className="custom-tab", **{"data-tab": "heater"}),
+            html.Button("Wall-Box", id="btn-wallbox", n_clicks=0, className="custom-tab", **{"data-tab": "wallbox"}),
+            html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab": "settings"}),
+            html.Button("Dev", id="btn-dev", n_clicks=0, className="custom-tab", style=({} if SHOW_DEV_TAB else {"display": "none"})),
+        ], className="tab-group"),
+
+        # Premium ganz rechts
         html.Button("Activate Premium", id="btn-premium",
-                    n_clicks=0, className="custom-tab premium-btn"),
+                n_clicks=0, className="custom-tab premium-btn premium-right"),
+        # html.Div([
+        #     html.Button("Activate Premium", id="btn-premium",
+        #                 n_clicks=0, className="custom-tab premium-btn"),
+        # ], className="premium-right"),
     ], id="tab-buttons", className="header-bar"),
 
-    html.Div(id="tabs-content", style={"marginTop": "10px"})
+    # html.Div(id="tabs-content", style={"marginTop": "10px"})
+    html.Div(id="tabs-content", className="content-area")
 ])
 
 @app.callback(
