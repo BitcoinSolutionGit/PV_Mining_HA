@@ -3,6 +3,7 @@ import requests
 import dash
 import flask
 import urllib.parse
+import time
 import json
 
 from dash import html, dcc, no_update
@@ -411,16 +412,18 @@ def oauth_finish_prefixed():
 @app.callback(
     Output("flash-area", "children"),
     Output("premium-enabled", "data"),
+    Output("flash-visible-until", "data"),
     Input("url", "hash"),
     Input("flash-poll", "n_intervals"),
     State("premium-enabled", "data"),
+    State("flash-visible-until", "data"),
     prevent_initial_call=False
 )
-def flash_and_premium(hash_, _n, premium_state):
+def flash_and_premium(hash_, _n, premium_state, visible_until):
     """
-    Zeigt Toasts, wenn der Hash (#premium=ok | #premium_error=CODE) gesetzt wurde,
-    und aktualisiert premium-enabled NUR wenn sich der Wert ändert.
-    Zusätzlich: fallback auf serverseitiges ui_flash (one-shot), falls gesetzt.
+    Zeigt Toasts, wenn der Hash (#premium=ok | #premium_error=CODE) gesetzt wurde
+    oder serverseitiges ui_flash vorhanden ist.
+    Auto-Hide: nach 10 Sekunden wird der Toast automatisch ausgeblendet.
     """
     messages = {
         "tier_too_low":         "Sponsorship too low: at least $10/month or $100 one-time.",
@@ -431,21 +434,23 @@ def flash_and_premium(hash_, _n, premium_state):
         "no_token":             "GitHub did not return a token. Please try again.",
         "redeem_failed":        "Could not redeem the license.",
         "redeem_exception":     "Network/server error while redeeming the license.",
-        "missing_grant": "Login did not complete correctly. Please try again.",
+        "missing_grant":        "Login did not complete correctly. Please try again.",
         "premium_ok":           "Premium activated.",
-        # ✔️
     }
-    style_ok = {"background":"#eaffea","border":"1px solid #27ae60","padding":"10px","borderRadius":"8px","fontWeight":"bold"}
-    style_err= {"background":"#ffecec","border":"1px solid #e74c3c","padding":"10px","borderRadius":"8px","fontWeight":"bold"}
+    style_ok  = {"background":"#eaffea","border":"1px solid #27ae60","padding":"10px","borderRadius":"8px","fontWeight":"bold"}
+    style_err = {"background":"#ffecec","border":"1px solid #e74c3c","padding":"10px","borderRadius":"8px","fontWeight":"bold"}
+
+    now = time.time()
+    toast = None
+    new_visible_until = dash.no_update
 
     # 1) Hash auswerten (kommt via postMessage/storage aus /oauth/finish)
-    toast = None
     if hash_:
         h = (hash_ or "").lstrip("#")
         if h == "premium=ok" or h.startswith("premium=ok"):
             toast = html.Div(messages["premium_ok"], style=style_ok)
         elif h.startswith("premium_error="):
-            code = h.split("=",1)[1]
+            code = h.split("=", 1)[1]
             text = messages.get(code, f"Error: {code}")
             toast = html.Div(text, style=style_err)
 
@@ -467,12 +472,30 @@ def flash_and_premium(hash_, _n, premium_state):
         except Exception as e:
             print("[FLASH] read error:", e, flush=True)
 
+    # --- Auto-Hide-Logik ---
+    if toast is not None:
+        # Nur starten, wenn NICHT schon ein aktiver Toast läuft (verhindert Reset bei jedem Poll)
+        if visible_until and now < float(visible_until):
+            toast = dash.no_update
+            new_visible_until = visible_until
+        else:
+            new_visible_until = now + 10.0  # 10 Sekunden sichtbar
+    else:
+        # Kein neuer Toast – ggf. vorhandenen nach Ablauf entfernen
+        if visible_until and now >= float(visible_until):
+            toast = ""  # clear
+            new_visible_until = 0
+        else:
+            toast = dash.no_update
+            new_visible_until = dash.no_update
+
     # 3) premium-enabled nur aktualisieren, wenn sich der Wert tatsächlich ändert
     current_enabled = bool((premium_state or {}).get("enabled"))
     now_enabled = is_premium_enabled()
-    premium_out = {"enabled": now_enabled} if (now_enabled != current_enabled) else no_update
+    premium_out = {"enabled": now_enabled} if (now_enabled != current_enabled) else dash.no_update
 
-    return (toast or no_update), premium_out
+    return toast, premium_out, new_visible_until
+
 
 
 @app.server.route('/config-icon')
@@ -896,6 +919,7 @@ app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
     dcc.Store(id="premium-enabled", data={"enabled": is_premium_enabled()}),
     dcc.Store(id="prio-order", storage_type="local"),
+    dcc.Store(id="flash-visible-until", data=0),
     dcc.Interval(id="flash-poll", interval=2000, n_intervals=0),
     dcc.Location(id="url", refresh=False),
     html.Div(id="flash-area", style={"margin":"8px 0"}),
