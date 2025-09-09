@@ -847,8 +847,10 @@ app.index_string = '''
                 position: static;               /* normaler Flow */
                 width: 32px;
                 height: 32px;
+                margin-right:8px;
                 cursor: pointer; 
                 order: 0; 
+                flex:0 0 auto; 
               }
               
               /* Tab-Container selbst ist auch Flex (damit Buttons schön umbrechen) */
@@ -857,12 +859,20 @@ app.index_string = '''
                 flex-wrap: wrap;
                 gap: 8px;
                 order: 1;                  /* dann die Tabs */
+                flex:1 1 0;         /* darf schrumpfen und den Platz teilen */
+                min-width:0;        /* WICHTIG: min-content Schranke aufheben */
+                width:auto;         /* überschreibt evtl. alte width:100%-Regeln */
               }
+              
+              .custom-tab{ flex:0 0 auto; } /* Tabs behalten natürliche Breite */
+              
               /* Premium NICHT nach rechts schieben – im Flow lassen */
               .header-bar .premium-right{
-                position: static;
-                margin-left: 0 !important; /* überschreibt evtl. globale Regeln */
-                order: 2;                  /* Premium hinter den Tabs */
+                position:static !important;
+                margin-left:0 !important;
+                right:auto !important; top:auto !important;
+                order:2;
+                flex:0 0 auto;
               }
   
               .page-title{ margin: 4px 0 0; }
