@@ -14,7 +14,7 @@ from ui_dashboard import layout as dashboard_layout, register_callbacks
 
 from services.btc_api import update_btc_data_periodically
 from services.license import set_token, verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
-from services.utils import get_addon_version, load_state, save_state, iso_now
+from services.utils import get_addon_version, load_state, save_state, iso_now, load_yaml
 from services.power_planner import plan_and_allocate_auto
 from services.settings_store import get_var as settings_get
 from urllib.parse import urlparse, parse_qs
@@ -135,11 +135,15 @@ print(f"[INFO] Dash runs with requests_pathname_prefix = {prefix}")
 server = app.server  # Dash-Server
 
 
-def _truthy_str(x) -> bool:
-    return str(x or "").strip().lower() in ("1","true","yes","on")
+def _show_dev_tab() -> bool:
+    try:
+        cfg = load_yaml(CONFIG_PATH, {}) or {}
+        ff  = cfg.get("feature_flags") or {}
+        return bool(ff.get("show_dev_tab", False))
+    except Exception:
+        return False
 
-SHOW_DEV_TAB = _truthy_str(settings_get("feature_flags.show_dev_tab", False))
-
+SHOW_DEV_TAB = _show_dev_tab()
 
 def _merge_qs_and_hash(search: str | None, hash_: str | None) -> dict:
     """Liest sowohl ?a=b als auch #a=b und merged die Parameter."""
@@ -515,7 +519,7 @@ def toggle_premium_button(data):
     State("premium-enabled", "data"),
     prevent_initial_call=True
 )
-def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, premium_data):
+def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, n9, premium_data):
     enabled = bool((premium_data or {}).get("enabled"))
     ctx = dash.callback_context
     if not ctx.triggered:
@@ -604,6 +608,15 @@ def style_miners_button(premium_data, active_tab):
     classes.append("wallbox-premium-ok" if enabled else "wallbox-premium-locked")
     return " ".join(classes)
 
+def _show_dev_tab() -> bool:
+    try:
+        from services.utils import load_yaml
+        cfg = load_yaml(CONFIG_PATH, {}) or {}
+        ff  = cfg.get("feature_flags") or {}
+        return bool(ff.get("show_dev_tab", False))
+    except Exception:
+        return False
+
 @app.callback(
     Output("tabs-content", "children"),
     Input("active-tab", "data"),
@@ -629,7 +642,7 @@ def render_tab(tab, premium_data):
     if tab == "settings":
         return settings_layout()
     if tab == "dev":
-        return dev_layout() if SHOW_DEV_TAB else html.Div()
+        return dev_layout() if _show_dev_tab() else dashboard_layout()
     return dashboard_layout()
 
 
@@ -872,9 +885,7 @@ app.layout = html.Div([
     dcc.Store(id="active-tab", data="dashboard"),
     dcc.Store(id="premium-enabled", data={"enabled": is_premium_enabled()}),
     dcc.Store(id="prio-order", storage_type="local"),
-
     dcc.Interval(id="flash-poll", interval=2000, n_intervals=0),
-
     dcc.Location(id="url", refresh=False),
     html.Div(id="flash-area", style={"margin":"8px 0"}),
 
