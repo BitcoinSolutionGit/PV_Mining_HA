@@ -6,3 +6,11 @@ feature_flags:
   show_dev_tab: false
   show_battery_tab: false
   show_wallbox_tab: false
+
+ui_price_thresholds:
+  market:
+    green_eur_kwh: 0.10
+    yellow_eur_kwh: 0.20
+  blended:
+    green_eur_kwh: 0.10
+    yellow_eur_kwh: 0.20

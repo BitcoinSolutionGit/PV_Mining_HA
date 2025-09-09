@@ -123,8 +123,8 @@ def currency_symbol():
 def price_color(v: float | None) -> str:
     if v is None:
         return "#888888"
-    if v < 0.15:
+    if v < 0.10:
         return "#27ae60"  # grün
-    if v <= 0.25:
+    if v <= 0.20:
         return "#f1c40f"  # gelb
     return "#e74c3c"      # rot

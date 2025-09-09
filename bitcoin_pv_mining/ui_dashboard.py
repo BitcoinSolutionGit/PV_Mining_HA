@@ -8,7 +8,7 @@ from dash.dependencies import Input, Output
 
 from services.ha_sensors import get_sensor_value
 from services.utils import load_yaml
-from services.electricity_store import current_price, currency_symbol, price_color
+from services.electricity_store import current_price, currency_symbol, get_var as elec_get
 from services.heater_store import resolve_entity_id as heater_resolve_entity, get_var as heat_get_var
 from services.miners_store import list_miners
 from services.cooling_store import get_cooling
@@ -53,12 +53,43 @@ def resolve_sensor_id(kind: str) -> str:
         return (m.get(key) or "").strip()
     return _mget(DASHB_OVR, kind) or _mget(DASHB_DEF, kind)
 
-def _dot(color):
-    return html.Span("", style={
-        "display": "inline-block", "width": "10px", "height": "10px",
-        "borderRadius": "50%", "backgroundColor": color, "marginRight": "8px",
-        "verticalAlign": "middle"
-    })
+def _dot(color, size="1em"):
+    return html.Span(
+        "",
+        style={
+            "display": "inline-block",
+            "width": size,
+            "height": size,
+            "borderRadius": "50%",
+            "backgroundColor": color,
+            "marginRight": "8px",
+            # slight negative to sit nicely on the baseline
+            "verticalAlign": "-0.15em",
+        },
+    )
+
+def _icon(kind: str):
+    # nice, readable defaults
+    if kind == "temp":
+        ch, color = "🌡️", "#d35400"
+    elif kind == "btc":
+        ch, color = "₿", "#f7931a"
+    elif kind == "hash":
+        ch, color = "🖥️", "#444444"
+    else:
+        ch, color = "•", "#444444"
+    return html.Span(
+        ch,
+        style={
+            "marginRight": "8px",
+            "fontSize": "1.1em",
+            "lineHeight": "1",
+            "verticalAlign": "-0.1em",
+            "color": color,
+            "fontWeight": "600" if kind == "btc" else "400",
+        },
+    )
+
 
 def _fmt_price(v):
     # 3 Nachkommastellen, mit Komma statt Punkt (AT/DE-Style)
@@ -82,6 +113,61 @@ def _fmt_kw(v):
     # Komma-Format gewünscht? -> die nächste Zeile einkommentieren:
     # return f"{x:.2f} kW".replace(".", ",")
     return f"{x:.2f} kW"
+
+def _pv_cost_per_kwh() -> float:
+    """
+    Opportunitätskosten der PV gemäß Settings:
+    - policy: zero | feedin
+    - feedin: (Vergütung - fee_up) nicht negativ
+    """
+    try:
+        policy = (set_get("pv_cost_policy", "zero") or "zero").lower()
+        if policy != "feedin":
+            return 0.0
+
+        mode = (set_get("feedin_price_mode", "fixed") or "fixed").lower()
+        if mode == "sensor":
+            sens = set_get("feedin_price_sensor", "") or ""
+            try:
+                val = float(get_sensor_value(sens) or 0.0) if sens else 0.0
+            except Exception:
+                val = float(set_get("feedin_price_value", 0.0) or 0.0)
+        else:
+            val = float(set_get("feedin_price_value", 0.0) or 0.0)
+
+        fee_up = float(elec_get("network_fee_up_value", 0.0) or 0.0)
+        return max(val - fee_up, 0.0)
+    except Exception:
+        return 0.0
+
+def _thresh(path: str, default: float) -> float:
+    try:
+        return float(set_get(path, default) or default)
+    except Exception:
+        return default
+
+def _price_color_market(v: float) -> str:
+    """
+    Farbe für Marktpreis (inkl. Netz). Schwellwerte in €/kWh.
+    Optional konfigurierbar in pv_mining_local_config.yaml:
+      ui_price_thresholds:
+        market:   { green_eur_kwh: 0.15, yellow_eur_kwh: 0.30 }
+    """
+    g = _thresh("ui_price_thresholds.market.green_eur_kwh", 0.15)
+    y = _thresh("ui_price_thresholds.market.yellow_eur_kwh", 0.30)
+    return "#27ae60" if v <= g else ("#f39c12" if v <= y else "#e74c3c")
+
+def _price_color_blended(v: float) -> str:
+    """
+    Farbe für PV-adjusted (Net load cost). Schwellwerte i. d. R. niedriger als Market.
+    Optional konfigurierbar:
+      ui_price_thresholds:
+        blended:  { green_eur_kwh: 0.10, yellow_eur_kwh: 0.22 }
+    """
+    g = _thresh("ui_price_thresholds.blended.green_eur_kwh", 0.10)
+    y = _thresh("ui_price_thresholds.blended.yellow_eur_kwh", 0.22)
+    return "#27ae60" if v <= g else ("#f39c12" if v <= y else "#e74c3c")
+
 
 # ------------------------------
 # Farben
@@ -305,26 +391,63 @@ def register_callbacks(app):
     def update_btc_display(_):
         config = load_yaml(os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml"), {})
         entities = config.get("entities", {})
-        price = entities.get("sensor_btc_price", "N/A")
-        hashrate = entities.get("sensor_btc_hashrate", "N/A")
+        price = entities.get("sensor_btc_price")
+        hashrate = entities.get("sensor_btc_hashrate")
 
-        price_str = f"BTC Price: ${price:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if price else "–"
-        hashrate_str = f"Hashrate: {hashrate:,.2f} TH/s".replace(",", "X").replace(".", ",").replace("X", ".") if hashrate else "–"
-        return price_str, hashrate_str
+        if isinstance(price, (int, float)):
+            price_str = f"BTC Price: ${price:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        else:
+            price_str = "BTC Price: –"
+
+        if isinstance(hashrate, (int, float)):
+            hashrate_str = f"Hashrate: {hashrate:,.2f} TH/s".replace(",", "X").replace(".", ",").replace("X", ".")
+        else:
+            hashrate_str = "Hashrate: –"
+
+        return (
+            html.Span([_icon("btc"), price_str]),
+            html.Span([_icon("hash"), hashrate_str]),
+        )
 
     @app.callback(
+        Output("elec-market", "children"),
         Output("elec-price", "children"),
         Input("pv-update", "n_intervals")  # alle 10s aktualisieren
     )
-    def update_electricity_price(_):
-        v = current_price()
+    def update_energy_prices(_):
         sym = currency_symbol()
-        color = price_color(v)
-        if v is None:
-            text = "Energy Price: –"
-        else:
-            text = f"Energy Price: {_fmt_price(v)} {sym}/kWh"
-        return html.Span([_dot(color), text])
+
+        # --- 1) Market price inkl. Netzgebühr (down) ---
+        base = current_price() or 0.0
+        fee_down = float(elec_get("network_fee_down_value", 0.0) or 0.0)
+        market = (base or 0.0) + fee_down
+        market_txt = f"Market Price (incl. grid): {_fmt_price(market)} {sym}/kWh"
+        market_color = _price_color_market(market)
+        market_out  = html.Span([_dot(market_color, "1em"), market_txt])
+
+        # --- 2) PV-adjusted (aktueller Mix PV/Grid) ---
+        try:
+            pv_id = resolve_sensor_id("pv_production")
+            grid_id = resolve_sensor_id("grid_consumption")
+            pv_val = float(get_sensor_value(pv_id) or 0.0)
+            grid_val = float(get_sensor_value(grid_id) or 0.0)
+            inflow = max(pv_val + grid_val, 0.0)
+
+            if inflow > 0.0:
+                pv_share = max(min(pv_val / inflow, 1.0), 0.0)
+                grid_share = 1.0 - pv_share
+            else:
+                pv_share, grid_share = 0.0, 1.0
+
+            pv_cost = _pv_cost_per_kwh()
+            blended = pv_share * pv_cost + grid_share * market
+            blended_color = _price_color_blended(blended)
+            blended_txt = f"Net load cost (PV-adjusted): {_fmt_price(blended)} {sym}/kWh"
+            blended_out = html.Span([_dot(blended_color, "1em"), blended_txt])
+        except Exception:
+            blended_out = html.Span([_dot("#888", "1em"), "Net load cost (PV-adjusted): –"])
+
+        return market_out, blended_out
 
     @app.callback(
         Output("dashboard-water-temp", "children"),
@@ -333,10 +456,10 @@ def register_callbacks(app):
     def update_dashboard_water_temp(_):
         entity_id = heater_resolve_entity("input_warmwasser_cache")
         if not entity_id:
-            return "Water Temp: –"
+            return html.Span([_icon("temp"), "Water Temp: –"])
         val = get_sensor_value(entity_id)
-        unit = heat_get_var("heat_unit", "°C")  # aus heater_store.yaml lesen
-        return f"Water Temp: {_fmt_temp(val, unit)}"
+        unit = heat_get_var("heat_unit", "°C")
+        return html.Span([_icon("temp"), f"Water Temp: {_fmt_temp(val, unit)}"])
 
 
 # ------------------------------
@@ -365,7 +488,8 @@ def layout():
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
 
         html.Div([
-            html.Div(id="elec-price", className="footer-stat"),
+            html.Div(id="elec-market", className="footer-stat"),  # NEW: Marktpreis inkl. Netz
+            html.Div(id="elec-price", className="footer-stat"),  # PV-adjusted (bisheriger)
             html.Div(id="dashboard-water-temp", className="footer-stat"),
             html.Div(id="btc-price", className="footer-stat"),
             html.Div(id="btc-hashrate", className="footer-stat"),
