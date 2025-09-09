@@ -617,6 +617,17 @@ def _show_dev_tab() -> bool:
     except Exception:
         return False
 
+@server.route("/debug/clear_token")
+@server.route(f"{prefix}debug/clear_token")
+def debug_clear_token():
+    try:
+        from services.license import set_token, verify_license
+        set_token("")          # Token entfernen
+        verify_license()       # Status neu bewerten
+        return "OK (token cleared)", 200
+    except Exception as e:
+        return f"ERR: {e}", 500
+
 @app.callback(
     Output("tabs-content", "children"),
     Input("active-tab", "data"),
