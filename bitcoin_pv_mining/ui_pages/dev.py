@@ -1,138 +1,115 @@
 # ui_pages/dev.py
-import os
-import urllib.parse
-import requests
-
-import dash
-from dash import html, dcc, no_update
+import os, requests
+from dash import html, dcc
 from dash.dependencies import Input, Output, State
 
-from services.utils import load_state
+from services.utils import load_state, save_state, iso_now
 from services.license import set_token, verify_license, is_premium_enabled
 
 LICENSE_BASE_URL = os.getenv("LICENSE_BASE_URL", "https://license.bitcoinsolution.at")
 
 def layout():
     return html.Div([
-        html.H2("Developer Tools"),
-        html.Div("This page is visible only when feature_flags.show_dev_tab = true in pv_mining_local_config.yaml.",
-                 style={"opacity": 0.7, "marginBottom": "12px"}),
+        html.H3("Developer Tools"),
+        html.P("This page is visible only when feature_flags.show_dev_tab = true in pv_mining_local_config.yaml."),
 
-        # --- install_id row ---
         html.Div([
-            html.Button("Get install_id", id="dev-get-install", className="custom-tab"),
-            dcc.Input(id="dev-install-id", type="text", readOnly=True, style={"marginLeft":"10px", "minWidth":"420px"}),
-        ], style={"display":"flex","alignItems":"center","gap":"8px"}),
+            html.Button("Get install_id", id="dev-btn-install", className="custom-tab"),
+            dcc.Input(id="dev-install-id", value="", readOnly=True, style={"width":"420px","marginLeft":"8px"}),
+        ], style={"marginBottom":"10px"}),
 
         html.Hr(),
 
-        # --- Admin key + request grant ---
         html.Div([
             html.Label("Admin API key (not stored)"),
-            dcc.Input(id="dev-admin-key", type="password", style={"minWidth":"420px"}),
-        ], style={"marginTop":"6px"}),
+            dcc.Input(id="dev-admin-key", type="password", value="", style={"width":"520px"}),
+        ], style={"margin":"6px 0"}),
 
         html.Div([
-            html.Button("Request DEV grant", id="dev-request-grant", className="custom-tab"),
-            dcc.Input(id="dev-grant", type="text", placeholder="grant will appear here…",
-                      style={"marginLeft":"10px","minWidth":"420px"}),
-        ], style={"display":"flex","alignItems":"center","gap":"8px","marginTop":"8px"}),
+            html.Button("Request DEV grant", id="dev-btn-grant", className="custom-tab"),
+            dcc.Input(id="dev-grant", value="", style={"width":"520px","marginLeft":"8px"}),
+        ], style={"margin":"6px 0"}),
 
-        html.Div(id="dev-admin-status", style={"marginTop":"6px","fontWeight":"bold"}),
-
+        html.Div(id="dev-grant-status", style={"marginTop":"6px","opacity":0.8}),
         html.Hr(),
 
-        # --- Redeem grant locally ---
-        html.Div([
-            html.Button("Redeem grant (apply in addon)", id="dev-redeem", className="custom-tab"),
-            html.Span(id="dev-redeem-status", style={"marginLeft":"10px","fontWeight":"bold"}),
-        ], style={"display":"flex","alignItems":"center","gap":"8px","marginTop":"6px"}),
+        html.Button("Redeem grant (apply in addon)", id="dev-btn-redeem", className="custom-tab"),
+        html.Div(id="dev-redeem-status", style={"marginTop":"8px","fontWeight":"bold"}),
 
-        # one-shot to auto-fill install_id on open
-        dcc.Interval(id="dev-once", interval=1, n_intervals=0, max_intervals=1),
-    ], style={"maxWidth":"900px"})
+    ], style={"border":"2px dashed #999","borderRadius":"8px","padding":"10px","background":"#fcfcfc"})
 
 def register_callbacks(app):
 
+    # kleine lokale Flash-Hilfe (identisch zum Verhalten in main)
+    def _flash(level: str, code: str) -> None:
+        try:
+            st = load_state()
+            st["ui_flash"] = {"level": level, "code": code, "ts": iso_now()}
+            save_state(st)
+        except Exception as e:
+            print("[DEV] flash error:", e, flush=True)
+
     @app.callback(
         Output("dev-install-id", "value"),
-        Input("dev-get-install", "n_clicks"),
-        Input("dev-once", "n_intervals"),
-        prevent_initial_call=False
+        Input("dev-btn-install", "n_clicks"),
+        prevent_initial_call=True
     )
-    def _fill_install_id(_btn, _once):
-        try:
-            install_id = (load_state() or {}).get("install_id") or ""
-            return install_id
-        except Exception:
-            return ""
+    def _get_install_id(_n):
+        st = load_state()
+        return st.get("install_id", "unknown-install")
 
     @app.callback(
         Output("dev-grant", "value"),
-        Output("dev-admin-status", "children"),
-        Input("dev-request-grant", "n_clicks"),
-        State("dev-install-id", "value"),
+        Output("dev-grant-status", "children"),
+        Input("dev-btn-grant", "n_clicks"),
         State("dev-admin-key", "value"),
+        State("dev-install-id", "value"),
         prevent_initial_call=True
     )
-    def _request_grant(n, install_id, admin_key):
-        if not n:
-            raise dash.exceptions.PreventUpdate
-        if not (install_id and admin_key):
-            return no_update, "Please provide install_id and Admin API key."
-
+    def _request_grant(_n, admin_key, install_id):
+        if not admin_key or not install_id:
+            return "", "Need Admin key AND install_id."
         try:
-            params = {
-                "key": admin_key,
-                "install_id": install_id,
-                "status": "ok",
-                "create": "1",
-            }
-            url = f"{LICENSE_BASE_URL}/admin/pending_set.php?" + urllib.parse.urlencode(params, safe="")
-            # bewusst keine Ausgabe des Keys ins Log
-            headers = {"User-Agent": "pv-mining-addon/dev-panel", "Accept": "application/json"}
-            r = requests.get(url, headers=headers, timeout=10)
-            js = {}
-            if r.headers.get("content-type","").startswith("application/json"):
-                js = r.json()
-            if r.ok and js.get("ok") and js.get("grant"):
-                return js["grant"], "Grant created."
-            # Fehlerfall
-            err = js.get("error") or js.get("err") or f"http {r.status_code}"
-            return no_update, f"Request failed: {err}"
+            url = (f"{LICENSE_BASE_URL}/admin/pending_set.php"
+                   f"?key={requests.utils.quote(admin_key)}"
+                   f"&install_id={requests.utils.quote(install_id)}"
+                   f"&status=ok&create=1")
+            r = requests.get(url, timeout=10)
+            j = r.json()
+            if j.get("ok") and j.get("grant"):
+                return j["grant"], "Grant created."
+            return "", f"Failed: {j}"
         except Exception as e:
-            return no_update, f"Exception: {e}"
+            return "", f"Error: {e!r}"
 
     @app.callback(
         Output("dev-redeem-status", "children"),
-        Output("premium-enabled", "data", allow_duplicate=True),
-        Input("dev-redeem", "n_clicks"),
+        Input("dev-btn-redeem", "n_clicks"),
         State("dev-grant", "value"),
         State("dev-install-id", "value"),
         prevent_initial_call=True
     )
-    def _redeem(n, grant, install_id):
-        if not n:
-            raise dash.exceptions.PreventUpdate
+    def _redeem(_n, grant, install_id):
         if not grant:
-            return "Please provide a grant code.", no_update
+            return "No grant."
         try:
             r = requests.post(f"{LICENSE_BASE_URL}/redeem.php",
-                              json={"grant": str(grant), "install_id": str(install_id or "")},
-                              headers={"Accept":"application/json"},
-                              timeout=12)
-            js = {}
-            if r.headers.get("content-type","").startswith("application/json"):
-                js = r.json()
-
-            if r.ok and js.get("ok") and js.get("token"):
-                # lokal aktivieren
-                set_token(js["token"])
+                              json={"grant": grant, "install_id": install_id or ""},
+                              timeout=10)
+            j = r.json() if r.headers.get("content-type","").startswith("application/json") else {}
+            if j.get("ok") and j.get("token"):
+                # wende Token lokal an + Lizenz frisch prüfen
+                set_token(j["token"])
                 verify_license()
-                return "Premium activated.", {"enabled": bool(is_premium_enabled())}
 
-            err = js.get("err") or js.get("error") or f"http {r.status_code}"
-            return f"Redeem failed: {err}", no_update
+                # trigger Toast in bestehendem flash-poll
+                _flash("ok", "premium_ok")
 
+                # zur Sicherheit ausgeben, was premium jetzt sagt
+                return f"Redeemed. premium_enabled={is_premium_enabled()}"
+            else:
+                _flash("error", "redeem_failed")
+                return f"Redeem failed: {j}"
         except Exception as e:
-            return f"Exception: {e}", no_update
+            _flash("error", "redeem_exception")
+            return f"Redeem exception: {e!r}"

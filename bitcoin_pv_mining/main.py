@@ -654,7 +654,7 @@ reg_battery(app)            # battery
 reg_heater(app)             # heater
 reg_wallbox(app)            # wallbox
 reg_settings(app)           # settings
-if SHOW_DEV_TAB:
+if _show_dev_tab():
     try:
         reg_dev(app)
     except Exception as e:
