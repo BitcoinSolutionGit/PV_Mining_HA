@@ -811,8 +811,17 @@ app.index_string = '''
                 top: 6px;
                 width: 96px;
                 height: 96px;
-                pointer-events: none;
+                cursor: pointer; 
               }
+              
+              /* Premium-Button ganz rechts im Flex-Header */
+                .header-bar .premium-right {
+                position: absolute;
+                right: calc(12px - var(--header-side-pad));
+                top: 6px;
+                  margin-left: auto !important;   /* schiebt ihn an den rechten Rand */
+                }
+              
               .page-title{
                 margin: 2px 0 0;                /* direkt unter die Tabs */
                 line-height: 1.2;
@@ -826,27 +835,39 @@ app.index_string = '''
               .header-bar{
                 position: relative;
                 display: flex;
+                flex-wrap: wrap; 
                 justify-content: center;
                 align-items: center;
-                gap: 12px;
+                gap: 8px;
                 padding: 8px 12px;              /* kein extra linker Platz nötig */
                 margin-bottom: 4px;
               }
+              
               .header-icon{
                 position: static;               /* normaler Flow */
                 width: 32px;
                 height: 32px;
+                cursor: pointer; 
+                order: 0; 
               }
+              
+              /* Tab-Container selbst ist auch Flex (damit Buttons schön umbrechen) */
+              .tab-group{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                order: 1;                  /* dann die Tabs */
+              }
+              /* Premium NICHT nach rechts schieben – im Flow lassen */
+              .header-bar .premium-right{
+                position: static;
+                margin-left: 0 !important; /* überschreibt evtl. globale Regeln */
+                order: 2;                  /* Premium hinter den Tabs */
+              }
+  
               .page-title{ margin: 4px 0 0; }
             }
 
-            /* Premium-Button ganz rechts im Flex-Header */
-            .header-bar .premium-right {
-            position: absolute;
-            right: calc(12px - var(--header-side-pad));
-            top: 6px;
-              margin-left: auto !important;   /* schiebt ihn an den rechten Rand */
-            }
 
             /* Premium-Rahmenfarben an Buttons (Battery/Heater/Wallbox) */
             .custom-tab.battery-premium-ok { border-color: #27ae60 !important; }
@@ -1040,7 +1061,19 @@ app.layout = html.Div([
     html.Div(id="planner-heartbeat", style={"display": "none"}),        # Dummy-Output
 
     html.Div([
-        html.Img(src=f"{prefix}config-icon", className="header-icon"),
+        # html.Img(src=f"{prefix}config-icon", className="header-icon"),
+        html.A(
+            html.Img(
+                src=f"{prefix}config-icon",
+                className="header-icon",
+                alt="BitcoinSolution.at"
+            ),
+            href="https://www.bitcoinsolution.at",
+            target="_blank",
+            rel="noopener noreferrer",
+            id="brand-link",
+            style={"display": "block"}
+        ),
 
         # zentrierte Tab-Gruppe
         html.Div([
