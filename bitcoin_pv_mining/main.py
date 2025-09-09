@@ -16,6 +16,7 @@ from services.btc_api import update_btc_data_periodically
 from services.license import set_token, verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
 from services.utils import get_addon_version, load_state, save_state, iso_now
 from services.power_planner import plan_and_allocate_auto
+from services.settings_store import get_var as settings_get
 from urllib.parse import urlparse, parse_qs
 
 from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
@@ -25,6 +26,7 @@ from ui_pages.battery import layout as battery_layout, register_callbacks as reg
 from ui_pages.wallbox import layout as wallbox_layout, register_callbacks as reg_wallbox
 from ui_pages.heater import layout as heater_layout, register_callbacks as reg_heater
 from ui_pages.settings import layout as settings_layout, register_callbacks as reg_settings
+from ui_pages.dev import layout as dev_layout, register_callbacks as reg_dev
 from ui_pages.common import footer_license
 
 # beim Start
@@ -131,6 +133,12 @@ from flask import send_from_directory
 print(f"[INFO] Dash runs with requests_pathname_prefix = {prefix}")
 
 server = app.server  # Dash-Server
+
+
+def _truthy_str(x) -> bool:
+    return str(x or "").strip().lower() in ("1","true","yes","on")
+
+SHOW_DEV_TAB = _truthy_str(settings_get("feature_flags.show_dev_tab", False))
 
 
 def _merge_qs_and_hash(search: str | None, hash_: str | None) -> dict:
@@ -494,6 +502,7 @@ def toggle_premium_button(data):
     Output("btn-heater", "className"),
     Output("btn-wallbox", "className"),
     Output("btn-settings","className"),
+    Output("btn-dev","className"),
     Input("btn-dashboard", "n_clicks"),
     Input("btn-sensors", "n_clicks"),
     Input("btn-miners", "n_clicks"),
@@ -502,6 +511,7 @@ def toggle_premium_button(data):
     Input("btn-heater", "n_clicks"),
     Input("btn-wallbox", "n_clicks"),
     Input("btn-settings","n_clicks"),
+    Input("btn-dev","n_clicks"),
     State("premium-enabled", "data"),
     prevent_initial_call=True
 )
@@ -527,6 +537,8 @@ def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, premium_data):
         target = "wallbox" if enabled else "dashboard"  # Premium required
     elif btn == "btn-settings":
         target = "settings"
+    elif btn == "btn-dev":
+        target = "dev"
 
     return (
         target,
@@ -538,6 +550,7 @@ def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, premium_data):
         "custom-tab custom-tab-selected" if target == "heater" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "wallbox" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "settings" else "custom-tab",
+        "custom-tab custom-tab-selected" if target == "dev" else "custom-tab",
     )
 
 def premium_upsell():
@@ -615,6 +628,8 @@ def render_tab(tab, premium_data):
         return wallbox_layout()
     if tab == "settings":
         return settings_layout()
+    if tab == "dev":
+        return dev_layout() if SHOW_DEV_TAB else html.Div()
     return dashboard_layout()
 
 
@@ -626,7 +641,11 @@ reg_battery(app)            # battery
 reg_heater(app)             # heater
 reg_wallbox(app)            # wallbox
 reg_settings(app)           # settings
-
+if SHOW_DEV_TAB:
+    try:
+        reg_dev(app)
+    except Exception as e:
+        print(f"[dev] register error: {e}", flush=True)
 
 app.index_string = '''
 <!DOCTYPE html>
@@ -873,7 +892,7 @@ app.layout = html.Div([
         html.Button("Water Heater", id="btn-heater", n_clicks=0, className="custom-tab", **{"data-tab": "heater"}),
         html.Button("Wall-Box", id="btn-wallbox", n_clicks=0, className="custom-tab", **{"data-tab": "wallbox"}),
         html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab":"settings"}),
-
+        html.Button("Dev", id="btn-dev", n_clicks=0, className="custom-tab", style=({} if SHOW_DEV_TAB else {"display":"none"})),
 
         # Spacer + Premium-Button ganz rechts
         html.Div(style={"flex": "1"}),
