@@ -144,7 +144,28 @@ def _show_dev_tab() -> bool:
     except Exception:
         return False
 
+def _show_battery_tab() -> bool:
+    try:
+        from services.utils import load_yaml
+        cfg = load_yaml(CONFIG_PATH, {}) or {}
+        ff  = cfg.get("feature_flags") or {}
+        return bool(ff.get("show_battery_tab", False))
+    except Exception:
+        return False
+
+def _show_wallbox_tab() -> bool:
+    try:
+        from services.utils import load_yaml
+        cfg = load_yaml(CONFIG_PATH, {}) or {}
+        ff  = cfg.get("feature_flags") or {}
+        return bool(ff.get("show_wallbox_tab", False))
+    except Exception:
+        return False
+
 SHOW_DEV_TAB = _show_dev_tab()
+SHOW_BATTERY_TAB = _show_battery_tab()
+SHOW_WALLBOX_TAB = _show_wallbox_tab()
+
 
 def _merge_qs_and_hash(search: str | None, hash_: str | None) -> dict:
     """Liest sowohl ?a=b als auch #a=b und merged die Parameter."""
@@ -557,11 +578,11 @@ def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, n9, premium_data):
     elif btn == "btn-electricity":
         target = "electricity"
     elif btn == "btn-battery":
-        target = "battery" if enabled else "dashboard"  # Premium required
+        target = "battery" if (SHOW_BATTERY_TAB and enabled) else "dashboard"  # Premium required
     elif btn == "btn-heater":
         target = "heater" if enabled else "dashboard"   # Premium required
     elif btn == "btn-wallbox":
-        target = "wallbox" if enabled else "dashboard"  # Premium required
+        target = "wallbox" if (SHOW_WALLBOX_TAB and enabled) else "dashboard"  # Premium required
     elif btn == "btn-settings":
         target = "settings"
     elif btn == "btn-dev":
@@ -668,11 +689,11 @@ def render_tab(tab, premium_data):
     if tab == "electricity":
         return electricity_layout()
     if tab == "battery":
-        return battery_layout()
+        return battery_layout() if SHOW_BATTERY_TAB else dashboard_layout()
     if tab == "heater":
         return heater_layout()
     if tab == "wallbox":
-        return wallbox_layout()
+        return wallbox_layout() if SHOW_WALLBOX_TAB else dashboard_layout()
     if tab == "settings":
         return settings_layout()
     if tab == "dev":
@@ -934,9 +955,9 @@ app.layout = html.Div([
         html.Button("Sensors", id="btn-sensors", n_clicks=0, className="custom-tab", **{"data-tab": "sensors"}),
         html.Button("Miners", id="btn-miners", n_clicks=0, className="custom-tab", **{"data-tab": "miners"}),
         html.Button("Electricity", id="btn-electricity", n_clicks=0, className="custom-tab", **{"data-tab": "electricity"}),
-        html.Button("Battery", id="btn-battery", n_clicks=0, className="custom-tab", **{"data-tab": "battery"}),
+        html.Button("Battery", id="btn-battery", n_clicks=0, className="custom-tab", **{"data-tab": "battery"}, style=({} if SHOW_BATTERY_TAB else {"display":"none"})),
         html.Button("Water Heater", id="btn-heater", n_clicks=0, className="custom-tab", **{"data-tab": "heater"}),
-        html.Button("Wall-Box", id="btn-wallbox", n_clicks=0, className="custom-tab", **{"data-tab": "wallbox"}),
+        html.Button("Wall-Box", id="btn-wallbox", n_clicks=0, className="custom-tab", **{"data-tab": "wallbox"}, style=({} if SHOW_WALLBOX_TAB else {"display":"none"})),
         html.Button("Settings", id="btn-settings", n_clicks=0, className="custom-tab", **{"data-tab":"settings"}),
         html.Button("Dev", id="btn-dev", n_clicks=0, className="custom-tab", style=({} if SHOW_DEV_TAB else {"display":"none"})),
 

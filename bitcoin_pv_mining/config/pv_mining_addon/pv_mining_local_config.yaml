@@ -4,3 +4,5 @@ feature_flags:
   wallbox_active: true
   battery_active: true
   show_dev_tab: false
+  show_battery_tab: false
+  show_wallbox_tab: false
