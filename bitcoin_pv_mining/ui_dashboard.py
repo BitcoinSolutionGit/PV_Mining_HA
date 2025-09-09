@@ -421,7 +421,7 @@ def register_callbacks(app):
         base = current_price() or 0.0
         fee_down = float(elec_get("network_fee_down_value", 0.0) or 0.0)
         market = (base or 0.0) + fee_down
-        market_txt = f"Market Price (incl. grid): {_fmt_price(market)} {sym}/kWh"
+        market_txt = f"Market Price: {_fmt_price(market)} {sym}/kWh"
         market_color = _price_color_market(market)
         market_out  = html.Span([_dot(market_color, "1em"), market_txt])
 

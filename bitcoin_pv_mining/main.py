@@ -813,10 +813,10 @@ app.index_string = '''
             .custom-tab.wallbox-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
             .custom-tab.wallbox-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
             
-            /* Footer (Desktop = eine Zeile, Mobile = 2 Spalten) */
+            /* Footer metrics — row on desktop, vertical stack on phones */
             .footer-stats {
               display: flex;
-              flex-wrap: wrap;
+              flex-wrap: wrap;             /* Desktop/Laptop: in einer Reihe, darf bei wenig Platz umbrechen */
               justify-content: center;
               gap: 40px;
               margin-top: 20px;
@@ -826,9 +826,18 @@ app.index_string = '''
               font-weight: bold;
               text-align: center;
             }
+            
+            /* Phone: untereinander (einspaltig) */
             @media (max-width: 680px) {
-              .footer-stats { gap: 12px; }
-              .footer-stat { flex: 0 0 calc(50% - 12px); }
+              .footer-stats {
+                flex-direction: column;    /* stapeln */
+                align-items: center;       /* zentriert wie bisher */
+                gap: 8px;
+              }
+              .footer-stat {
+                flex: 0 0 auto;
+                width: 100%;
+              }
             }
         </style>
     </head>
