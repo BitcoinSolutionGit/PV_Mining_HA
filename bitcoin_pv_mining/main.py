@@ -873,7 +873,7 @@ app.index_string = '''
                 position: static;               /* normaler Flow */
                 width: 32px;
                 height: 32px;
-                margin-right:8px;
+                # margin-right:8px;
                 cursor: pointer; 
                 order: 0; 
                 flex:0 0 auto; 
@@ -881,22 +881,29 @@ app.index_string = '''
               
               /* Tab-Container selbst ist auch Flex (damit Buttons schön umbrechen) */
               .tab-group{
-                display: flex;
-                flex-wrap: wrap;
-                gap: 8px;
-                order: 1;                  /* dann die Tabs */
-                flex:1 1 0;         /* darf schrumpfen und den Platz teilen */
-                min-width:0;        /* WICHTIG: min-content Schranke aufheben */
-                width:auto;         /* überschreibt evtl. alte width:100%-Regeln */
+                display: contents; 
+                # display: flex;
+                # flex-wrap: wrap;
+                # gap: 8px;
+                # order: 1;                  /* dann die Tabs */
+                # flex:1 1 0;         /* darf schrumpfen und den Platz teilen */
+                # min-width:0;        /* WICHTIG: min-content Schranke aufheben */
+                # width:auto;         /* überschreibt evtl. alte width:100%-Regeln */
               }
               
-              .custom-tab{ flex:0 0 auto; } /* Tabs behalten natürliche Breite */
+                .tab-group > .custom-tab{
+                    order: 1;                /* nach dem Icon */
+                    flex: 0 0 auto;          /* natürliche Breite */
+                }
+                
+              # .custom-tab{ flex:0 0 auto; } /* Tabs behalten natürliche Breite */
               
               /* Premium NICHT nach rechts schieben – im Flow lassen */
               .header-bar .premium-right{
-                position:static !important;
-                margin-left:0 !important;
-                right:auto !important; top:auto !important;
+                position: static !important;
+                # margin-left:0 !important;
+                right:auto !important; 
+                top:auto !important;
                 order:2;
                 flex:0 0 auto;
               }
@@ -922,6 +929,8 @@ app.index_string = '''
             .custom-tab.wallbox-premium-ok.custom-tab-selected { border-color: #27ae60 !important; }
             .custom-tab.wallbox-premium-locked.custom-tab-selected { border-color: #e74c3c !important; }
 
+
+
             /* Footer metrics — row on desktop, vertical stack on phones */
             .footer-stats {
               display: flex;
@@ -937,45 +946,8 @@ app.index_string = '''
               .footer-stat { flex: 0 0 auto; width: 100%; }
             }
 
-            # /* Abstände zwischen Tabs + Premium rechts */
-            # .header-bar { gap: 12px; }                       /* moderner Browser: einfacher Weg */
-            # 
-            # /* Fallback für Browser/Setups ohne flex-gap (setzt explizite Margins) */
-            # .header-bar .custom-tab { margin: 0 8px; }       /* kleiner horizontaler Abstand */
-            # .header-bar .custom-tab:first-of-type { margin-left: 0; }
-            # 
-            # .header-bar .spacer { flex: 1 1 auto; min-width: 12px; }  /* schiebt Premium nach rechts */
-            # 
-            # /* Mobile darf’s etwas enger sein */
-            # @media (max-width: 899px) {
-            #   .header-bar .custom-tab { margin: 4px 6px; }
-            #   .header-bar .premium-btn { margin-left: 6px; }
-            # }
-            # 
-            # /* Premium-Button fix an den rechten Rand (Desktop) */
-            # @media (min-width: 900px){
-            #   .header-bar { position: relative; }
-            #   .header-bar .premium-right{
-            #     position: absolute;
-            #     right: 12px;
-            #     top: 6px;
-            #     margin-left: 0 !important; /* überstimmt frühere margin-left-Regel */
-            #   }
-            # }
-            # 
-            # /* Mobil/Tablet: im Flow lassen, nach rechts schieben */
-            # @media (max-width: 899px){
-            #   .header-bar .premium-right{
-            #     position: static;
-            #     margin-left: auto !important;
-            #   }
-            # }
-            # 
-            # /* Grundabstand für alle Seiten */
-            # .content-area { margin-top: 10px; }
-            # 
-            
-
+            /* Grundabstand für alle Seiten */
+            .content-area { margin-top: 10px; }
         </style>
     </head>
     <body>
