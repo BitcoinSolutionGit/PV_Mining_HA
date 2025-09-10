@@ -794,6 +794,8 @@ app.index_string = '''
 
             :root { --header-side-pad: 140px; }
             
+            
+            
             /* Desktop: Icon absolut, Tabs zentriert, kaum Abstand nach unten */
             @media (min-width: 900px) {
               .header-bar{
@@ -814,21 +816,45 @@ app.index_string = '''
                 cursor: pointer; 
               }
               
-              /* Premium-Button ganz rechts im Flex-Header */
-                .header-bar .premium-right {
-                position: absolute;
-                right: calc(12px - var(--header-side-pad));
-                top: 6px;
-                  margin-left: auto !important;   /* schiebt ihn an den rechten Rand */
-                }
+              .header-bar .tab-group{
+               display: flex;
+               flex-wrap: wrap;
+               column-gap: 15px;   /* horizontaler Abstand */
+               row-gap: 15px;  
+                flex: 0 0 auto;            /* NICHT wachsen/strecken */
+                margin: 0 auto;            /* Block mittig im Header */
+                min-width: 0;              /* falls was min-content bremst */
+                
+                /* optional: damit sie nicht mit Icon/Premium kollidiert, je nach Größen: */
+                /* max-width: calc(100% - 260px); */
+              }
               
+              .custom-tab{ flex:0 0 auto; } /* Tabs behalten natürliche Breite */
+              
+              /* Premium-Button ganz rechts im Flex-Header */
+                .header-bar { position: relative; }
+                .header-bar .premium-right {
+                    position: absolute;
+                    right: 12px;
+                    top: 6px;
+                    margin-left: 0 !important;   /* schiebt ihn an den rechten Rand */
+                }
+                            
               .page-title{
                 margin: 2px 0 0;                /* direkt unter die Tabs */
                 line-height: 1.2;
                 font-size: clamp(26px, 2.4vw, 36px);
                 text-align: center;
               }
+              
+              /* Nur Desktop: Nicht-Dashboard etwas weiter nach unten schieben,
+               damit das große Icon nichts überlappt */
+            @media (min-width: 900px) {
+              .content-area.extra-pad { margin-top: 64px; } /* bei Bedarf 56–80px feinjustieren */
             }
+            }
+
+
 
             /* Mobile/Tablet: Icon wieder normal, Tabs wrappen; kleiner Abstand unten ok */
             @media (max-width: 899px) {
@@ -879,6 +905,7 @@ app.index_string = '''
             }
 
 
+
             /* Premium-Rahmenfarben an Buttons (Battery/Heater/Wallbox) */
             .custom-tab.battery-premium-ok { border-color: #27ae60 !important; }
             .custom-tab.battery-premium-locked { border-color: #e74c3c !important; }
@@ -910,48 +937,44 @@ app.index_string = '''
               .footer-stat { flex: 0 0 auto; width: 100%; }
             }
 
-            /* Abstände zwischen Tabs + Premium rechts */
-            .header-bar { gap: 12px; }                       /* moderner Browser: einfacher Weg */
-
-            /* Fallback für Browser/Setups ohne flex-gap (setzt explizite Margins) */
-            .header-bar .custom-tab { margin: 0 8px; }       /* kleiner horizontaler Abstand */
-            .header-bar .custom-tab:first-of-type { margin-left: 0; }
-
-            .header-bar .spacer { flex: 1 1 auto; min-width: 12px; }  /* schiebt Premium nach rechts */
-
-            /* Mobile darf’s etwas enger sein */
-            @media (max-width: 899px) {
-              .header-bar .custom-tab { margin: 4px 6px; }
-              .header-bar .premium-btn { margin-left: 6px; }
-            }
+            # /* Abstände zwischen Tabs + Premium rechts */
+            # .header-bar { gap: 12px; }                       /* moderner Browser: einfacher Weg */
+            # 
+            # /* Fallback für Browser/Setups ohne flex-gap (setzt explizite Margins) */
+            # .header-bar .custom-tab { margin: 0 8px; }       /* kleiner horizontaler Abstand */
+            # .header-bar .custom-tab:first-of-type { margin-left: 0; }
+            # 
+            # .header-bar .spacer { flex: 1 1 auto; min-width: 12px; }  /* schiebt Premium nach rechts */
+            # 
+            # /* Mobile darf’s etwas enger sein */
+            # @media (max-width: 899px) {
+            #   .header-bar .custom-tab { margin: 4px 6px; }
+            #   .header-bar .premium-btn { margin-left: 6px; }
+            # }
+            # 
+            # /* Premium-Button fix an den rechten Rand (Desktop) */
+            # @media (min-width: 900px){
+            #   .header-bar { position: relative; }
+            #   .header-bar .premium-right{
+            #     position: absolute;
+            #     right: 12px;
+            #     top: 6px;
+            #     margin-left: 0 !important; /* überstimmt frühere margin-left-Regel */
+            #   }
+            # }
+            # 
+            # /* Mobil/Tablet: im Flow lassen, nach rechts schieben */
+            # @media (max-width: 899px){
+            #   .header-bar .premium-right{
+            #     position: static;
+            #     margin-left: auto !important;
+            #   }
+            # }
+            # 
+            # /* Grundabstand für alle Seiten */
+            # .content-area { margin-top: 10px; }
+            # 
             
-            /* Premium-Button fix an den rechten Rand (Desktop) */
-            @media (min-width: 900px){
-              .header-bar { position: relative; }
-              .header-bar .premium-right{
-                position: absolute;
-                right: 12px;
-                top: 6px;
-                margin-left: 0 !important; /* überstimmt frühere margin-left-Regel */
-              }
-            }
-            
-            /* Mobil/Tablet: im Flow lassen, nach rechts schieben */
-            @media (max-width: 899px){
-              .header-bar .premium-right{
-                position: static;
-                margin-left: auto !important;
-              }
-            }
-            
-            /* Grundabstand für alle Seiten */
-            .content-area { margin-top: 10px; }
-            
-            /* Nur Desktop: Nicht-Dashboard etwas weiter nach unten schieben,
-               damit das große Icon nichts überlappt */
-            @media (min-width: 900px) {
-              .content-area.extra-pad { margin-top: 64px; } /* bei Bedarf 56–80px feinjustieren */
-            }
 
         </style>
     </head>
