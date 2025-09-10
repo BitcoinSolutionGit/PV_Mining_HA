@@ -3,6 +3,7 @@ import dash
 import os
 import time
 import logging, pathlib, datetime
+import requests
 
 from dash import no_update
 from dash import html, dcc, callback_context
@@ -28,6 +29,19 @@ CONFIG_DIR = "/config/pv_mining_addon"
 SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
 SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
 
+def _ha_headers():
+    tok = os.getenv("SUPERVISOR_TOKEN") or ""
+    return {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+
+def _ha_get_state_fresh(entity_id: str):
+    try:
+        r = requests.get(f"http://supervisor/core/api/states/{entity_id}",
+                         headers=_ha_headers(), timeout=5)
+        if not r.ok:
+            return None
+        return (r.json() or {}).get("state")
+    except Exception:
+        return None
 
 def _resolve_log_path(filename: str) -> str:
     # HA Add-on: /config ist vorhanden
@@ -526,8 +540,12 @@ def register_callbacks(app):
         cooling_running_now = (st == "on")
 
         def ready():
+            # Frische Abfrage + Timeout-Fallback
             if ready_ent:
-                return is_on_like(get_entity_state(ready_ent))
+                st = _ha_get_state_fresh(ready_ent)
+                if str(st).lower() in ("on", "true", "1"):
+                    return True
+                return _now() >= until  # Fallback: spätestens nach Timeout weiter
             return _now() >= until
 
         # Auto: nur wenn mind. ein Auto-Miner mit Cooling-Pflicht JETZT profitabel wäre
