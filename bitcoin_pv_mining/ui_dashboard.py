@@ -42,7 +42,7 @@ def _wallbox_power_kw():
 
 def _battery_power_kw():
     # bei dir später aus Store/Sensor – vorerst 0 = inaktiv → Ghost
-    return 0.0
+    return max(_battery_power_kw_live(), 0.0)
 
 def _battery_soc_percent():
     """SoC in % aus battery_store (None, falls nicht konfiguriert/lesbar)."""
@@ -397,38 +397,46 @@ def register_callbacks(app):
 
     @app.callback(
         Output("battery-gauge", "figure"),
-        Output("battery-power", "children"),
-        Input("pv-update", "n_intervals")
+        Output("battery-status", "children"),
+        Input("pv-update", "n_intervals"),
     )
-    def update_battery_gauge(_):
-        soc = _battery_soc_percent()
-        pkw = _battery_power_kw_live()
+    def update_battery(_n):
+        # Sensor-IDs
+        soc_eid = bat_get("soc_entity", "")
+        vdc_eid = bat_get("voltage_entity", "")
+        idc_eid = bat_get("current_entity", "")
 
-        # Anzeige-Logik für Power
-        eps = 0.02  # 20 W deadband
-        if pkw > eps:
-            state_txt = f"🔌 Charging: {pkw:.2f} kW"
-            color = "#27ae60"  # grün
-        elif pkw < -eps:
-            state_txt = f"⚡ Discharging: {abs(pkw):.2f} kW"
-            color = "#e74c3c"  # rot
+        # Werte sicher lesen
+        def f(eid, default=0.0):
+            try:
+                return float(get_sensor_value(eid) or default) if eid else default
+            except Exception:
+                return default
+
+        soc_val = f(soc_eid)
+        soc_val = max(0.0, min(soc_val, 100.0))  # 0..100 klemmen
+        vdc = f(vdc_eid)
+        idc = f(idc_eid)
+        power_kw = (vdc * idc) / 1000.0
+
+        # Status + Farbe
+        eps = 0.02
+        if power_kw > eps:
+            icon, label, bar_color = "🔌", "Charging", "#27ae60"
+        elif power_kw < -eps:
+            icon, label, bar_color = "⚡", "Discharging", "#e74c3c"
         else:
-            state_txt = "⏸️ Idle: 0.00 kW"
-            color = "#666666"
+            icon, label, bar_color = "⏸️", "Idle", "#999999"
 
-        # Gauge-Farbe nach Richtung
-        bar_color = "#27ae60" if pkw > eps else ("#e74c3c" if pkw < -eps else "#888888")
+        status = html.Span([icon, f" {label}: {abs(power_kw):.2f} kW"], style={"color": bar_color})
 
-        # Fallback, falls kein SoC verfügbar
-        val = float(soc) if isinstance(soc, (int, float)) else 0.0
-        title = "Battery (%)" if soc is not None else "Battery (kW)"
-
+        # Gauge ohne %-Suffix, rechts nichts abgeschnitten
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=val,
-            number={"suffix": " %"},
-            title={"text": title},
-            domain={"x": [0.0, 0.95], "y": [0, 1]},  # <- rechts Platz lassen
+            value=soc_val,
+            number={"valueformat": ".1f"},
+            title={"text": "Battery SoC"},
+            domain={"x": [0.02, 0.98], "y": [0, 1]},  # etwas Luft links/rechts
             gauge={
                 "axis": {"range": [0, 100]},
                 "bar": {"color": bar_color},
@@ -440,14 +448,8 @@ def register_callbacks(app):
                 ],
             }
         ))
-        fig.update_layout(
-            margin=dict(l=20, r=60, t=40, b=20),  # <- etwas mehr r-Margin
-            paper_bgcolor="white",
-            plot_bgcolor="white",
-        )
-
-        power_node = html.Span(state_txt, style={"color": color})
-        return fig, power_node
+        fig.update_layout(margin=dict(l=20, r=60, t=40, b=20), paper_bgcolor="white")
+        return fig, status
 
     @app.callback(
         Output("pv-gauge", "figure"),
@@ -582,16 +584,6 @@ def layout():
 
         dcc.Graph(id="sankey-diagram", figure=go.Figure()),
 
-        # html.Div([
-        #     dcc.Graph(id="pv-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
-        #     dcc.Graph(id="grid-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
-        #     dcc.Graph(id="feed-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
-        #     html.Div([
-        #         dcc.Graph(id="battery-gauge", style={"height": "300px", "minWidth": "300px", "maxWidth": "500px"}),
-        #         html.Div(id="battery-power", style={"textAlign": "center", "marginTop": "6px", "fontWeight": "600"})
-        #     ], style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "display": "flex",
-        #               "flexDirection": "column", "alignItems": "center"}),
-        # ], style={"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
         html.Div([
             dcc.Graph(id="pv-gauge",
                       style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
@@ -600,21 +592,12 @@ def layout():
             dcc.Graph(id="feed-gauge",
                       style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
 
-            # 🔋 Battery-Gauge + Power-Status direkt darunter
-            html.Div([
+            html.Div([  # 🔋 Battery-Spalte
                 dcc.Graph(id="battery-gauge", style={"height": "300px", "minWidth": "300px", "maxWidth": "500px"}),
-                html.Div(
-                    id="battery-power",
-                    style={"textAlign": "center", "marginTop": "6px", "fontWeight": "600"}  # kleiner, dichter Abstand
-                ),
-            ], style={
-                "flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px",
-                "display": "flex", "flexDirection": "column", "alignItems": "center"
-            }),
-        ], style={
-            "display": "flex", "flexDirection": "row", "flexWrap": "wrap",
-            "justifyContent": "center", "gap": "20px"
-        }),
+                html.Div(id="battery-status", style={"textAlign": "center", "marginTop": "6px", "fontWeight": "600"})
+            ], style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px",
+                      "display": "flex", "flexDirection": "column", "alignItems": "center"}),
+        ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
 
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
 
