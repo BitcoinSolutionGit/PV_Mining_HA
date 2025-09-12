@@ -405,7 +405,6 @@ def register_callbacks(app):
         Input("pv-update", "n_intervals"),
     )
     def update_battery(_n):
-        # read sensors
         def f(eid, d=0.0):
             try:
                 return float(get_sensor_value(eid) or d) if eid else d
@@ -415,7 +414,7 @@ def register_callbacks(app):
         soc = max(0.0, min(f(bat_get("soc_entity", "")), 100.0))
         vdc = f(bat_get("voltage_entity", ""))
         idc = f(bat_get("current_entity", ""))
-        pkw = (vdc * idc) / 1000.0  # + = charging, - = discharging
+        pkw = (vdc * idc) / 1000.0
 
         eps = 0.02
         if pkw > eps:
@@ -428,9 +427,10 @@ def register_callbacks(app):
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=soc,
-            number={"valueformat": ".1f"},  # no “%”
-            title={"text": "Battery level (%)"},  # new title
-            domain={"x": [0.06, 0.94], "y": [0.00, 1.00]},  # same width as others, leaves room for “100”
+            number={"valueformat": ".1f"},  # keine %
+            title={"text": "Battery level (%)"},
+            # etwas Innenabstand links/rechts und Platz unten für die Statuszeile
+            domain={"x": [0.06, 0.94], "y": [0.16, 1.0]},
             gauge={
                 "axis": {"range": [0, 100]},
                 "bar": {"color": bar},
@@ -443,17 +443,20 @@ def register_callbacks(app):
             },
         ))
 
-        # status directly under the half-circle (inside figure box)
+        # Status **im Plot** (unter der Halbscheibe)
         fig.add_annotation(
-            x=0.5, y=-0.06, xref="paper", yref="paper",  # move closer/higher with y (e.g. -0.04 … -0.10)
+            x=0.5, y=0.09, xref="paper", yref="paper",
             text=f"{icon} {label}: {abs(pkw):.2f} kW",
             showarrow=False,
+            align="center",
             font=dict(size=14, color=bar)
         )
 
-        # margins roughly like the other gauges
-        fig.update_layout(paper_bgcolor="white",
-                          margin=dict(l=20, r=40, t=40, b=50))
+        fig.update_layout(
+            paper_bgcolor="white",
+            # ähnlich wie bei den anderen Gauges
+            margin=dict(l=20, r=40, t=48, b=10)
+        )
         return fig
 
     @app.callback(
@@ -597,10 +600,8 @@ def layout():
             dcc.Graph(id="feed-gauge",
                       style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
             dcc.Graph(id="battery-gauge",
-                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
-            # dcc.Graph(id="battery-gauge",
-            #           style={"height": "300px", "minWidth": "300px", "maxWidth": "500px"},
-            #           config={"displayModeBar": False}),
+                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"},
+                      config={"displayModeBar": False}),
         ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
 
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
