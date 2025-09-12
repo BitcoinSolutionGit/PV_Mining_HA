@@ -40,7 +40,7 @@ def layout():
 
         # --- Kapazität ---
         html.Div([
-            html.Label("Capacity sensor (kWh, optional)", style={"marginLeft":"16px"}),
+            html.Label("Capacity sensor (kWh)"),
             dcc.Dropdown(id="bat-cap-entity", options=sensor_opts, value=(cap or None),
                          placeholder="Select sensor.…", style={"minWidth":"360px"}),
             html.Span(id="bat-cap-val", style={"marginLeft":"12px","opacity":0.8}),  # Live-Anzeige
@@ -64,7 +64,7 @@ def layout():
 
         # --- Strom ---
         html.Div([
-            html.Label("DC current (A)", style={"marginLeft":"18px"}),
+            html.Label("DC current (A)"),
             dcc.Dropdown(id="bat-idc-entity", options=sensor_opts, value=(idc or None),
                          placeholder="Select sensor.…", style={"minWidth":"360px"}),
             html.Span(id="bat-idc-val", style={"marginLeft":"12px","opacity":0.8}),
@@ -80,7 +80,7 @@ def layout():
 
         # --- Leistung ---
             html.Div([
-            html.Label("Power (kW, optional)", style={"marginLeft":"18px"}),
+            html.Label("Power (kW, optional)"),
             dcc.Dropdown(id="bat-power-entity", options=sensor_opts, value=(pwr or None),
                          placeholder="Select sensor.…", style={"minWidth":"360px"}),
             html.Span(id="bat-power-val", style={"marginLeft":"12px","opacity":0.8}),

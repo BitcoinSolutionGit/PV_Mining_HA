@@ -1,0 +1,20 @@
+# /config/pv_mining_addon/battery.local.yaml
+enabled: true
+mode: manual
+
+# Beispiel: du hast einen SoC-Sensor, die restlichen Felder
+# kannst du später im UI auswählen/speichern.
+soc_entity: "sensor.fronius_battery_soc"
+
+# Wenn du schon welche weißt, kannst du sie gleich eintragen:
+# voltage_entity: "sensor.mein_battery_voltage"
+# current_entity: "sensor.mein_battery_current"
+# temperature_entity: "sensor.mein_battery_temperature"
+
+capacity_kwh: 11.0
+max_charge_kw: 3.0
+max_discharge_kw: 3.0
+
+target_soc: 90.0
+reserve_soc: 20.0
+allow_grid_charge: false

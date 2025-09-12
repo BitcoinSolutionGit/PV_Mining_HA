@@ -1,0 +1,20 @@
+# /config/pv_mining_addon/battery.yaml
+enabled: false            # true|false
+mode: manual              # manual | auto
+
+# Limits / Kapazität
+capacity_kwh: 11.0
+
+# Sensor-Auswahlen (optional; Strings, können leer sein)
+# Wenn capacity_entity gesetzt ist, wird sie bevorzugt gelesen;
+# capacity_kwh bleibt Fallback.
+capacity_entity: ""       # z.B. sensor.battery_capacity_kwh
+soc_entity: ""            # z.B. sensor.fronius_battery_soc   (in %)
+voltage_entity: ""        # z.B. sensor.battery_voltage       (V DC)
+current_entity: ""        # z.B. sensor.battery_current       (A DC; +laden / -entladen)
+temperature_entity: ""    # z.B. sensor.battery_temperature   (°C)
+
+# Ziele/Policies
+target_soc: 90.0          # %
+reserve_soc: 20.0         # %
+allow_grid_charge: false  # (für Auto-Logik später)
