@@ -395,10 +395,50 @@ def register_callbacks(app):
 
         return fig
 
-    from services.battery_store import get_var as bat_get
-    from services.ha_sensors import get_sensor_value
-    import plotly.graph_objects as go
-    from dash import html
+    @app.callback(
+        Output("pv-gauge", "figure"),
+        Output("grid-gauge", "figure"),
+        Output("feed-gauge", "figure"),
+        Input("pv-update", "n_intervals"),
+    )
+    def update_gauges(_):
+        def safe_val(eid):
+            try:
+                return float(get_sensor_value(eid) or 0.0) if eid else 0.0
+            except Exception:
+                return 0.0
+
+        pv_id = resolve_sensor_id("pv_production")
+        grid_id = resolve_sensor_id("grid_consumption")
+        feed_id = resolve_sensor_id("grid_feed_in")
+
+        pv_val = safe_val(pv_id)
+        grid_val = safe_val(grid_id)
+        feed_val = safe_val(feed_id)
+
+        def build_gauge(value, title, color):
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=value,
+                title={"text": title, "font": {"size": 20}},
+                domain={"x": [0.06, 0.94], "y": [0.0, 1.0]},  # gleich wie Battery
+                gauge={
+                    "axis": {"range": [0, 5]},
+                    "bar": {"color": color},
+                    "steps": [
+                        {"range": [0, 2.5], "color": "#e0f7e0"},
+                        {"range": [2.5, 5], "color": "#c0e0c0"},
+                    ],
+                },
+            ))
+            fig.update_layout(paper_bgcolor="white", margin=dict(l=20, r=40, t=40, b=20))
+            return fig
+
+        return (
+            build_gauge(pv_val, "PV production (kW)", "green"),
+            build_gauge(grid_val, "Grid consumption (kW)", "orange"),
+            build_gauge(feed_val, "Grid feed-in (kW)", "red"),
+        )
 
     @app.callback(
         Output("battery-gauge", "figure"),
@@ -408,28 +448,26 @@ def register_callbacks(app):
         def f(eid, d=0.0):
             try:
                 return float(get_sensor_value(eid) or d) if eid else d
-            except:
+            except Exception:
                 return d
 
         soc = max(0.0, min(f(bat_get("soc_entity", "")), 100.0))
         vdc = f(bat_get("voltage_entity", ""))
         idc = f(bat_get("current_entity", ""))
-        pkw = (vdc * idc) / 1000.0  # + = Laden, - = Entladen
+        pkw = (vdc * idc) / 1000.0
 
-        # Dot-Farbe (grün = laden, rot = entladen, grau = idle)
         eps = 0.02
         dot_color = "#27ae60" if pkw > eps else ("#e74c3c" if pkw < -eps else "#909090")
 
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=soc,
-            number={"valueformat": ".1f"},  # keine %
+            number={"valueformat": ".1f"},
             title={"text": "Battery level (%)", "font": {"size": 20}},
-            # gleiche Innenfläche wie bei den anderen Gauges, mit etwas Rand rechts für „100“
             domain={"x": [0.06, 0.94], "y": [0.0, 1.0]},
             gauge={
                 "axis": {"range": [0, 100]},
-                "bar": {"color": "#888888"},  # Balken neutral lassen – Status macht der Dot
+                "bar": {"color": "#888888"},
                 "steps": [
                     {"range": [0, 20], "color": "#fdecea"},
                     {"range": [20, 50], "color": "#fff4e5"},
@@ -438,19 +476,13 @@ def register_callbacks(app):
                 ],
             },
         ))
-
-        # farbiger Status-Knubbel direkt „hinter“ der Einheitenangabe
-        # (positioniert im Titelbereich des Plots)
+        # farbiger Status-Punkt rechts von der Überschrift
         fig.add_annotation(
             x=0.93, y=0.98, xref="paper", yref="paper",
-            text="●", showarrow=False,
-            xanchor="left", yanchor="top",
+            text="●", showarrow=False, xanchor="left", yanchor="top",
             font=dict(size=18, color=dot_color)
         )
-
-        # identische Außenränder wie bei den anderen Instrumenten
-        fig.update_layout(paper_bgcolor="white",
-                          margin=dict(l=20, r=40, t=40, b=20))
+        fig.update_layout(paper_bgcolor="white", margin=dict(l=20, r=40, t=40, b=20))
         return fig
 
     @app.callback(
