@@ -24,6 +24,23 @@ def _map(key: str) -> str:
         return (m.get(k) or "").strip()
     return _mget(SENS_OVR, key) or _mget(SENS_DEF, key)
 
+def _read_power_kw(self) -> float | None:
+    p_ent = bat_get("power_entity", "")
+    if p_ent:
+        return _num(get_sensor_value(p_ent), None)  # schon kW
+
+    # Fallback: DC-Spannung * DC-Strom (in kW), Stromvorzeichen bestimmt +/- (laden/entladen)
+    v_ent = bat_get("voltage_entity", "")
+    i_ent = bat_get("current_entity", "")
+    try:
+        v = _num(get_sensor_value(v_ent), None)
+        i = _num(get_sensor_value(i_ent), None)
+        if v is None or i is None:
+            return None
+        return (v * i) / 1000.0  # kW
+    except Exception:
+        return None
+
 class BatteryConsumer(BaseConsumer):
     id = "battery"
     label = "Battery"
@@ -82,3 +99,5 @@ class BatteryConsumer(BaseConsumer):
         Wir loggen nur.
         """
         print(f"[battery] alloc request ~{alloc_kw:.2f} kW (no external control)", flush=True)
+
+
