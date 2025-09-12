@@ -7,9 +7,8 @@ FILE = os.path.join(CONFIG_DIR, "battery_store.yaml")
 DEFAULTS = {
     "enabled": False,
     "mode": "manual",              # "manual" | "auto"
-    "capacity_kwh": 11.0,
-    "max_charge_kw": 3.0,
-    "max_discharge_kw": 3.0,
+    "capacity_entity": "",
+
 
     # Sensor-Entities (alles optional; Strings)
     "soc_entity": "",            # z.B. sensor.fronius_battery_soc  (%)
