@@ -395,24 +395,27 @@ def register_callbacks(app):
 
         return fig
 
+    from services.battery_store import get_var as bat_get
+    from services.ha_sensors import get_sensor_value
+    import plotly.graph_objects as go
+    from dash import html
+
     @app.callback(
         Output("battery-gauge", "figure"),
         Input("pv-update", "n_intervals"),
     )
     def update_battery(_n):
-        soc_eid = bat_get("soc_entity", "")
-        vdc_eid = bat_get("voltage_entity", "")
-        idc_eid = bat_get("current_entity", "")
-
+        # read sensors
         def f(eid, d=0.0):
             try:
                 return float(get_sensor_value(eid) or d) if eid else d
             except:
                 return d
 
-        soc = max(0.0, min(f(soc_eid), 100.0))
-        vdc, idc = f(vdc_eid), f(idc_eid)
-        pkw = (vdc * idc) / 1000.0
+        soc = max(0.0, min(f(bat_get("soc_entity", "")), 100.0))
+        vdc = f(bat_get("voltage_entity", ""))
+        idc = f(bat_get("current_entity", ""))
+        pkw = (vdc * idc) / 1000.0  # + = charging, - = discharging
 
         eps = 0.02
         if pkw > eps:
@@ -425,9 +428,9 @@ def register_callbacks(app):
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=soc,
-            number={"valueformat": ".1f"},  # kein %-Suffix
-            title={"text": "Battery SoC"},
-            domain={"x": [0.03, 0.97], "y": [0, 1]},  # rechts/links Luft, „100“ nicht abgeschnitten
+            number={"valueformat": ".1f"},  # no “%”
+            title={"text": "Battery level (%)"},  # new title
+            domain={"x": [0.06, 0.94], "y": [0.00, 1.00]},  # same width as others, leaves room for “100”
             gauge={
                 "axis": {"range": [0, 100]},
                 "bar": {"color": bar},
@@ -437,18 +440,20 @@ def register_callbacks(app):
                     {"range": [50, 80], "color": "#eef7ee"},
                     {"range": [80, 100], "color": "#e6f4ea"},
                 ],
-            }
+            },
         ))
 
-        # Status-Text INS Chart setzen (genau unter dem Halbkreis)
+        # status directly under the half-circle (inside figure box)
         fig.add_annotation(
-            x=0.5, y=-0.14, xref="paper", yref="paper",
+            x=0.5, y=-0.06, xref="paper", yref="paper",  # move closer/higher with y (e.g. -0.04 … -0.10)
             text=f"{icon} {label}: {abs(pkw):.2f} kW",
             showarrow=False,
             font=dict(size=14, color=bar)
         )
 
-        fig.update_layout(paper_bgcolor="white", margin=dict(l=20, r=60, t=40, b=60))
+        # margins roughly like the other gauges
+        fig.update_layout(paper_bgcolor="white",
+                          margin=dict(l=20, r=40, t=40, b=50))
         return fig
 
     @app.callback(
@@ -591,12 +596,11 @@ def layout():
                       style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
             dcc.Graph(id="feed-gauge",
                       style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
-
-            html.Div([  # 🔋 Battery-Spalte
-                dcc.Graph(id="battery-gauge", style={"height": "300px", "minWidth": "300px", "maxWidth": "500px"}),
-                html.Div(id="battery-status", style={"textAlign": "center", "marginTop": "6px", "fontWeight": "600"})
-            ], style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px",
-                      "display": "flex", "flexDirection": "column", "alignItems": "center"}),
+            dcc.Graph(id="battery-gauge",
+                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+            # dcc.Graph(id="battery-gauge",
+            #           style={"height": "300px", "minWidth": "300px", "maxWidth": "500px"},
+            #           config={"displayModeBar": False}),
         ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
 
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
