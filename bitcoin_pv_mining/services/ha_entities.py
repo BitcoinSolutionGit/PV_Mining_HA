@@ -97,17 +97,22 @@ def call_action(entity_id: str, turn_on: bool = True) -> bool:
     payload = {"entity_id": entity_id}
 
     if domain == "script":
-        ok = _post_service("script", "turn_on", payload)
-    elif domain == "switch":
-        ok = _post_service("switch", "turn_on" if turn_on else "turn_off", payload)
-    elif domain == "input_boolean":
-        ok = _post_service("input_boolean", "turn_on" if turn_on else "turn_off", payload)
+        service = "turn_on"
     elif domain == "button":
-        ok = _post_service("button", "press", payload)
+        service = "press"
+    elif domain in ("switch", "input_boolean", "light", "fan"):
+        service = "turn_on" if turn_on else "turn_off"
+    elif domain == "scene":
+        service = "turn_on"
     else:
-        ok = _post_service("homeassistant", "turn_on" if turn_on else "turn_off", payload)
+        service = "turn_on" if turn_on else "turn_off"
 
-    time.sleep(0.15)  # kleine Entzerrung für Sequenzen
+    ok = _post_service(domain if domain in ("script", "button", "scene", "switch", "input_boolean", "light", "fan")
+                       else "homeassistant",
+                       service, payload)
+
+    print(f"[ha_entities] call_action -> {domain}.{service} {entity_id} ok={ok}", flush=True)
+    time.sleep(0.2)  # ganz kleines Pufferchen
     return ok
 
 

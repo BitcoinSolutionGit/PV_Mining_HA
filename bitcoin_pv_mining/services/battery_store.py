@@ -7,23 +7,23 @@ FILE = os.path.join(CONFIG_DIR, "battery_store.yaml")
 DEFAULTS = {
     "enabled": False,
     "mode": "manual",              # "manual" | "auto"
-    "capacity_kwh": 11.0,          # BYD ~11 kWh
+    "capacity_kwh": 11.0,
     "max_charge_kw": 3.0,
     "max_discharge_kw": 3.0,
 
-    # Entities (Strings; dürfen leer sein, dann werden KPIs geschätzt)
-    "soc_entity": "",              # z.B. sensor.fronius_battery_soc (%)
-    "power_entity": "",            # z.B. sensor.battery_power (kW, +laden/-entladen)
-    "ready_entity": "",            # bool: True = charging/running
+    # Sensor-Entities (alles optional; Strings)
+    "soc_entity": "",            # z.B. sensor.fronius_battery_soc  (%)
+    "dc_voltage_entity": "",     # z.B. sensor.battery_dc_voltage   (V)
+    "dc_current_entity": "",     # z.B. sensor.battery_dc_current   (A; + = Laden)
+    "temperature_entity": "",    # z.B. sensor.battery_temp         (°C, optional)
 
-    # Actions (Switch/Script) – optional
-    "action_on_entity": "",        # force charge / enable charging
-    "action_off_entity": "",       # stop charge / disable charging
+    # (Alt-/Kompatibilität: wird nicht mehr benutzt, darf in YAML stehen)
+    "power_entity": "",          # früherer kW-Sensor (optional/legacy)
 
-    # Targets/Policies
-    "target_soc": 90.0,            # %
-    "reserve_soc": 20.0,           # % (für Notstrom/Reserve)
-    "allow_grid_charge": False,    # nur Auto-Logik später relevant
+    # Ziele/Policies
+    "target_soc": 90.0,          # %
+    "reserve_soc": 20.0,         # %
+    "allow_grid_charge": False,
 }
 
 def _load():
@@ -33,7 +33,7 @@ def _load():
     except FileNotFoundError:
         data = {}
     out = DEFAULTS.copy()
-    out.update(data)
+    out.update(data or {})
     return out
 
 def _save(data: dict):

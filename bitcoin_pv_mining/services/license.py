@@ -75,7 +75,7 @@ def has_valid_token_cached() -> bool:
 
 
 # -----------------------------
-# Server-Calls
+# DEVELOPMENT OVERRIDE
 # -----------------------------
 def verify_license() -> bool:
     """
