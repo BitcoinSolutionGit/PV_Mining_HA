@@ -427,10 +427,10 @@ def register_callbacks(app):
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=soc,
-            number={"valueformat": ".1f"},  # keine %
+            number={"valueformat": ".1f", "font": {"size": 48}},  # gleiche Zahlengröße wie die anderen
             title={"text": "Battery level (%)"},
-            # etwas Innenabstand links/rechts und Platz unten für die Statuszeile
-            domain={"x": [0.06, 0.94], "y": [0.16, 1.0]},
+            # etwas Luft rechts für die 100, unten frei für die Statuszeile
+            domain={"x": [0.06, 0.94], "y": [0.22, 1.0]},
             gauge={
                 "axis": {"range": [0, 100]},
                 "bar": {"color": bar},
@@ -443,19 +443,18 @@ def register_callbacks(app):
             },
         ))
 
-        # Status **im Plot** (unter der Halbscheibe)
+        # Status sauber VOR die untere Kante setzen (im Plot, nicht darunter)
         fig.add_annotation(
-            x=0.5, y=0.09, xref="paper", yref="paper",
+            x=0.5, y=0.18, xref="paper", yref="paper",
+            yanchor="top",  # verankern an der Oberkante → sitzt stabil direkt unterm Bogen
             text=f"{icon} {label}: {abs(pkw):.2f} kW",
-            showarrow=False,
-            align="center",
+            showarrow=False, align="center",
             font=dict(size=14, color=bar)
         )
 
         fig.update_layout(
             paper_bgcolor="white",
-            # ähnlich wie bei den anderen Gauges
-            margin=dict(l=20, r=40, t=48, b=10)
+            margin=dict(l=20, r=44, t=48, b=0)  # wenig Bottom-Margin, damit die Figur nicht “tiefer” wird
         )
         return fig
 
