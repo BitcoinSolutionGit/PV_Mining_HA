@@ -8,6 +8,7 @@ from dash.dependencies import Input, Output
 
 from services.ha_sensors import get_sensor_value
 from services.utils import load_yaml
+from services.battery_store import get_var as bat_get
 from services.electricity_store import current_price, currency_symbol, get_var as elec_get
 from services.heater_store import resolve_entity_id as heater_resolve_entity, get_var as heat_get_var
 from services.miners_store import list_miners
@@ -42,6 +43,53 @@ def _wallbox_power_kw():
 def _battery_power_kw():
     # bei dir später aus Store/Sensor – vorerst 0 = inaktiv → Ghost
     return 0.0
+
+def _battery_soc_percent():
+    """SoC in % aus battery_store (None, falls nicht konfiguriert/lesbar)."""
+    try:
+        eid = bat_get("soc_entity", "") or ""
+        if not eid:
+            return None
+        v = get_sensor_value(eid)
+        if v is None:
+            return None
+        return float(v)
+    except Exception:
+        return None
+
+def _battery_power_kw_live():
+    """
+    Battery-Leistung in kW:
+      - wenn power_entity gesetzt: diese verwenden (W→kW normalisieren, falls nötig)
+      - sonst: aus Voltage*Current berechnen (A*V/1000), inkl. Vorzeichen (I<0 = Entladen)
+    """
+    # 1) direkter Power-Sensor?
+    pwr_eid = bat_get("power_entity", "") or ""
+    if pwr_eid:
+        try:
+            val = float(get_sensor_value(pwr_eid))
+            # Heuristik: viele Sensoren liefern W → in kW umrechnen
+            if abs(val) > 300:  # >300 W ⇒ vermutlich W
+                val = val / 1000.0
+            return val
+        except Exception:
+            pass
+
+    # 2) aus V * I
+    v_eid = bat_get("voltage_entity", "") or ""
+    i_eid = bat_get("current_entity", "") or ""
+    try:
+        v = float(get_sensor_value(v_eid)) if v_eid else None
+        i = float(get_sensor_value(i_eid)) if i_eid else None
+    except Exception:
+        v, i = None, None
+
+    if v is None or i is None:
+        return 0.0
+
+    # I > 0 = Laden (positiv), I < 0 = Entladen (negativ)
+    return (v * i) / 1000.0
+
 
 # ------------------------------
 # Sensor-Resolver
@@ -348,6 +396,60 @@ def register_callbacks(app):
         return fig
 
     @app.callback(
+        Output("battery-gauge", "figure"),
+        Output("battery-power", "children"),
+        Input("pv-update", "n_intervals")
+    )
+    def update_battery_gauge(_):
+        soc = _battery_soc_percent()
+        pkw = _battery_power_kw_live()
+
+        # Anzeige-Logik für Power
+        eps = 0.02  # 20 W deadband
+        if pkw > eps:
+            state_txt = f"🔌 Charging: {pkw:.2f} kW"
+            color = "#27ae60"  # grün
+        elif pkw < -eps:
+            state_txt = f"⚡ Discharging: {abs(pkw):.2f} kW"
+            color = "#e74c3c"  # rot
+        else:
+            state_txt = "⏸️ Idle: 0.00 kW"
+            color = "#666666"
+
+        # Gauge-Farbe nach Richtung
+        bar_color = "#27ae60" if pkw > eps else ("#e74c3c" if pkw < -eps else "#888888")
+
+        # Fallback, falls kein SoC verfügbar
+        val = float(soc) if isinstance(soc, (int, float)) else 0.0
+        title = "Battery (%)" if soc is not None else "Battery (kW)"
+
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=val,
+            number={"suffix": " %"},
+            title={"text": title},
+            domain={"x": [0.0, 0.95], "y": [0, 1]},  # <- rechts Platz lassen
+            gauge={
+                "axis": {"range": [0, 100]},
+                "bar": {"color": bar_color},
+                "steps": [
+                    {"range": [0, 20], "color": "#fdecea"},
+                    {"range": [20, 50], "color": "#fff4e5"},
+                    {"range": [50, 80], "color": "#eef7ee"},
+                    {"range": [80, 100], "color": "#e6f4ea"},
+                ],
+            }
+        ))
+        fig.update_layout(
+            margin=dict(l=20, r=60, t=40, b=20),  # <- etwas mehr r-Margin
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+        )
+
+        power_node = html.Span(state_txt, style={"color": color})
+        return fig, power_node
+
+    @app.callback(
         Output("pv-gauge", "figure"),
         Output("grid-gauge", "figure"),
         Output("feed-gauge", "figure"),
@@ -480,11 +582,40 @@ def layout():
 
         dcc.Graph(id="sankey-diagram", figure=go.Figure()),
 
+        # html.Div([
+        #     dcc.Graph(id="pv-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+        #     dcc.Graph(id="grid-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+        #     dcc.Graph(id="feed-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+        #     html.Div([
+        #         dcc.Graph(id="battery-gauge", style={"height": "300px", "minWidth": "300px", "maxWidth": "500px"}),
+        #         html.Div(id="battery-power", style={"textAlign": "center", "marginTop": "6px", "fontWeight": "600"})
+        #     ], style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "display": "flex",
+        #               "flexDirection": "column", "alignItems": "center"}),
+        # ], style={"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
         html.Div([
-            dcc.Graph(id="pv-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
-            dcc.Graph(id="grid-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
-            dcc.Graph(id="feed-gauge", style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"})
-        ], style={"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
+            dcc.Graph(id="pv-gauge",
+                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+            dcc.Graph(id="grid-gauge",
+                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+            dcc.Graph(id="feed-gauge",
+                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+
+            # 🔋 Battery-Gauge + Power-Status direkt darunter
+            html.Div([
+                dcc.Graph(id="battery-gauge", style={"height": "300px", "minWidth": "300px", "maxWidth": "500px"}),
+                html.Div(
+                    id="battery-power",
+                    style={"textAlign": "center", "marginTop": "6px", "fontWeight": "600"}  # kleiner, dichter Abstand
+                ),
+            ], style={
+                "flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px",
+                "display": "flex", "flexDirection": "column", "alignItems": "center"
+            }),
+        ], style={
+            "display": "flex", "flexDirection": "row", "flexWrap": "wrap",
+            "justifyContent": "center", "gap": "20px"
+        }),
+
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
 
         html.Div([
