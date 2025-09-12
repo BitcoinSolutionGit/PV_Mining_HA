@@ -414,26 +414,22 @@ def register_callbacks(app):
         soc = max(0.0, min(f(bat_get("soc_entity", "")), 100.0))
         vdc = f(bat_get("voltage_entity", ""))
         idc = f(bat_get("current_entity", ""))
-        pkw = (vdc * idc) / 1000.0
+        pkw = (vdc * idc) / 1000.0  # + = Laden, - = Entladen
 
+        # Dot-Farbe (grün = laden, rot = entladen, grau = idle)
         eps = 0.02
-        if pkw > eps:
-            icon, label, bar = "🔌", "Charging", "#27ae60"
-        elif pkw < -eps:
-            icon, label, bar = "⚡", "Discharging", "#e74c3c"
-        else:
-            icon, label, bar = "⏸️", "Idle", "#999999"
+        dot_color = "#27ae60" if pkw > eps else ("#e74c3c" if pkw < -eps else "#909090")
 
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=soc,
             number={"valueformat": ".1f"},  # keine %
-            title={"text": "Battery level (%)"},
-            # etwas Innenabstand links/rechts und Platz unten für die Statuszeile
-            domain={"x": [0.06, 0.94], "y": [0.16, 1.0]},
+            title={"text": "Battery level (%)", "font": {"size": 20}},
+            # gleiche Innenfläche wie bei den anderen Gauges, mit etwas Rand rechts für „100“
+            domain={"x": [0.06, 0.94], "y": [0.0, 1.0]},
             gauge={
                 "axis": {"range": [0, 100]},
-                "bar": {"color": bar},
+                "bar": {"color": "#888888"},  # Balken neutral lassen – Status macht der Dot
                 "steps": [
                     {"range": [0, 20], "color": "#fdecea"},
                     {"range": [20, 50], "color": "#fff4e5"},
@@ -443,57 +439,19 @@ def register_callbacks(app):
             },
         ))
 
-        # Status **im Plot** (unter der Halbscheibe)
+        # farbiger Status-Knubbel direkt „hinter“ der Einheitenangabe
+        # (positioniert im Titelbereich des Plots)
         fig.add_annotation(
-            x=0.5, y=0.09, xref="paper", yref="paper",
-            text=f"{icon} {label}: {abs(pkw):.2f} kW",
-            showarrow=False,
-            align="center",
-            font=dict(size=14, color=bar)
+            x=0.93, y=0.98, xref="paper", yref="paper",
+            text="●", showarrow=False,
+            xanchor="left", yanchor="top",
+            font=dict(size=18, color=dot_color)
         )
 
-        fig.update_layout(
-            paper_bgcolor="white",
-            # ähnlich wie bei den anderen Gauges
-            margin=dict(l=20, r=40, t=48, b=10)
-        )
+        # identische Außenränder wie bei den anderen Instrumenten
+        fig.update_layout(paper_bgcolor="white",
+                          margin=dict(l=20, r=40, t=40, b=20))
         return fig
-
-    @app.callback(
-        Output("pv-gauge", "figure"),
-        Output("grid-gauge", "figure"),
-        Output("feed-gauge", "figure"),
-        Input("pv-update", "n_intervals")
-    )
-    def update_gauges(_):
-        pv_id = resolve_sensor_id("pv_production")
-        grid_id = resolve_sensor_id("grid_consumption")
-        feed_id = resolve_sensor_id("grid_feed_in")
-
-        pv_val = get_sensor_value(pv_id) if pv_id else 0
-        grid_val = get_sensor_value(grid_id) if grid_id else 0
-        feed_val = get_sensor_value(feed_id) if feed_id else 0
-
-        def build_gauge(value, title, color):
-            return go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=value or 0,
-                title={"text": title},
-                gauge={
-                    "axis": {"range": [0, 5]},
-                    "bar": {"color": color},
-                    "steps": [
-                        {"range": [0, 2.5], "color": "#e0f7e0"},
-                        {"range": [2.5, 5], "color": "#c0e0c0"}
-                    ]
-                }
-            ))
-
-        return (
-            build_gauge(pv_val, "PV production (kW)", "green"),
-            build_gauge(grid_val, "Grid consumption (kW)", "orange"),
-            build_gauge(feed_val, "Grid feed-in (kW)", "red")
-        )
 
     @app.callback(
         Output("btc-price", "children"),
@@ -600,8 +558,7 @@ def layout():
             dcc.Graph(id="feed-gauge",
                       style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
             dcc.Graph(id="battery-gauge",
-                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"},
-                      config={"displayModeBar": False}),
+                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
         ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
 
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
