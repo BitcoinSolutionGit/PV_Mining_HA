@@ -155,22 +155,34 @@ def register_callbacks(app):
             except Exception:
                 return "—"
 
-        # Einzelwerte
-        cap  = val(cap_ent,  "{:.2f}", " kWh")
-        soc  = val(soc_ent,  "{:.1f}", " %")
+        # Kapazität: Wh → kWh, falls nötig
+        def cap_text(eid):
+            try:
+                v = get_sensor_value(eid) if eid else None
+                if v is None:
+                    return "—"
+                v = float(v)
+                if v > 999:  # Heuristik: Wh erkannt → in kWh umrechnen
+                    v /= 1000.0
+                return f"{v:.3f} kWh"
+            except Exception:
+                return "—"
+
+        cap = cap_text(cap_ent)
+        soc = val(soc_ent, "{:.1f}", " %")
         vdc_v = None if not vdc_ent else get_sensor_value(vdc_ent)
         idc_a = None if not idc_ent else get_sensor_value(idc_ent)
-        vdc  = ("{:.2f} V".format(float(vdc_v))) if vdc_v is not None else "—"
-        idc  = ("{:.2f} A".format(float(idc_a))) if idc_a is not None else "—"
-        t    = val(temp_ent, "{:.1f}", " °C")
+        vdc = ("{:.2f} V".format(float(vdc_v))) if vdc_v is not None else "—"
+        idc = ("{:.2f} A".format(float(idc_a))) if idc_a is not None else "—"
+        t = val(temp_ent, "{:.1f}", " °C")
 
-        # Leistung = V * I / 1000  (Vorzeichen von I bleibt erhalten)
+        # Leistung = V * I / 1000 (Vorzeichen von I bleibt erhalten)
         if (vdc_v is not None) and (idc_a is not None):
             p_kw = (float(vdc_v) * float(idc_a)) / 1000.0
-            # Optional kurzer Hint „charging/discharging“
             mode = "charging" if p_kw >= 0 else "discharging"
-            pwr  = "{:+.3f} kW ({})".format(p_kw, mode)
+            pwr = "{:+.3f} kW ({})".format(p_kw, mode)
         else:
             pwr = "—"
 
         return cap, soc, vdc, idc, t, pwr
+
