@@ -397,49 +397,40 @@ def register_callbacks(app):
 
     @app.callback(
         Output("battery-gauge", "figure"),
-        Output("battery-status", "children"),
         Input("pv-update", "n_intervals"),
     )
     def update_battery(_n):
-        # Sensor-IDs
         soc_eid = bat_get("soc_entity", "")
         vdc_eid = bat_get("voltage_entity", "")
         idc_eid = bat_get("current_entity", "")
 
-        # Werte sicher lesen
-        def f(eid, default=0.0):
+        def f(eid, d=0.0):
             try:
-                return float(get_sensor_value(eid) or default) if eid else default
-            except Exception:
-                return default
+                return float(get_sensor_value(eid) or d) if eid else d
+            except:
+                return d
 
-        soc_val = f(soc_eid)
-        soc_val = max(0.0, min(soc_val, 100.0))  # 0..100 klemmen
-        vdc = f(vdc_eid)
-        idc = f(idc_eid)
-        power_kw = (vdc * idc) / 1000.0
+        soc = max(0.0, min(f(soc_eid), 100.0))
+        vdc, idc = f(vdc_eid), f(idc_eid)
+        pkw = (vdc * idc) / 1000.0
 
-        # Status + Farbe
         eps = 0.02
-        if power_kw > eps:
-            icon, label, bar_color = "🔌", "Charging", "#27ae60"
-        elif power_kw < -eps:
-            icon, label, bar_color = "⚡", "Discharging", "#e74c3c"
+        if pkw > eps:
+            icon, label, bar = "🔌", "Charging", "#27ae60"
+        elif pkw < -eps:
+            icon, label, bar = "⚡", "Discharging", "#e74c3c"
         else:
-            icon, label, bar_color = "⏸️", "Idle", "#999999"
+            icon, label, bar = "⏸️", "Idle", "#999999"
 
-        status = html.Span([icon, f" {label}: {abs(power_kw):.2f} kW"], style={"color": bar_color})
-
-        # Gauge ohne %-Suffix, rechts nichts abgeschnitten
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=soc_val,
-            number={"valueformat": ".1f"},
+            value=soc,
+            number={"valueformat": ".1f"},  # kein %-Suffix
             title={"text": "Battery SoC"},
-            domain={"x": [0.02, 0.98], "y": [0, 1]},  # etwas Luft links/rechts
+            domain={"x": [0.03, 0.97], "y": [0, 1]},  # rechts/links Luft, „100“ nicht abgeschnitten
             gauge={
                 "axis": {"range": [0, 100]},
-                "bar": {"color": bar_color},
+                "bar": {"color": bar},
                 "steps": [
                     {"range": [0, 20], "color": "#fdecea"},
                     {"range": [20, 50], "color": "#fff4e5"},
@@ -448,8 +439,17 @@ def register_callbacks(app):
                 ],
             }
         ))
-        fig.update_layout(margin=dict(l=20, r=60, t=40, b=20), paper_bgcolor="white")
-        return fig, status
+
+        # Status-Text INS Chart setzen (genau unter dem Halbkreis)
+        fig.add_annotation(
+            x=0.5, y=-0.14, xref="paper", yref="paper",
+            text=f"{icon} {label}: {abs(pkw):.2f} kW",
+            showarrow=False,
+            font=dict(size=14, color=bar)
+        )
+
+        fig.update_layout(paper_bgcolor="white", margin=dict(l=20, r=60, t=40, b=60))
+        return fig
 
     @app.callback(
         Output("pv-gauge", "figure"),
