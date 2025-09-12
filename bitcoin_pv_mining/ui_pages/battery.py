@@ -41,10 +41,8 @@ def layout():
         # --- Kapazität ---
         html.Div([
             html.Label("Capacity sensor (kWh, optional)", style={"marginLeft":"16px"}),
-            dcc.Dropdown(id="bat-cap-entity", options=sensor_opts,
-                         value=(cap or None), placeholder="Select sensor.…",
-                         style={"minWidth":"360px"}),
-
+            dcc.Dropdown(id="bat-cap-entity", options=sensor_opts, value=(cap or None),
+                         placeholder="Select sensor.…", style={"minWidth":"360px"}),
             html.Span(id="bat-cap-val", style={"marginLeft":"12px","opacity":0.8}),  # Live-Anzeige
         ], _row()),
 
@@ -56,26 +54,32 @@ def layout():
             html.Span(id="bat-soc-val", style={"marginLeft":"12px","opacity":0.8}),
         ], _row()),
 
-        # --- Spannung / Strom ---
+        # --- Spannung ---
         html.Div([
             html.Label("DC voltage (V)"),
             dcc.Dropdown(id="bat-vdc-entity", options=sensor_opts, value=(vdc or None),
                          placeholder="Select sensor.…", style={"minWidth":"360px"}),
             html.Span(id="bat-vdc-val", style={"marginLeft":"12px","opacity":0.8}),
+        ], _row()),
 
+        # --- Strom ---
+        html.Div([
             html.Label("DC current (A)", style={"marginLeft":"18px"}),
             dcc.Dropdown(id="bat-idc-entity", options=sensor_opts, value=(idc or None),
                          placeholder="Select sensor.…", style={"minWidth":"360px"}),
             html.Span(id="bat-idc-val", style={"marginLeft":"12px","opacity":0.8}),
         ], _row()),
 
-        # --- Temperatur / Leistung ---
+        # --- Temperatur  ---
         html.Div([
             html.Label("Temperature (°C)"),
             dcc.Dropdown(id="bat-temp-entity", options=sensor_opts, value=(temp or None),
                          placeholder="Select sensor.…", style={"minWidth":"360px"}),
             html.Span(id="bat-temp-val", style={"marginLeft":"12px","opacity":0.8}),
+        ], _row()),
 
+        # --- Leistung ---
+            html.Div([
             html.Label("Power (kW, optional)", style={"marginLeft":"18px"}),
             dcc.Dropdown(id="bat-power-entity", options=sensor_opts, value=(pwr or None),
                          placeholder="Select sensor.…", style={"minWidth":"360px"}),
