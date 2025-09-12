@@ -1,27 +1,24 @@
 # services/battery_store.py
 import os, yaml
-from services.utils import load_yaml  # dein bestehender Helper
+from .utils import load_yaml
 
-CONFIG_DIR   = "/config/pv_mining_addon"
-FILE_MAIN    = os.path.join(CONFIG_DIR, "battery.yaml")
-FILE_LOCAL   = os.path.join(CONFIG_DIR, "battery.local.yaml")
-FILE_LEGACY  = os.path.join(CONFIG_DIR, "battery_store.yaml")  # optionaler Fallback
+CONFIG_DIR = "/config/pv_mining_addon"
+BASE_FILE  = os.path.join(CONFIG_DIR, "battery.yaml")
+LOCAL_FILE = os.path.join(CONFIG_DIR, "battery.local.yaml")
 
 DEFAULTS = {
     "enabled": False,
-    "mode": "manual",              # "manual" | "auto"
-
-    # Limits/Kapazität
+    "mode": "manual",          # manual | auto
     "capacity_kwh": 11.0,
     "max_charge_kw": 3.0,
     "max_discharge_kw": 3.0,
 
-    # Sensor-Auswahl (nur Strings; können leer sein)
-    "capacity_entity": "",         # optional: sensor für Kapazität (kWh)
-    "soc_entity": "",              # % SoC
-    "voltage_entity": "",          # V (DC)
-    "current_entity": "",          # A (DC; +laden / -entladen)
-    "temperature_entity": "",      # °C
+    # Sensor-Entities (optional)
+    "capacity_entity": "",
+    "soc_entity": "",
+    "voltage_entity": "",
+    "current_entity": "",
+    "temperature_entity": "",
 
     # Ziele/Policies
     "target_soc": 90.0,
@@ -29,36 +26,24 @@ DEFAULTS = {
     "allow_grid_charge": False,
 }
 
-def _load_all() -> dict:
-    # Reihenfolge: DEFAULTS < battery.yaml < battery.local.yaml < legacy
+def _merged():
     data = DEFAULTS.copy()
-    data.update(load_yaml(FILE_MAIN,  {}))
-    data.update(load_yaml(FILE_LOCAL, {}))
-    # Nur falls vorhanden: alte Datei als höchste Priorität mergen
-    if os.path.exists(FILE_LEGACY):
-        try:
-            with open(FILE_LEGACY, "r", encoding="utf-8") as f:
-                data.update(yaml.safe_load(f) or {})
-        except Exception:
-            pass
+    data.update(load_yaml(BASE_FILE, {}) or {})
+    data.update(load_yaml(LOCAL_FILE, {}) or {})
     return data
 
-def _save_local(data: dict):
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    with open(FILE_LOCAL, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=True, allow_unicode=True)
-
 def get_var(key: str, default=None):
-    return _load_all().get(key, DEFAULTS.get(key, default))
+    return _merged().get(key, DEFAULTS.get(key, default))
 
 def set_vars(**kwargs):
-    # Wir schreiben ausschließlich in battery.local.yaml (Basis-Datei bleibt unangetastet)
-    current = load_yaml(FILE_LOCAL, {})
+    # nur in battery.local.yaml schreiben
+    cur = load_yaml(LOCAL_FILE, {}) or {}
     for k, v in kwargs.items():
-        if v is not None:
-            current[k] = v
-    _save_local(current)
-    # Rückgabe = gemergter Endstand (für UI direkt verwendbar)
-    merged = _load_all()
-    merged.update(current)
-    return merged
+        if v is None:
+            continue
+        if k in DEFAULTS:   # nur bekannte Keys zulassen
+            cur[k] = v
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(LOCAL_FILE, "w", encoding="utf-8") as f:
+        yaml.safe_dump(cur, f, sort_keys=True, allow_unicode=True)
+    return _merged()

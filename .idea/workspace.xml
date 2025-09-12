@@ -4,13 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V0.6.04">
-      <change afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config/pv_mining_addon/battery.local.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config/pv_mining_addon/battery.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/services/battery_store.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/services/battery_store.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages/battery.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages/battery.py" afterDir="false" />
-    </list>
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V0.6.05" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -183,15 +177,7 @@
       <workItem from="1757500216384" duration="5063000" />
       <workItem from="1757618542666" duration="1105000" />
       <workItem from="1757655505111" duration="49000" />
-      <workItem from="1757701015095" duration="8950000" />
-    </task>
-    <task id="LOCAL-00257" summary="V0.4.65">
-      <option name="closed" value="true" />
-      <created>1756804193884</created>
-      <option name="number" value="00257" />
-      <option name="presentableId" value="LOCAL-00257" />
-      <option name="project" value="LOCAL" />
-      <updated>1756804193884</updated>
+      <workItem from="1757701015095" duration="9691000" />
     </task>
     <task id="LOCAL-00258" summary="V0.4.66">
       <option name="closed" value="true" />
@@ -577,7 +563,15 @@
       <option name="project" value="LOCAL" />
       <updated>1757708167111</updated>
     </task>
-    <option name="localTasksCounter" value="306" />
+    <task id="LOCAL-00306" summary="V0.6.05">
+      <option name="closed" value="true" />
+      <created>1757710315115</created>
+      <option name="number" value="00306" />
+      <option name="presentableId" value="LOCAL-00306" />
+      <option name="project" value="LOCAL" />
+      <updated>1757710315115</updated>
+    </task>
+    <option name="localTasksCounter" value="307" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -595,7 +589,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="V0.5.00" />
     <MESSAGE value="Revert &quot;V0.5.03&quot;" />
     <MESSAGE value="Revert V0.5.04" />
     <MESSAGE value="Commit V0.5.04" />
@@ -620,7 +613,8 @@
     <MESSAGE value="V0.6.02" />
     <MESSAGE value="V0.6.03" />
     <MESSAGE value="V0.6.04" />
-    <option name="LAST_COMMIT_MESSAGE" value="V0.6.04" />
+    <MESSAGE value="V0.6.05" />
+    <option name="LAST_COMMIT_MESSAGE" value="V0.6.05" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$heater.coverage" NAME="heater Coverage Results" MODIFIED="1755710168905" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages" />
