@@ -241,7 +241,7 @@ def register_callbacks(app):
         Input("pv-update", "n_intervals")
     )
     def update_sankey(_):
-        # --- Eingänge ---
+        # --- Eingänge (PV/Grid) ---
         pv_id = resolve_sensor_id("pv_production")
         grid_id = resolve_sensor_id("grid_consumption")
         feed_id = resolve_sensor_id("grid_feed_in")
@@ -249,14 +249,24 @@ def register_callbacks(app):
         pv_val = float(get_sensor_value(pv_id) or 0.0)
         grid_val = float(get_sensor_value(grid_id) or 0.0)
         feed_val = float(get_sensor_value(feed_id) or 0.0)
-        inflow = max(pv_val + grid_val, 0.0)
 
+        inflow_base = max(pv_val + grid_val, 0.0)
+
+        # --- Batterie: + = Laden (Senke), - = Entladen (Quelle) ---
+        bat_pwr = float(_battery_power_kw_live() or 0.0)
+        bat_charge_kw = max(bat_pwr, 0.0)  # Senke
+        bat_discharge_kw = max(-bat_pwr, 0.0)  # Quelle
+
+        # Verfügbare Energie für Verbraucher = PV+Grid (+ Entladung)
+        inflow_eff = inflow_base + bat_discharge_kw
+
+        # PV / Grid %-Anteile weiterhin nur auf PV+Grid
         pv_pct, grid_pct = (0.0, 0.0)
-        if inflow > 0:
-            pv_pct = round(pv_val / inflow * 100, 1)
-            grid_pct = round(grid_val / inflow * 100, 1)
+        if inflow_base > 0:
+            pv_pct = round(pv_val / inflow_base * 100, 1)
+            grid_pct = round(grid_val / inflow_base * 100, 1)
 
-        # ---- Miner dynamisch ----
+        # ---- Miner (dynamisch) ----
         try:
             miners = list_miners()
         except Exception:
@@ -274,12 +284,9 @@ def register_callbacks(app):
             elif SHOW_INACTIVE_REMINDERS:
                 miner_entries.append({"name": name, "kw": GHOST_KW, "color": COLORS["inactive"], "ghost": True})
 
-        # ---- Weitere Lasten (Heater/Wallbox/Battery) ----
+        # ---- Weitere Lasten ----
         heater_kw = _heater_power_kw()
         wallbox_kw = _wallbox_power_kw()
-        battery_kw = _battery_power_kw()
-
-        # ---- Cooling circuit (nur wenn Feature aktiv) ----
         cooling_kw = 0.0
         cooling_feature = bool(set_get("cooling_feature_enabled", False))
         cooling = get_cooling() if cooling_feature else None
@@ -290,10 +297,10 @@ def register_callbacks(app):
         known_real = (
                 sum_active_miners_kw
                 + max(feed_val, 0.0)
-                + heater_kw + wallbox_kw + battery_kw
-                + cooling_kw
+                + heater_kw + wallbox_kw + cooling_kw
+                + bat_charge_kw  # Laden als Last mitzählen
         )
-        house_kw = max(inflow - known_real, 0.0)
+        house_kw = max(inflow_eff - known_real, 0.0)
 
         # ---- Node/Link-Builder ----
         node_labels, node_colors = [], []
@@ -311,13 +318,22 @@ def register_callbacks(app):
             link_value.append(max(float(v or 0.0), 0.0))
             link_color.append(color)
 
-        # Inflow
+        # Batterie (als Quelle beim Entladen) zuerst anlegen, damit sie links landet
+        battery_src_idx = None
+        if bat_discharge_kw > 0.0:
+            battery_src_idx = add_node(f"Battery (discharge)<br>{_fmt_kw(bat_discharge_kw)}", COLORS["battery"])
+
+        # Energy Inflow (zeigt die effektiv verfügbare Leistung)
         inflow_idx = add_node(
-            f"Energy Inflow<br>{_fmt_kw(inflow)}<br>PV: {pv_pct}% · Grid: {grid_pct}%",
+            f"Energy Inflow<br>{_fmt_kw(inflow_eff)}<br>PV: {pv_pct}% · Grid: {grid_pct}%",
             COLORS["inflow"]
         )
 
-        # Cooling (nur wenn Feature aktiv)
+        # Link von Batterie ➜ Inflow, wenn entladen wird
+        if battery_src_idx is not None:
+            add_link(battery_src_idx, inflow_idx, bat_discharge_kw, COLORS["battery"])
+
+        # Cooling (optional)
         if cooling_feature:
             cooling_is_active = cooling_kw > 0.0
             cooling_kw_eff = cooling_kw if cooling_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
@@ -347,13 +363,14 @@ def register_callbacks(app):
             wallbox_idx = add_node(f"Wallbox<br>{_fmt_kw(wallbox_kw)}", wallbox_color)
             add_link(inflow_idx, wallbox_idx, wallbox_kw_eff, wallbox_color)
 
-        # Battery
-        battery_is_active = battery_kw > 0.0
-        battery_kw_eff = battery_kw if battery_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
-        if battery_is_active or SHOW_INACTIVE_REMINDERS:
-            battery_color = COLORS["battery"] if battery_is_active else COLORS["inactive"]
-            battery_idx = add_node(f"Battery<br>{_fmt_kw(battery_kw)}", battery_color)
-            add_link(inflow_idx, battery_idx, battery_kw_eff, battery_color)
+        # Battery (als Senke beim Laden)
+        if bat_charge_kw > 0.0 or SHOW_INACTIVE_REMINDERS:
+            is_active = bat_charge_kw > 0.0
+            bat_kw_eff = bat_charge_kw if is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
+            if is_active or SHOW_INACTIVE_REMINDERS:
+                bat_color = COLORS["battery"] if is_active else COLORS["inactive"]
+                bat_sink_idx = add_node(f"Battery (charge)<br>{_fmt_kw(bat_charge_kw)}", bat_color)
+                add_link(inflow_idx, bat_sink_idx, bat_kw_eff, bat_color)
 
         # Grid Feed-in
         feed_is_active = feed_val > 0.0
