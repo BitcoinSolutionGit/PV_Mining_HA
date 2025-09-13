@@ -468,23 +468,30 @@ def register_callbacks(app):
             except Exception:
                 return d
 
+        # Werte holen
         soc = max(0.0, min(f(bat_get("soc_entity", "")), 100.0))
         vdc = f(bat_get("voltage_entity", ""))
         idc = f(bat_get("current_entity", ""))
-        pkw = (vdc * idc) / 1000.0
+        pkw = (vdc * idc) / 1000.0  # + = Laden, - = Entladen
 
-        eps = 0.02
-        dot_color = "#27ae60" if pkw > eps else ("#e74c3c" if pkw < -eps else "#909090")
+        # Balkenfarbe nach Status
+        eps = 0.02  # ~20 W Deadband
+        bar_color = (
+            "#27ae60" if pkw > eps else
+            "#e74c3c" if pkw < -eps else
+            "#9e9e9e"  # Idle
+        )
 
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=soc,
-            number={"valueformat": ".1f"},
-            title={"text": "Battery level (%)", "font": {"size": 20}},
-            domain={"x": [0.06, 0.94], "y": [0.0, 1.0]},
+            number={"valueformat": ".1f"},  # keine %-Suffixe
+            title={"text": "Battery level (%)"},  # Überschrift bleibt groß
+            domain={"x": [0.06, 0.94], "y": [0.00, 1.00]},  # Platz für „100“ rechts
             gauge={
                 "axis": {"range": [0, 100]},
-                "bar": {"color": "#888888"},
+                "bar": {"color": bar_color, "thickness": 0.28},  # ⇐ HIER färben wir den Balken
+                "bgcolor": "white",
                 "steps": [
                     {"range": [0, 20], "color": "#fdecea"},
                     {"range": [20, 50], "color": "#fff4e5"},
@@ -493,13 +500,12 @@ def register_callbacks(app):
                 ],
             },
         ))
-        # farbiger Status-Punkt rechts von der Überschrift
-        fig.add_annotation(
-            x=0.93, y=0.98, xref="paper", yref="paper",
-            text="●", showarrow=False, xanchor="left", yanchor="top",
-            font=dict(size=18, color=dot_color)
+
+        fig.update_layout(
+            paper_bgcolor="white",
+            margin=dict(l=20, r=40, t=48, b=10)
         )
-        fig.update_layout(paper_bgcolor="white", margin=dict(l=20, r=40, t=40, b=20))
+
         return fig
 
     @app.callback(
