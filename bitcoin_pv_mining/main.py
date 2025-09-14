@@ -28,7 +28,7 @@ from ui_pages.wallbox import layout as wallbox_layout, register_callbacks as reg
 from ui_pages.heater import layout as heater_layout, register_callbacks as reg_heater
 from ui_pages.settings import layout as settings_layout, register_callbacks as reg_settings
 from ui_pages.dev import layout as dev_layout, register_callbacks as reg_dev
-from ui_pages.common import footer_license
+from ui_pages.common import footer_license, page_wrap, ui_background_color
 
 # beim Start
 verify_license()
@@ -732,8 +732,9 @@ app.index_string = '''
         {%favicon%}
         {%css%}
         <style>
-            body {
-                background-color: white;
+            html, body {
+                margin: 0;
+                background: transparent;   /* Body selbst nicht einfärben */
                 color: black;
                 font-family: Arial, sans-serif;
             }
@@ -1052,7 +1053,7 @@ app.index_string = '''
 </html>
 '''
 
-app.layout = html.Div([
+app.layout = page_wrap([
     dcc.Store(id="active-tab", data="dashboard"),
     dcc.Store(id="premium-enabled", data={"enabled": is_premium_enabled()}),
     dcc.Store(id="prio-order", storage_type="local"),
@@ -1095,15 +1096,20 @@ app.layout = html.Div([
 
         # Premium ganz rechts
         html.Button("Activate Premium", id="btn-premium",
-                n_clicks=0, className="custom-tab premium-btn premium-right"),
-        # html.Div([
-        #     html.Button("Activate Premium", id="btn-premium",
-        #                 n_clicks=0, className="custom-tab premium-btn"),
-        # ], className="premium-right"),
-    ], id="tab-buttons", className="header-bar"),
+                    n_clicks=0, className="custom-tab premium-btn premium-right"),
+    ], id="tab-buttons", className="header-bar",
+        style={"backgroundColor": ui_background_color(), "padding": "6px 10px"}),
 
-    # html.Div(id="tabs-content", style={"marginTop": "10px"})
-    html.Div(id="tabs-content", className="content-area")
+    # ⬇️ DAS fehlte – hier landen die Inhalte aus render_tab()
+    html.Div(
+        id="tabs-content",
+        className="content-area",
+        style={
+            "backgroundColor": ui_background_color(),
+            "minHeight": "calc(100vh - 120px)",  # schrumpft nicht weg
+            "paddingBottom": "16px",
+        },
+    ),
 ])
 
 @app.callback(

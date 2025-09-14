@@ -14,8 +14,7 @@ from services.heater_store import resolve_entity_id as heater_resolve_entity, ge
 from services.miners_store import list_miners
 from services.cooling_store import get_cooling
 from services.settings_store import get_var as set_get
-from ui_pages.common import footer_license
-
+from ui_pages.common import footer_license, page_wrap
 
 
 CONFIG_DIR = "/config/pv_mining_addon"
@@ -26,6 +25,14 @@ CONFIG_PATH = MAIN_CFG  # für load_config()
 
 SHOW_INACTIVE_REMINDERS = True   # 1W-“Erinnerung” für inaktive Lasten
 GHOST_KW = 0.001                 # 1 Watt in kW
+
+GAUGE_DOMAIN = {"x": [0.06, 0.94], "y": [0.00, 1.00]}
+GAUGE_LAYOUT = dict(paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(l=20, r=20, t=28, b=0))
+GAUGE_NUMBER_FONT = {"font": {"size": 56}}
+GAUGE_TITLE_FONT  = {"font": {"size": 18}}
+GAUGE_TICK_FONT   = {"size": 12}
 
 def _heater_power_kw():
     try:
@@ -404,8 +411,8 @@ def register_callbacks(app):
 
         fig.update_layout(
             font=dict(size=14, color="black"),
-            plot_bgcolor='white',
-            paper_bgcolor='white',
+            plot_bgcolor="rgba(0,0,0,0)",  # ⟵ transparent
+            paper_bgcolor="rgba(0,0,0,0)",  # ⟵ transparent
             margin=dict(l=20, r=20, t=40, b=20)
         )
         fig.update_traces(hoverlabel=dict(bgcolor="white"))
@@ -433,22 +440,29 @@ def register_callbacks(app):
         grid_val = safe_val(grid_id)
         feed_val = safe_val(feed_id)
 
-        def build_gauge(value, title, color):
+        def build_gauge(value, title, color, axis_max=5):
+            ticks = [0, axis_max / 2, axis_max]
             fig = go.Figure(go.Indicator(
                 mode="gauge+number",
-                value=value,
-                title={"text": title, "font": {"size": 20}},
-                domain={"x": [0.06, 0.94], "y": [0.0, 1.0]},  # gleich wie Battery
+                value=float(value or 0),
+                number=GAUGE_NUMBER_FONT | {"valueformat": ".2f"},
+                title={"text": title, **GAUGE_TITLE_FONT},
+                domain=GAUGE_DOMAIN,
                 gauge={
-                    "axis": {"range": [0, 5]},
+                    "axis": {
+                        "range": [0, axis_max],
+                        "tickvals": ticks,
+                        "ticktext": [str(int(t)) if t.is_integer() else f"{t:g}" for t in ticks],
+                        "tickfont": GAUGE_TICK_FONT,
+                    },
                     "bar": {"color": color},
                     "steps": [
-                        {"range": [0, 2.5], "color": "#e0f7e0"},
-                        {"range": [2.5, 5], "color": "#c0e0c0"},
+                        {"range": [0, axis_max / 2], "color": "#e0f7e0"},
+                        {"range": [axis_max / 2, axis_max], "color": "#c0e0c0"},
                     ],
-                },
+                }
             ))
-            fig.update_layout(paper_bgcolor="white", margin=dict(l=20, r=40, t=40, b=20))
+            fig.update_layout(**GAUGE_LAYOUT)
             return fig
 
         return (
@@ -468,30 +482,33 @@ def register_callbacks(app):
             except Exception:
                 return d
 
-        # Werte holen
         soc = max(0.0, min(f(bat_get("soc_entity", "")), 100.0))
         vdc = f(bat_get("voltage_entity", ""))
         idc = f(bat_get("current_entity", ""))
-        pkw = (vdc * idc) / 1000.0  # + = Laden, - = Entladen
+        pkw = (vdc * idc) / 1000.0
 
-        # Balkenfarbe nach Status
-        eps = 0.02  # ~20 W Deadband
-        bar_color = (
-            "#27ae60" if pkw > eps else
-            "#e74c3c" if pkw < -eps else
-            "#9e9e9e"  # Idle
-        )
+        eps = 0.02
+        if pkw > eps:
+            bar_color = "#27ae60"  # laden
+        elif pkw < -eps:
+            bar_color = "#e74c3c"  # entladen
+        else:
+            bar_color = "#999999"  # idle
 
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=soc,
-            number={"valueformat": ".1f"},  # keine %-Suffixe
-            title={"text": "Battery level (%)"},  # Überschrift bleibt groß
-            domain={"x": [0.06, 0.94], "y": [0.00, 1.00]},  # Platz für „100“ rechts
+            number=GAUGE_NUMBER_FONT | {"valueformat": ".1f"},
+            title={"text": "Battery level (%)", **GAUGE_TITLE_FONT},
+            domain=GAUGE_DOMAIN,
             gauge={
-                "axis": {"range": [0, 100]},
-                "bar": {"color": bar_color, "thickness": 0.28},  # ⇐ HIER färben wir den Balken
-                "bgcolor": "white",
+                "axis": {
+                    "range": [0, 100],
+                    "tickvals": [0, 50, 100],
+                    "ticktext": ["0", "50", "100"],
+                    "tickfont": GAUGE_TICK_FONT,
+                },
+                "bar": {"color": bar_color},
                 "steps": [
                     {"range": [0, 20], "color": "#fdecea"},
                     {"range": [20, 50], "color": "#fff4e5"},
@@ -500,12 +517,7 @@ def register_callbacks(app):
                 ],
             },
         ))
-
-        fig.update_layout(
-            paper_bgcolor="white",
-            margin=dict(l=20, r=40, t=48, b=10)
-        )
-
+        fig.update_layout(**GAUGE_LAYOUT)
         return fig
 
     @app.callback(
@@ -591,7 +603,7 @@ def register_callbacks(app):
 # Layout
 # ------------------------------
 def layout():
-    return html.Div([
+    return page_wrap([
         html.H1([
             "PV-mining dashboard — by ",
             html.A(
