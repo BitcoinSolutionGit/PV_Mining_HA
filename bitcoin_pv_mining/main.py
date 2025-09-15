@@ -855,7 +855,7 @@ app.index_string = '''
               /* Nur Desktop: Nicht-Dashboard etwas weiter nach unten schieben,
                damit das große Icon nichts überlappt */
             @media (min-width: 900px) {
-              .content-area.extra-pad { margin-top: 64px; } /* bei Bedarf 56–80px feinjustieren */
+              .content-area.extra-pad { padding-top: 64px; } /* bei Bedarf 56–80px feinjustieren */
             }
             }
 
@@ -952,7 +952,11 @@ app.index_string = '''
             }
 
             /* Grundabstand für alle Seiten */
-            .content-area { margin-top: 10px; }
+            .content-area {
+              margin-top: 0;                 /* kein Margin ➜ kein Collapsing */
+              padding: 12px 16px 16px;       /* dezenter Innenabstand überall */
+              box-sizing: border-box;        /* Padding zählt zur Breite */
+            }
             
             // html, body { border: 0 !important; }
         </style>
