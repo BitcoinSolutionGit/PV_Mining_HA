@@ -64,6 +64,29 @@ def _battery_soc_percent():
     except Exception:
         return None
 
+def _battery_capacity_kwh() -> float:
+    """
+    Nominale Batteriekapazität (kWh) für die Gauge-Skala.
+    Quellen (in dieser Reihenfolge):
+      - battery_store.capacity_kwh
+      - battery_store.nominal_capacity_kwh
+      - settings_store: battery.capacity_kwh
+      - Fallback: 11.0
+    """
+    try:
+        cap = bat_get("capacity_kwh", None)
+        if cap is None:
+            cap = bat_get("nominal_capacity_kwh", None)
+        if cap is None:
+            try:
+                cap = set_get("battery.capacity_kwh", None)
+            except Exception:
+                cap = None
+        cap = float(cap) if cap is not None else 15.0
+        return max(cap, 0.1)
+    except Exception:
+        return 15.0
+
 def _battery_power_kw_live():
     """
     Battery-Leistung in kW:
@@ -488,21 +511,21 @@ def register_callbacks(app):
         Input("pv-update", "n_intervals"),
     )
     def update_battery(_n):
-        def f(eid, d=0.0):
-            try:
-                return float(get_sensor_value(eid) or d) if eid else d
-            except Exception:
-                return d
+        # SOC (%) und Leistung (kW) ermitteln
+        soc = _battery_soc_percent()  # kann None sein
+        pkw = _battery_power_kw_live()
 
-        # Leistung aus V*I (kW)
-        vdc = f(bat_get("voltage_entity", ""))
-        idc = f(bat_get("current_entity", ""))
-        pkw = (vdc * idc) / 1000.0
+        # Skala = Kapazität in kWh
+        cap = _battery_capacity_kwh()
+        axis_max = cap
 
-        axis_max = _battery_axis_max_kw()
-        value = min(max(abs(pkw), 0.0), axis_max)
+        # Wert in kWh aus SOC
+        if soc is None:
+            value_kwh = 0.0
+        else:
+            value_kwh = max(0.0, min(cap * (float(soc) / 100.0), cap))
 
-        # Farblogik
+        # Balkenfarbe nach Lade-/Entladerichtung
         eps = 0.02
         if pkw > eps:
             bar_color = "#27ae60"  # laden
@@ -511,12 +534,14 @@ def register_callbacks(app):
         else:
             bar_color = "#999999"  # idle
 
-        ticks = [0, axis_max / 2, axis_max]
+        # Ticks 0 – ½ – max
+        ticks = [0.0, axis_max / 2.0, axis_max]
+
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=value,
+            value=value_kwh,
             number=GAUGE_NUMBER_FONT | {"valueformat": ".2f"},
-            title={"text": "Battery power (kW)", **GAUGE_TITLE_FONT},
+            title={"text": "Battery energy (kWh)", **GAUGE_TITLE_FONT},
             domain=GAUGE_DOMAIN,
             gauge={
                 "axis": {
@@ -530,7 +555,7 @@ def register_callbacks(app):
                     {"range": [0, axis_max / 2], "color": "#e0f7e0"},
                     {"range": [axis_max / 2, axis_max], "color": "#c0e0c0"},
                 ],
-            }
+            },
         ))
         fig.update_layout(**GAUGE_LAYOUT)
         return fig
