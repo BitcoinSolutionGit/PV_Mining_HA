@@ -34,6 +34,8 @@ GAUGE_NUMBER_FONT = {"font": {"size": 56}}
 GAUGE_TITLE_FONT  = {"font": {"size": 18}}
 GAUGE_TICK_FONT   = {"size": 12}
 
+COLLAPSE_BATTERY_SOURCE = True  # keine extra Batterie-Quelle links zeigen
+
 def _heater_power_kw():
     try:
         eid = heater_resolve_entity("input_heizstab_cache")  # Prozent (0–100) aus HA input_number
@@ -292,21 +294,20 @@ def register_callbacks(app):
         grid_val = float(get_sensor_value(grid_id) or 0.0)
         feed_val = float(get_sensor_value(feed_id) or 0.0)
 
-        inflow_base = max(pv_val + grid_val, 0.0)
-
         # --- Batterie: + = Laden (Senke), - = Entladen (Quelle) ---
         bat_pwr = float(_battery_power_kw_live() or 0.0)
         bat_charge_kw = max(bat_pwr, 0.0)  # Senke
         bat_discharge_kw = max(-bat_pwr, 0.0)  # Quelle
 
         # Verfügbare Energie für Verbraucher = PV+Grid (+ Entladung)
+        inflow_base = max(pv_val + grid_val, 0.0)
         inflow_eff = inflow_base + bat_discharge_kw
 
-        # PV / Grid %-Anteile weiterhin nur auf PV+Grid
-        pv_pct, grid_pct = (0.0, 0.0)
-        if inflow_base > 0:
-            pv_pct = round(pv_val / inflow_base * 100, 1)
-            grid_pct = round(grid_val / inflow_base * 100, 1)
+        # ---- Prozentanteile inkl. Batterie (auf Basis PV + Grid + Battery discharge) ----
+        den = inflow_base + bat_discharge_kw
+        pv_pct = round((pv_val / den) * 100.0, 1) if den > 0 else 0.0
+        grid_pct = round((grid_val / den) * 100.0, 1) if den > 0 else 0.0
+        batt_pct = round((bat_discharge_kw / den) * 100.0, 1) if den > 0 else 0.0
 
         # ---- Miner (dynamisch) ----
         try:
@@ -360,14 +361,15 @@ def register_callbacks(app):
             link_value.append(max(float(v or 0.0), 0.0))
             link_color.append(color)
 
-        # Batterie (als Quelle beim Entladen) zuerst anlegen, damit sie links landet
-        battery_src_idx = None
-        if bat_discharge_kw > 0.0:
+        # (Optional) Batterie-Quelle links – per Flag abschaltbar - zuerst anlegen, damit sie links landet
+        if not COLLAPSE_BATTERY_SOURCE and bat_discharge_kw > 0.0:
             battery_src_idx = add_node(f"Battery (discharge)<br>{_fmt_kw(bat_discharge_kw)}", COLORS["battery"])
+        else:
+            battery_src_idx = None
 
         # Energy Inflow (zeigt die effektiv verfügbare Leistung)
         inflow_idx = add_node(
-            f"Energy Inflow<br>{_fmt_kw(inflow_eff)}<br>PV: {pv_pct}% · Grid: {grid_pct}%",
+            f"Energy Inflow<br>{_fmt_kw(inflow_eff)}<br>PV: {pv_pct}%<br>Grid: {grid_pct}%<br>Battery: {batt_pct}%",
             COLORS["inflow"]
         )
 
