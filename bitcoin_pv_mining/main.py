@@ -723,6 +723,7 @@ if _show_dev_tab():
     except Exception as e:
         print(f"[dev] register error: {e}", flush=True)
 
+
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -733,9 +734,11 @@ app.index_string = '''
         {%css%}
         <style>
             html, body {
-                margin: 0;
-                # background: transparent;   /* Body selbst nicht einfärben */
-                var(--bg-color, #ffffff)
+                margin: 0 !important;
+                padding: 0 !important;
+                /* background: var(--bg-color, #ffffff) !important; */
+                background: transparent !important; 
+                height: 100%;
                 color: black;
                 font-family: Arial, sans-serif;
             }
@@ -792,7 +795,7 @@ app.index_string = '''
             .premium-btn-locked:hover { filter: brightness(1.05); }
 
             /* Header-Container */
-            .header-bar { position: relative; }
+            .header-bar { margin-top: 0 !important; border-top: none !important; position: relative; }
 
             :root { --header-side-pad: 140px; }
             
@@ -950,6 +953,8 @@ app.index_string = '''
 
             /* Grundabstand für alle Seiten */
             .content-area { margin-top: 10px; }
+            
+            // html, body { border: 0 !important; }
         </style>
     </head>
     <body>
@@ -1046,6 +1051,28 @@ app.index_string = '''
                   handleHash();
                 })();
             </script>
+            # <script>
+            #     /* Synchronisiere den Seitenhintergrund mit #app-root, damit kein weißer 1px-Streifen bleibt */
+            #     (function syncBodyBg(){
+            #       function apply() {
+            #         try {
+            #           var root = document.getElementById('app-root');
+            #           if (!root) return;
+            #           // berechnete Hintergrundfarbe des App-Containers lesen
+            #           var bg = getComputedStyle(root).backgroundColor;
+            #           if (bg) {
+            #             document.body.style.background = bg;
+            #             document.documentElement.style.background = bg; // <html>
+            #           }
+            #         } catch (_) {}
+            #       }
+            #       if (document.readyState === 'loading') {
+            #         document.addEventListener('DOMContentLoaded', apply);
+            #       } else {
+            #         apply();
+            #       }
+            #     })();
+            # </script>
         </footer>
 
         <div id="poll-debug" style="position:fixed;bottom:8px;left:8px;font:12px monospace;opacity:.6"></div>
@@ -1061,7 +1088,17 @@ app.layout = page_wrap([
     dcc.Store(id="flash-visible-until", data=0),
     dcc.Interval(id="flash-poll", interval=2000, n_intervals=0),
     dcc.Location(id="url", refresh=False),
-    html.Div(id="flash-area", style={"margin":"8px 0"}),
+    # html.Div(id="flash-area", style={"margin":"8px 0"}),
+    html.Div(
+        id="flash-area",
+        style={
+            "margin": "0",                         # keine top-margin (verhindert weißen Balken)
+            "padding": "8px 0",                    # optischer Abstand statt margin
+            "backgroundColor": ui_background_color(),  # nimmt deine Config-Farbe
+            "zIndex": 10,
+        },
+    ),
+
 
     # NEU: globaler Engine-Timer (unabhängig vom Tab)
     dcc.Interval(id="planner-engine", interval=10_000, n_intervals=0),  # alle 10s
@@ -1101,7 +1138,6 @@ app.layout = page_wrap([
     ], id="tab-buttons", className="header-bar",
         style={"backgroundColor": ui_background_color(), "padding": "6px 10px"}),
 
-    # ⬇️ DAS fehlte – hier landen die Inhalte aus render_tab()
     html.Div(
         id="tabs-content",
         className="content-area",

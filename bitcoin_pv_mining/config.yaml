@@ -1,5 +1,5 @@
 name: "Bitcoin PV-mining"
-version: "0.6.24"
+version: "0.6.25"
 slug: "bitcoin_pv_mining"
 description: "PV-based Bitcoin mining control with web UI"
 ingress: true
@@ -30,7 +30,7 @@ environment:
 
 pv_mining_addon:
   ui:
-    background_color: "#1F2329"    # dein dunkleres Grau
+    background_color: "#B0CCF7"    # dein dunkleres Grau
 
   # input_boolean.bitcoin_miner1_toggle switchen zum einschalten
   # oder direkt das script: bitcoin_miner1_ein:
@@ -41,7 +41,6 @@ pv_mining_addon:
   # https://github.com/BitcoinSolutionGit/PV_Mining_HA
   # https://license.bitcoinsolution.at/var/pending/get.php?install_id=TEST
 
-  #1F2329"   # sanftes Hellgrau; ändere frei
   #2B2F36 – sattes Slate-Grau (mein Favorit)
   #23272E – GitHub-Dark-mäßig, etwas kühler
   #2E3440 – Nord-Theme “Polar Night”
