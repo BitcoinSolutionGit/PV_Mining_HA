@@ -232,6 +232,32 @@ def _pv_cost_per_kwh() -> float:
     except Exception:
         return 0.0
 
+def _battery_cost_per_kwh(pv_cost: float) -> float:
+    """
+    Kostenannahme für entladene Batterieenergie.
+    Default: wie PV-Opportunitätskosten.
+    Optional konfigurierbar über Settings:
+      battery_cost_policy: pv | zero | fixed | sensor
+      battery_cost_value: <€/kWh>        (für fixed)
+      battery_cost_sensor: <entity_id>   (für sensor)
+    """
+    try:
+        mode = (set_get("battery_cost_policy", "pv") or "pv").lower()
+        if mode == "zero":
+            return 0.0
+        if mode == "fixed":
+            return float(set_get("battery_cost_value", pv_cost) or pv_cost)
+        if mode == "sensor":
+            sens = set_get("battery_cost_sensor", "") or ""
+            try:
+                return float(get_sensor_value(sens)) if sens else pv_cost
+            except Exception:
+                return pv_cost
+        # default: gleich wie PV
+        return pv_cost
+    except Exception:
+        return pv_cost
+
 def _thresh(path: str, default: float) -> float:
     try:
         return float(set_get(path, default) or default)
@@ -604,27 +630,35 @@ def register_callbacks(app):
         market_color = _price_color_market(market)
         market_out  = html.Span([_dot(market_color, "1em"), market_txt])
 
-        # --- 2) PV-adjusted (aktueller Mix PV/Grid) ---
+        # --- 2) Net load cost adjusted (PV + Battery + Grid) ---
         try:
             pv_id = resolve_sensor_id("pv_production")
             grid_id = resolve_sensor_id("grid_consumption")
-            pv_val = float(get_sensor_value(pv_id) or 0.0)
-            grid_val = float(get_sensor_value(grid_id) or 0.0)
-            inflow = max(pv_val + grid_val, 0.0)
 
-            if inflow > 0.0:
-                pv_share = max(min(pv_val / inflow, 1.0), 0.0)
-                grid_share = 1.0 - pv_share
+            pv_val = max(float(get_sensor_value(pv_id) or 0.0), 0.0)
+            grid_val = max(float(get_sensor_value(grid_id) or 0.0), 0.0)
+
+            # Batterie-Entladung in kW (nur >0 zählt als Quelle)
+            bat_pwr = float(_battery_power_kw_live() or 0.0)
+            bat_discharge = max(-bat_pwr, 0.0)
+
+            denom = pv_val + grid_val + bat_discharge
+            if denom > 0.0:
+                pv_share = pv_val / denom
+                grid_share = grid_val / denom
+                bat_share = bat_discharge / denom
             else:
-                pv_share, grid_share = 0.0, 1.0
+                pv_share = grid_share = bat_share = 0.0
 
             pv_cost = _pv_cost_per_kwh()
-            blended = pv_share * pv_cost + grid_share * market
+            bat_cost = _battery_cost_per_kwh(pv_cost)
+
+            blended = pv_share * pv_cost + bat_share * bat_cost + grid_share * market
             blended_color = _price_color_blended(blended)
-            blended_txt = f"Net load cost (PV-adjusted): {_fmt_price(blended)} {sym}/kWh"
+            blended_txt = f"Net load cost adjusted: {_fmt_price(blended)} {sym}/kWh"
             blended_out = html.Span([_dot(blended_color, "1em"), blended_txt])
         except Exception:
-            blended_out = html.Span([_dot("#888", "1em"), "Net load cost (PV-adjusted): –"])
+            blended_out = html.Span([_dot("#888", "1em"), "Net load cost adjusted: –"])
 
         return market_out, blended_out
 
@@ -647,7 +681,7 @@ def register_callbacks(app):
 def layout():
     return page_wrap([
         html.H1([
-            "PV-mining dashboard — by ",
+            "PV-mining dashboard by ",
             html.A(
                 "BitcoinSolution.at",
                 href="https://www.bitcoinsolution.at",
