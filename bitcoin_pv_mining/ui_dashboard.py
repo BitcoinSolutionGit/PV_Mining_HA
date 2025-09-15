@@ -97,6 +97,18 @@ def _battery_power_kw_live():
     # I > 0 = Laden (positiv), I < 0 = Entladen (negativ)
     return (v * i) / 1000.0
 
+def _battery_axis_max_kw() -> float:
+    """
+    Max. Anzeigebereich der Batterie-Gauge (kW).
+    Nimmt – wenn vorhanden – `battery_store.max_power_kw`, sonst Default 5.0.
+    """
+    try:
+        v = bat_get("max_power_kw", None)
+        if v is None:
+            return 5.0
+        return max(float(v), 0.5)
+    except Exception:
+        return 5.0
 
 # ------------------------------
 # Sensor-Resolver
@@ -482,11 +494,15 @@ def register_callbacks(app):
             except Exception:
                 return d
 
-        soc = max(0.0, min(f(bat_get("soc_entity", "")), 100.0))
+        # Leistung aus V*I (kW)
         vdc = f(bat_get("voltage_entity", ""))
         idc = f(bat_get("current_entity", ""))
         pkw = (vdc * idc) / 1000.0
 
+        axis_max = _battery_axis_max_kw()
+        value = min(max(abs(pkw), 0.0), axis_max)
+
+        # Farblogik
         eps = 0.02
         if pkw > eps:
             bar_color = "#27ae60"  # laden
@@ -495,27 +511,26 @@ def register_callbacks(app):
         else:
             bar_color = "#999999"  # idle
 
+        ticks = [0, axis_max / 2, axis_max]
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=soc,
-            number=GAUGE_NUMBER_FONT | {"valueformat": ".1f"},
-            title={"text": "Battery level (%)", **GAUGE_TITLE_FONT},
+            value=value,
+            number=GAUGE_NUMBER_FONT | {"valueformat": ".2f"},
+            title={"text": "Battery power (kW)", **GAUGE_TITLE_FONT},
             domain=GAUGE_DOMAIN,
             gauge={
                 "axis": {
-                    "range": [0, 100],
-                    "tickvals": [0, 50, 100],
-                    "ticktext": ["0", "50", "100"],
+                    "range": [0, axis_max],
+                    "tickvals": ticks,
+                    "ticktext": [str(int(t)) if float(t).is_integer() else f"{t:g}" for t in ticks],
                     "tickfont": GAUGE_TICK_FONT,
                 },
                 "bar": {"color": bar_color},
                 "steps": [
-                    {"range": [0, 20], "color": "#fdecea"},
-                    {"range": [20, 50], "color": "#fff4e5"},
-                    {"range": [50, 80], "color": "#eef7ee"},
-                    {"range": [80, 100], "color": "#e6f4ea"},
+                    {"range": [0, axis_max / 2], "color": "#e0f7e0"},
+                    {"range": [axis_max / 2, axis_max], "color": "#c0e0c0"},
                 ],
-            },
+            }
         ))
         fig.update_layout(**GAUGE_LAYOUT)
         return fig
