@@ -19,17 +19,3 @@ docs:
   readme_de_url: "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Readme_DE.md"
   readme_en_url: "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Readme_EN.md"
 
-ui:
-  background_color: "#1F2329"   # sanftes Hellgrau; ändere frei
-
-  #2B2F36 – sattes Slate-Grau (mein Favorit)
-
-  #23272E – GitHub-Dark-mäßig, etwas kühler
-
-  #2E3440 – Nord-Theme “Polar Night”
-
-  #1F2329 – sehr dunkel, fast schwarz
-
-  #30343A – neutral, minimal heller
-
-  #2B2D31 – Discord-Dark Richtung

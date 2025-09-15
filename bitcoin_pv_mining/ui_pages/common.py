@@ -1,5 +1,5 @@
 # ui_pages/common.py
-import os
+import os, yaml
 import dash
 from dash import html
 from services.utils import load_yaml
@@ -7,14 +7,24 @@ from services.utils import load_yaml
 CONFIG_DIR = "/config/pv_mining_addon"
 MAIN_CFG   = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
 
+# Addon-Root = Ordner von main.py = eine Ebene über ui_pages/
+ADDON_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ADDON_CONFIG = os.path.join(ADDON_ROOT, "config.yaml")  # <-- hier liegt DEINE config.yaml
+
 # Default auf GitHub-README
 DEFAULT_README_DE = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Readme_DE.md"
 DEFAULT_README_EN = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Readme_EN.md"
 
 def ui_background_color() -> str:
-    cfg = load_yaml(MAIN_CFG, {}) or {}
-    col = (cfg.get("ui", {}).get("background_color") or "#F3F5F7").strip()
-    return col
+    """Liest nur aus <addon-root>/config.yaml → pv_mining_addon.ui.background_color. Fallback #ffffff."""
+    try:
+        with open(ADDON_CONFIG, "r", encoding="utf-8") as f:
+            y = yaml.safe_load(f) or {}
+        ui = ((y.get("pv_mining_addon") or {}).get("ui") or {})
+        col = (ui.get("background_color") or "").strip()
+        return col or "#ffffff"
+    except Exception:
+        return "#ffffff"
 
 def page_wrap(children):
     col = ui_background_color()
@@ -22,8 +32,8 @@ def page_wrap(children):
         children,
         id="app-root",
         style={
-            "--bg-color": col,                 # CSS-Variable (falls du sie später brauchst)
-            "background": col,                 # tatsächlicher Hintergrund hier
+            "--bg-color": col,   # CSS-Var für’s Theme
+            "background": col,   # direkt anwenden (falls CSS-Var nicht greift)
             "minHeight": "100vh",
             "margin": 0,
             "padding": 0,

@@ -734,7 +734,8 @@ app.index_string = '''
         <style>
             html, body {
                 margin: 0;
-                background: transparent;   /* Body selbst nicht einfärben */
+                # background: transparent;   /* Body selbst nicht einfärben */
+                var(--bg-color, #ffffff)
                 color: black;
                 font-family: Arial, sans-serif;
             }
