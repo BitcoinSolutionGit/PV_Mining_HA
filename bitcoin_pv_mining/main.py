@@ -959,6 +959,16 @@ app.index_string = '''
             }
             
             // html, body { border: 0 !important; }
+            
+            /* Plotly Sankey: weißen Text-Halo/Stroke komplett abschalten */
+            .js-plotly-plot .main-svg .sankey text,
+            .js-plotly-plot .infolayer .sankey text {
+              stroke: none !important;
+              stroke-width: 0 !important;
+              paint-order: fill !important;
+              text-shadow: none !important; /* falls ein Shadow via CSS gesetzt wäre */
+            }
+
         </style>
     </head>
     <body>
