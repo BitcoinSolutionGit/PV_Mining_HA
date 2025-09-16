@@ -8,7 +8,6 @@ LOCAL_FILE = os.path.join(CONFIG_DIR, "battery.local.yaml")
 
 DEFAULTS = {
     "enabled": False,
-    "mode": "manual",          # manual | auto
     "capacity_kwh": 11.0,
     "max_charge_kw": 3.0,
     "max_discharge_kw": 3.0,

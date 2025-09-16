@@ -1,6 +1,5 @@
 # /config/pv_mining_addon/battery.local.yaml
 enabled: true
-mode: manual
 
 # Beispiel: du hast einen SoC-Sensor, die restlichen Felder
 # kannst du später im UI auswählen/speichern.

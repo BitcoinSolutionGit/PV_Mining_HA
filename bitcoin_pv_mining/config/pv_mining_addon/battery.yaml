@@ -1,6 +1,5 @@
 # /config/pv_mining_addon/battery.yaml
 enabled: false            # true|false
-mode: manual              # manual | auto
 
 # Limits / Kapazität
 capacity_kwh: 11.0

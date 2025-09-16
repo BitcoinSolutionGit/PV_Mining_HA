@@ -27,8 +27,6 @@ def _row():
 def layout():
     # gespeicherte Auswahl:
     enabled = bool(bat_get("enabled", False))
-    mode = (bat_get("mode", "manual") or "manual").lower()
-
     cap  = bat_get("capacity_entity", "")
     soc  = bat_get("soc_entity", "")
     vdc  = bat_get("voltage_entity", "")
@@ -50,15 +48,6 @@ def layout():
                     value=(["on"] if enabled else []),
                     persistence=True, persistence_type="memory",
                     style={"marginBottom": "8px"}
-                ),
-                dcc.RadioItems(
-                    id="bat-mode-entity",
-                    options=[
-                        {"label": " Manual", "value": "manual"},
-                        {"label": " Auto", "value": "auto"},
-                    ],
-                    value=mode,
-                    labelStyle={"display": "inline-block", "marginRight": "12px"}
                 ),
             ], style={"marginBottom": "16px"}),
 
@@ -127,10 +116,9 @@ def register_callbacks(app):
         State("bat-idc-entity", "value"),
         State("bat-temp-entity", "value"),
         State("bat-enabled-entity", "value"),
-        State("bat-mode-entity", "value"),
         prevent_initial_call=True
     )
-    def _save(n, cap, soc, vdc, idc, temp, enabled_val, mode_val):
+    def _save(n, cap, soc, vdc, idc, temp, enabled_val):
         if not n:
             raise dash.exceptions.PreventUpdate
         bat_set(
@@ -139,8 +127,7 @@ def register_callbacks(app):
             voltage_entity=vdc or "",
             current_entity=idc or "",
             temperature_entity=temp or "",
-            enabled=bool(enabled_val and "on" in enabled_val),
-            mode=(mode_val or "manual")
+            enabled=bool(enabled_val and "on" in enabled_val)
         )
         return "Saved."
 
