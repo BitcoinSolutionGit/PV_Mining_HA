@@ -31,9 +31,38 @@ PRIO_COLORS = {
     "inactive":  "#DDDDDD",
 }
 
+# Einheitliche Rahmenfarbe (dunkles Grau wie unter dem Save-Button)
+UI_BORDER = "#3a3a3a"
+
 # ------------------------
 # Helpers
 # ------------------------
+
+def _fieldset_style():
+    return {
+        "border": f"1px solid {UI_BORDER}",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "marginBottom": "14px",
+        "background": "#fafafa",
+    }
+
+def _input_style(width_px: int):
+    return {
+        "width": f"{width_px}px",
+        "height": "32px",
+        "lineHeight": "32px",
+        "border": f"1px solid {UI_BORDER}",
+        "borderRadius": "6px",
+        "padding": "0 8px",
+        "background": "white",
+    }
+
+def _section(title: str, body_children):
+    return html.Div([
+        html.H3(title, style={"margin": "0 0 6px 0", "fontWeight": "700"}),
+        html.Div(body_children, style=_fieldset_style()),
+    ], style={"marginBottom": "16px"})
 
 def _num(x, d=0.0):
     try:
@@ -246,10 +275,10 @@ def _row_styles():
         "gap": "12px",
         "padding": "10px 12px",
         "marginBottom": "8px",
-        "border": "1px solid #ccc",
+        "border": f"1px solid {UI_BORDER}",   # <— einheitlich
         "borderRadius": "10px",
         "background": "#fafafa",
-        "fontSize": "16px",  # größer
+        "fontSize": "16px",
         "fontWeight": "600",
     }
 
@@ -315,20 +344,20 @@ def layout():
     return html.Div([
         html.H2("Settings"),
 
-        html.Fieldset([
-            html.Legend("Cooling Circuit"),
+        _section("Cooling Circuit", [
             dcc.Checklist(
                 id="set-cooling-enabled",
                 options=[{"label": " Cooling circuit feature activ", "value": "on"}],
                 value=(["on"] if cooling_enabled else []),
             ),
-            html.Div("If enabled, a Cooling block appears in the Miners tab. "
-                     "Miners with 'Cooling required' can only be turned on when Cooling is running.",
-                     style={"opacity": 0.8, "marginTop": "6px"})
-        ], style={"border": "1px solid #ccc", "borderRadius": "8px", "padding": "10px", "marginBottom": "14px"}),
+            html.Div(
+                "If enabled, a Cooling block appears in the Miners tab. "
+                "Miners with 'Cooling required' can only be turned on when Cooling is running.",
+                style={"opacity": 0.8, "marginTop": "6px"}
+            )
+        ]),
 
-        html.Fieldset([
-            html.Legend("PV-cost-model"),
+        _section("PV-cost-model", [
             dcc.RadioItems(
                 id="set-pv-policy",
                 options=[
@@ -345,7 +374,7 @@ def layout():
                     id="set-feedin-mode",
                     options=[
                         {"label": " fixed Value", "value": "fixed"},
-                        {"label": " Sensor",      "value": "sensor"},
+                        {"label": " Sensor", "value": "sensor"},
                     ],
                     value=mode,
                     labelStyle={"display": "inline-block", "marginRight": "18px"}
@@ -354,67 +383,82 @@ def layout():
 
             html.Div([
                 html.Label("Feed-in tariff (€/kWh)"),
-                dcc.Input(id="set-feedin-value", type="number", step=0.000001, value=fi_val, style={"width": "220px"}),
-            ], id="row-feed-fixed", style={"marginTop": "6px", "display": ("block" if (policy == "feedin" and mode == "fixed") else "none")}),
+                dcc.Input(
+                    id="set-feedin-value", type="number", step=0.000001, value=fi_val,
+                    style=_input_style(220)  # <—
+                ),
+            ], id="row-feed-fixed", style={"marginTop": "6px", "display": (
+                "block" if (policy == "feedin" and mode == "fixed") else "none")}),
 
             html.Div([
                 html.Label("Feed-in tariff-Sensor"),
-                dcc.Dropdown(id="set-feedin-sensor", options=sensors, value=fi_sens or None, placeholder="select Sensor..."),
-            ], id="row-feed-sensor", style={"marginTop": "6px", "display": ("block" if (policy == "feedin" and mode == "sensor") else "none")}),
+                dcc.Dropdown(
+                    id="set-feedin-sensor",
+                    options=sensors, value=fi_sens or None, placeholder="select Sensor...",
+                    style=_input_style(260)  # <— Rahmen um den Container
+                ),
+            ], id="row-feed-sensor", style={"marginTop": "6px", "display": (
+                "block" if (policy == "feedin" and mode == "sensor") else "none")}),
 
-            html.Div(id="set-pv-effective", style={"marginTop": "8px", "fontWeight": "bold", "opacity": 0.9},
-                     children=f"Currently assumed PV-Costs: {eff_pv_cost:.4f} €/kWh"),
-        ], style={"border": "1px solid #ccc", "borderRadius": "8px", "padding": "10px", "marginBottom": "14px"}),
+            html.Div(
+                id="set-pv-effective",
+                style={"marginTop": "8px", "fontWeight": "bold", "opacity": 0.9},
+                children=f"Currently assumed PV-Costs: {eff_pv_cost:.4f} €/kWh"
+            ),
+        ]),
 
         # ---------- NEW: Planner guard ----------
-        html.Fieldset([
-            html.Legend("Planner guard (anti-overdraw)"),
+        _section("Planner guard (anti-overdraw)", [
             html.Div([
                 html.Label("Fixed safety margin (W)"),
-                dcc.Input(id="set-guard-w", type="number", step=1, min=0, value=guard_w, style={"width": "160px"}),
+                dcc.Input(id="set-guard-w", type="number", step=1, min=0, value=guard_w, style=_input_style(160)),
                 html.Span("  (subtracts this from measured PV surplus)", style={"marginLeft": "8px", "opacity": 0.7}),
             ], style={"marginTop": "6px"}),
 
             html.Div([
                 html.Label("Relative safety margin (fraction)"),
-                dcc.Input(id="set-guard-pct", type="number", step=0.001, min=0, max=0.2, value=guard_pct, style={"width": "160px"}),
-                html.Span("  e.g. 0.03 = 3 %  (values >1 are interpreted as percent and divided by 100 on save)", style={"marginLeft": "8px", "opacity": 0.7}),
+                dcc.Input(id="set-guard-pct", type="number", step=0.001, min=0, max=0.2, value=guard_pct,
+                          style=_input_style(160)),
+                html.Span("  e.g. 0.03 = 3 %  (values >1 are interpreted as percent and divided by 100 on save)",
+                          style={"marginLeft": "8px", "opacity": 0.7}),
             ], style={"marginTop": "8px"}),
-        ], style={"border": "1px solid #ccc", "borderRadius": "8px", "padding": "10px", "marginBottom": "14px"}),
+        ]),
 
-        html.Fieldset([
-            html.Legend("Bitcoin-economics"),
+        _section("Bitcoin-economics", [
             html.Div([
                 html.Label("BTC-Price-Currency"),
                 dcc.Dropdown(
                     id="set-btc-currency",
                     options=[{"label": "EUR", "value": "EUR"}, {"label": "USD", "value": "USD"}],
-                    value=currency, clearable=False, style={"width": "140px"}
+                    value=currency,
+                    clearable=False,
+                    style={"width": "120px"}
                 ),
                 html.Span(id="set-fx-read", style={"marginLeft": "14px"}),
 
                 html.Span("  "),
                 html.Label("Block reward (BTC)", style={"marginLeft": "16px"}),
-                dcc.Input(id="set-reward", type="number", step=0.0001, value=reward, style={"width": "120px"}),
+                dcc.Input(id="set-reward", type="number", step=0.0001, value=reward, style=_input_style(120)),
 
                 html.Span("  "),
                 html.Label("Tax rate %", style={"marginLeft": "16px"}),
-                dcc.Input(id="set-tax", type="number", step=0.1, value=tax_pct, style={"width": "100px"}),
+                dcc.Input(id="set-tax", type="number", step=0.1, value=tax_pct, style=_input_style(100)),
             ], style={"display": "flex", "flexWrap": "wrap", "gap": "10px", "alignItems": "center"})
-        ], style={"border": "1px solid #ccc", "borderRadius": "8px", "padding": "10px"}),
+        ]),
 
         html.Button("Save", id="set-save", className="custom-tab", style={"marginTop": "12px"}),
         html.Span(id="set-status", style={"marginLeft": "10px", "color": "green"}),
 
         html.Hr(),
         html.H3("Power draw priority"),
-        html.P("Only consumers in Auto mode are prioritized (Miners, Cooling). Use ↑/↓ to reorder — it’s saved automatically."),
+        html.P(
+            "Only consumers in Auto mode are prioritized (Miners, Cooling). Use ↑/↓ to reorder — it’s saved automatically."),
 
-        # Liste
         html.Div(id="prio-list", className="prio-list"),
         html.Div(id="prio-status", style={"marginTop": "6px", "color": "green"}),
         footer_license(),
     ])
+
 
 # --------------------------------
 # Callbacks
