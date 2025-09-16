@@ -5,6 +5,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from services.consumers.base import Ctx, Desire, BaseConsumer, now
 from services.consumers.registry import get_consumer_for_id
+from services.battery_store import get_var as bat_get
 
 import os
 from services.utils import load_yaml
@@ -56,6 +57,42 @@ def _fmt(x: Optional[Number]) -> str:
     except Exception:
         return str(x)
 
+def _read_opt_kw(map_key: str) -> Optional[float]:
+    sid = _map(map_key)
+    if not sid:
+        return None
+    try:
+        val = _kw(_f(get_sensor_value(sid), 0.0))
+        return float(val)
+    except Exception:
+        return None
+
+def _battery_power_kw_from_config() -> Optional[float]:
+    """
+    Liefert Batterie-Leistung in kW:
+      >0 = ENTLAEDUNG (liefert Energie ins Haus)
+      <0 = LADUNG     (verbraucht Energie)
+    """
+    try:
+        v_ent = (bat_get("voltage_entity", "") or "").strip()    # optional
+        i_ent = (bat_get("current_entity", "") or "").strip()    # optional
+
+        # P aus V * I berechnen
+        if v_ent and i_ent:
+            v = _f(get_sensor_value(v_ent), None)
+            i = _f(get_sensor_value(i_ent), None)
+            if v is None or i is None:
+                return None
+            # ACHTUNG: Dein Kommentar: "+laden / -entladen"
+            # bedeutet: i > 0 heißt LADUNG; i < 0 heißt ENTLADUNG.
+            # Wir wollen: ENTLADUNG > 0 → deshalb Vorzeichen drehen.
+            p_kw = -(v * i) / 1000.0
+            return float(p_kw)
+    except Exception:
+        pass
+    return None
+
+
 def _config_selfcheck(log_fn: Callable[[str], None]) -> None:
     """Loggt, ob die YAMLs vorhanden sind und welche Keys/IDs gefunden werden."""
     try:
@@ -97,6 +134,56 @@ def _read_pv_import_feed() -> Tuple[Optional[float], Optional[float], Optional[f
     if feed is not None and feed < 0:
         feed = abs(feed)
     return pv, imp, feed
+
+def _read_energy_flows() -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]:
+    """
+    Liefert: (pv_kw, imp_kw, feed_kw, bat_kw, surplus_direct_kw)
+      - bat_kw   >0 = Batterie ENTLAEDT; <0 = LAEDT
+      - surplus_direct_kw: direkter Überschuss-Sensor (>=0), falls gemappt (optional)
+    """
+    pv_id   = _map("pv_production")
+    imp_id  = _map("grid_consumption")
+    feed_id = _map("grid_feed_in")
+
+    pv   = _kw(_f(get_sensor_value(pv_id), 0.0))   if pv_id   else None
+    imp  = _kw(_f(get_sensor_value(imp_id), 0.0))  if imp_id  else None
+    feed = _kw(_f(get_sensor_value(feed_id), 0.0)) if feed_id else None
+    if feed is not None and feed < 0:
+        feed = abs(feed)
+
+    bat  = _battery_power_kw_from_config()         # ← aus battery.yaml
+    surplus_direct = _read_opt_kw("pv_surplus")    # ← optionaler Mapping-Key; wenn vorhanden, wird er bevorzugt
+    if surplus_direct is not None:
+        surplus_direct = max(0.0, surplus_direct)
+
+    return pv, imp, feed, bat, surplus_direct
+
+def _surplus_strict_kw() -> Tuple[float, float, float, float, float]:
+    """
+    Liefert (surplus_raw, total_load, ctrl_now, base_load, pv)
+    surplus_raw ist echter PV-Überschuss OHNE Batterie-Entladung.
+    """
+    pv_v, imp_v, feed_v, bat_v, surplus_direct = _read_energy_flows()
+
+    pv    = max(pv_v or 0.0, 0.0)
+    imp   = max(imp_v or 0.0, 0.0)
+    feed  = max(feed_v or 0.0, 0.0)
+    bat   = float(bat_v or 0.0)  # >0 = Entladung, <0 = Ladung
+
+    # physikalische Hauslast inkl. Batterie-ENTLADUNG
+    bat_discharge = max(0.0, bat)          # nur Entladung addieren
+    total_load = max(0.0, pv + imp + bat_discharge - feed)
+
+    ctrl_now  = _controllable_now_kw()
+    base_load = max(0.0, total_load - ctrl_now)
+
+    if surplus_direct is not None:
+        surplus_raw = max(0.0, float(surplus_direct))
+    else:
+        # konservativ: Einspeisung oder PV minus Basislast (ohne Bat-Entladung als "PV")
+        surplus_raw = max(feed, pv - base_load)
+
+    return surplus_raw, total_load, ctrl_now, base_load, pv
 
 
 def _controllable_now_kw() -> float:
@@ -252,7 +339,11 @@ def plan_and_allocate(
         pv_left  -= pv_alloc
 
         if must and pv_alloc < min_kw:
-            grid_alloc = max(0.0, min_kw - pv_alloc)
+            # Heater darf KEIN Grid-Fallback bekommen
+            if cid == "heater":
+                grid_alloc = 0.0
+            else:
+                grid_alloc = max(0.0, min_kw - pv_alloc)
 
         alloc_total = pv_alloc + grid_alloc
         if grid_alloc > 0:

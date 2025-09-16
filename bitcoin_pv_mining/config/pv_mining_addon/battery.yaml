@@ -15,6 +15,6 @@ current_entity: ""        # z.B. sensor.battery_current       (A DC; +laden / -e
 temperature_entity: ""    # z.B. sensor.battery_temperature   (°C)
 
 # Ziele/Policies
-target_soc: 90.0          # %
-reserve_soc: 20.0         # %
+target_soc: 100.0          # %
+reserve_soc: 5.0         # %
 allow_grid_charge: false  # (für Auto-Logik später)
