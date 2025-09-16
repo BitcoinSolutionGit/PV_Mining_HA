@@ -9,6 +9,9 @@ from services.settings_store import get_var as set_get
 from services.electricity_store import get_var as elec_get
 from services.ha_entities import call_action
 from services.btc_metrics import get_live_btc_price_eur, get_live_network_hashrate_ths, sats_per_th_per_hour
+from services.energy_mix import incremental_mix_for
+from services.electricity_store import current_price as elec_price  # hattest du im Patch schon
+
 
 def _truthy(x, default=False) -> bool:
     if x is None:
@@ -155,41 +158,57 @@ class MinerConsumer(BaseConsumer):
         # BTC-Erlöse
         btc_eur = get_live_btc_price_eur(fallback=_num(set_get("btc_price_eur", 0.0)))
         net_ths = get_live_network_hashrate_ths(fallback=_num(set_get("network_hashrate_ths", 0.0)))
-        reward  = _num(set_get("block_reward_btc", 3.125), 3.125)
+        reward = _num(set_get("block_reward_btc", 3.125), 3.125)
         tax_pct = _num(set_get("sell_tax_percent", 0.0), 0.0)
 
         sat_th_h = sats_per_th_per_hour(reward, net_ths) if net_ths > 0 else 0.0
         sats_per_h = sat_th_h * ths
         eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
         revenue_eur_h = sats_per_h * eur_per_sat
-        after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct/100.0, 1.0)))
+        after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
 
-        # Kosten: PV-Opportunität
+        # Preise/Kosten
         pv_cost = _pv_cost_per_kwh()
+        eff_grid_cost = _num(elec_price(), 0.0) + _num(elec_get("network_fee_down_value", 0.0), 0.0)
 
-        # Cooling-Anteil (falls gebraucht) – nur wenn Cooling noch nicht läuft
-        cooling_kw = _cooling_power_kw() if _cooling_required(m) else 0.0
-        cool_share = 0.0
-        if cooling_kw > 0.0 and not _cooling_running_now():
+        # „alles ziehen“-Modus: negativer Netzpreis
+        if eff_grid_cost <= 0.0:
+            return Desire(True, 0.0, pkw, must_run=False, exact_kw=pkw, reason="neg grid price")
+
+        # Cooling-Bedarf/Zustand
+        need_cool = _cooling_required(m)
+        cool_on = _cooling_running_now()
+        cool_kw = _cooling_power_kw() if need_cool else 0.0
+
+        # ΔP für Mix-Berechnung: Miner + ggf. Cooling, falls Cooling noch aus ist
+        delta_kw = pkw + (cool_kw if (need_cool and not cool_on) else 0.0)
+
+        # Einheitlicher PV/Grid-Mix (Planner-Logik)
+        pv_share, grid_share, _pv_kw_for_delta = incremental_mix_for(delta_kw)
+        blended_eur_per_kwh = pv_share * pv_cost + grid_share * eff_grid_cost
+
+        # Cooling-Kostenanteil fair teilen, nur wenn Cooling wegen dieses Miners mitstarten würde
+        cool_share_eur_h = 0.0
+        if need_cool and not cool_on and cool_kw > 0.0:
             active = [mx for mx in _eligible_miners() if _truthy(mx.get("on"), False) and _cooling_required(mx)]
-            n_future = len(active) + 1
-            cool_share = (cooling_kw * pv_cost) / max(n_future, 1)
+            n_future = len(active) + 1  # inkl. diesem Miner
+            cool_share_eur_h = (cool_kw / max(n_future, 1)) * blended_eur_per_kwh
 
-        total_cost_h = pkw * pv_cost + cool_share
+        # Kosten/h
+        miner_cost_eur_h = pkw * blended_eur_per_kwh
+        total_cost_h = miner_cost_eur_h + cool_share_eur_h
+
+        # Freigabe 1: reiner PV-Betrieb ist immer ok
+        if grid_share <= 1e-6:
+            return Desire(True, 0.0, pkw, must_run=False, exact_kw=pkw, reason="pv_only_ok")
+
+        # Freigabe 2: sonst nur, wenn nach Steuer profitabel
         profit = after_tax - total_cost_h
-
         if profit > 0.0:
-            # Diskret: volle Leistung gewünscht
-            return Desire(
-                wants=True,
-                min_kw=0.0,
-                max_kw=pkw,
-                must_run=False,
-                exact_kw=pkw,
-                reason=f"profitable (Δ={profit:.2f} €/h)",
-            )
-        else:
-            return Desire(False, 0.0, 0.0, reason=f"not profitable (Δ={profit:.2f} €/h)")
+            return Desire(True, 0.0, pkw, must_run=False, exact_kw=pkw,
+                          reason=f"profitable (Δ={profit:.2f} €/h, mix pv={pv_share:.2f})")
+
+        return Desire(False, 0.0, 0.0, reason=f"not profitable (Δ={profit:.2f} €/h, mix pv={pv_share:.2f})")
 
     def apply_allocation(self, ctx: Ctx, alloc_kw: float) -> None:
         """

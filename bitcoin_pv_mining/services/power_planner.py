@@ -11,6 +11,9 @@ import os
 from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 from services.settings_store import get_var as set_get
+from services.electricity_store import current_price as elec_price, get_var as elec_get
+from services.energy_mix import surplus_strict_kw as _surplus_strict_kw, incremental_mix_for
+
 
 # stdout logger -> Add-on-Log
 def _stdout_logger(msg: str):
@@ -158,33 +161,6 @@ def _read_energy_flows() -> Tuple[Optional[float], Optional[float], Optional[flo
 
     return pv, imp, feed, bat, surplus_direct
 
-def _surplus_strict_kw() -> Tuple[float, float, float, float, float]:
-    """
-    Liefert (surplus_raw, total_load, ctrl_now, base_load, pv)
-    surplus_raw ist echter PV-Überschuss OHNE Batterie-Entladung.
-    """
-    pv_v, imp_v, feed_v, bat_v, surplus_direct = _read_energy_flows()
-
-    pv    = max(pv_v or 0.0, 0.0)
-    imp   = max(imp_v or 0.0, 0.0)
-    feed  = max(feed_v or 0.0, 0.0)
-    bat   = float(bat_v or 0.0)  # >0 = Entladung, <0 = Ladung
-
-    # physikalische Hauslast inkl. Batterie-ENTLADUNG
-    bat_discharge = max(0.0, bat)          # nur Entladung addieren
-    total_load = max(0.0, pv + imp + bat_discharge - feed)
-
-    ctrl_now  = _controllable_now_kw()
-    base_load = max(0.0, total_load - ctrl_now)
-
-    if surplus_direct is not None:
-        surplus_raw = max(0.0, float(surplus_direct))
-    else:
-        # konservativ: Einspeisung oder PV minus Basislast (ohne Bat-Entladung als "PV")
-        surplus_raw = max(feed, pv - base_load)
-
-    return surplus_raw, total_load, ctrl_now, base_load, pv
-
 
 def _controllable_now_kw() -> float:
     """Schätzt aktuell laufende, von uns kontrollierbare Last (kW)."""
@@ -224,23 +200,6 @@ def _controllable_now_kw() -> float:
     return max(0.0, now_kw)
 
 
-def _surplus_strict_kw() -> Tuple[float, float, float, float, float]:
-    """
-    Liefert (surplus_raw, total_load, ctrl_now, base_load, pv)
-    surplus_raw = max(feed_in, pv - base_load)
-    """
-    pv, imp, feed = _read_pv_import_feed()
-    pv_kw   = max(pv or 0.0, 0.0)
-    imp_kw  = max(imp or 0.0, 0.0)
-    feed_kw = max(feed or 0.0, 0.0)
-
-    total_load = max(0.0, pv_kw + imp_kw - feed_kw)  # physikalisch: Last = PV + Import - Export
-    ctrl_now   = _controllable_now_kw()
-    base_load  = max(0.0, total_load - ctrl_now)
-
-    surplus_raw = max(feed_kw, pv_kw - base_load)    # konservativ + korrekt für „Vor-Feedin“-Phasen
-    return surplus_raw, total_load, ctrl_now, base_load, pv_kw
-
 
 # ----------------------------------------------------------------------------------
 # Kernfunktion
@@ -279,6 +238,35 @@ def plan_and_allocate(
     pv_left: float = surplus_kw
     grid_draw: float = 0.0
     allocations: List[Tuple[str, BaseConsumer, float]] = []
+
+    eff_grid_cost = _f(elec_price(), 0.0) + _f(elec_get("network_fee_down_value", 0.0), 0.0)
+    grid_free = (eff_grid_cost <= 0.0)
+
+    # expose planner facts to consumers
+    for k, v in (
+            ("surplus_kw", pv_left),  # PV-Überschuss nach Guard
+            ("grid_cost_eur_kwh", eff_grid_cost),  # effektiver Grid-preis (incl. fee_down)
+            ("pv_kw_raw", pv_kw),  # (optional) aktuelle PV-Produktion
+            ("surplus_raw_kw", surplus_raw),  # (optional) Überschuss vor Guard
+    ):
+        # robust für Ctx als Objekt ODER Mapping
+        try:
+            setattr(ctx, k, v)
+        except Exception:
+            pass
+        try:
+            ctx[k] = v
+        except Exception:
+            pass
+
+    # Ctx anreichern, damit Consumer zugreifen können
+    try:
+        ctx["surplus_kw"] = pv_left  # strikter PV-Überschuss nach Guard
+        ctx["grid_cost_eur_kwh"] = eff_grid_cost
+    except Exception:
+        pass
+
+    log_fn(f"[plan] grid_cost={eff_grid_cost:.4f} €/kWh -> grid_free={grid_free}")
 
     log_fn(f"[plan] order={order}")
     log_fn(f"[plan] start surplus={pv_left:.3f} kW")
@@ -334,20 +322,35 @@ def plan_and_allocate(
             continue
 
         # Zuteilung: erst PV (mit Guard), optional Grid für must_run-Minimum
-        need_from_pv = min(max_kw, pv_left)
-        pv_alloc = max(0.0, need_from_pv)
-        pv_left  -= pv_alloc
-
-        if must and pv_alloc < min_kw:
-            # Heater darf KEIN Grid-Fallback bekommen
-            if cid == "heater":
-                grid_alloc = 0.0
+        if grid_free:
+            # Bei negativen Preisen: alle dürfen volle Max-Leistung ziehen.
+            if wants and max_kw > 0.0:
+                desired = max_kw
+                pv_alloc = min(pv_left, desired)
+                grid_alloc = desired - pv_alloc
+                pv_left -= pv_alloc
+                alloc_total = pv_alloc + grid_alloc
+                if grid_alloc > 0:
+                    grid_draw += grid_alloc
             else:
-                grid_alloc = max(0.0, min_kw - pv_alloc)
+                alloc_total = pv_alloc = grid_alloc = 0.0
+        else:
+            # bisherige Logik (PV zuerst, Grid nur als must_run-Minimum; Heater ausgenommen)
+            need_from_pv = min(max_kw, pv_left)
+            pv_alloc = max(0.0, need_from_pv)
+            pv_left -= pv_alloc
 
-        alloc_total = pv_alloc + grid_alloc
-        if grid_alloc > 0:
-            grid_draw += grid_alloc
+            if must and pv_alloc < min_kw:
+                if cid == "heater":  # Heater: kein Grid-Fallback im Normalbetrieb
+                    grid_alloc = 0.0
+                else:
+                    grid_alloc = max(0.0, min_kw - pv_alloc)
+            else:
+                grid_alloc = 0.0
+
+            alloc_total = pv_alloc + grid_alloc
+            if grid_alloc > 0:
+                grid_draw += grid_alloc
 
         log_fn(f"[plan:alloc]  {cid}: pv={pv_alloc:.2f} grid={grid_alloc:.2f} total={alloc_total:.2f} pv_left={pv_left:.2f}")
         allocations.append((cid, cons, alloc_total))

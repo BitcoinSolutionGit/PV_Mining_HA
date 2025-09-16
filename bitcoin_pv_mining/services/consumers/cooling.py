@@ -6,6 +6,23 @@ from services.cooling_store import get_cooling
 from services.settings_store import get_var as set_get
 from services.miners_store import list_miners
 from services.ha_entities import call_action
+from services.electricity_store import current_price as elec_price, get_var as elec_get
+from services.energy_mix import incremental_mix_for
+
+
+
+def _is_auto(m) -> bool:
+    return str(m.get("mode") or "manual").lower() == "auto"
+
+def _requires_cooling(m) -> bool:
+    flags = [
+        m.get("require_cooling"),
+        m.get("cooling_required"),
+        m.get("needs_cooling"),
+        (m.get("cooling") or {}).get("required") if isinstance(m.get("cooling"), dict) else None,
+    ]
+    return any(_truthy(f) for f in flags)
+
 
 def _truthy(x, default=False) -> bool:
     if x is None:
@@ -73,9 +90,10 @@ class CoolingConsumer(BaseConsumer):
             return Desire(False, 0.0, 0.0, reason="feature disabled")
 
         c = get_cooling() or {}
-        enabled = _truthy(c.get("enabled"), True)
-        mode = str(c.get("mode") or "manual").lower()
+        enabled  = _truthy(c.get("enabled"), True)
+        mode     = str(c.get("mode") or "manual").lower()
         power_kw = _num(c.get("power_kw"), 0.0)
+        is_on    = bool(c.get("on"))
 
         if not enabled:
             return Desire(False, 0.0, 0.0, reason="disabled")
@@ -84,21 +102,54 @@ class CoolingConsumer(BaseConsumer):
         if power_kw <= 0.0:
             return Desire(False, 0.0, 0.0, reason="no power configured")
 
-        if not _any_miner_requires_cooling():
+        # falls bereits Miner laufen, die Cooling brauchen -> anlassen
+        try:
+            active_need = any(
+                _truthy(m.get("on"), False) and _requires_cooling(m)
+                for m in (list_miners() or [])
+            )
+        except Exception:
+            active_need = False
+        if active_need:
+            return Desire(True, 0.0, power_kw, exact_kw=power_kw, reason="serve active cooling miners")
+
+        # Kandidaten: auto+enabled Miner, die Cooling brauchen und Leistung > 0 haben
+        try:
+            candidates = [
+                m for m in (list_miners() or [])
+                if _truthy(m.get("enabled"), False) and _is_auto(m) and _requires_cooling(m)
+                   and _num(m.get("power_kw"), 0.0) > 0.0
+            ]
+        except Exception:
+            candidates = []
+
+        if not candidates:
             return Desire(False, 0.0, 0.0, reason="no miner requires cooling")
 
-        if not _any_auto_enabled_miner_profitable():
-            return Desire(False, 0.0, 0.0, reason="no eligible miner")
+        # Netzpreis prüfen (negativer Preis -> Cooling darf starten)
+        eff_grid_cost = _num(elec_price(), 0.0) + _num(elec_get("network_fee_down_value", 0.0), 0.0)
+        if eff_grid_cost <= 0.0:
+            return Desire(True, 0.0, power_kw, exact_kw=power_kw, reason="neg grid price")
 
-        # diskret (an/aus) → exact = power_kw
-        return Desire(
-            wants=True,
-            min_kw=0.0,
-            max_kw=power_kw,
-            must_run=False,
-            exact_kw=power_kw,
-            reason="cooling required for auto miners",
-        )
+        # Gate: Cooling startet NUR wenn mind. ein Kandidat im aktuellen Mix
+        # zusammen mit Cooling (falls noch aus) mit PV-Überschuss laufen kann
+        # (PV-only als konservative Mindestbedingung; vermeidet Race Conditions)
+        for m in candidates:
+            m_kw = _num(m.get("power_kw"), 0.0)
+            delta = m_kw + (0.0 if is_on else power_kw)  # wenn Cooling schon an ist, zählt nur der Miner als ΔP
+            if delta <= 0.0:
+                continue
+
+            pv_share, grid_share, _ = incremental_mix_for(delta)
+
+            # konservative Freigabe: nur wenn PV die Kombi abdeckt
+            if grid_share <= 1e-6:  # ~100% PV
+                return Desire(True, 0.0, power_kw, exact_kw=power_kw,
+                              reason=f"miner+cooling covered by PV (pv_share={pv_share:.2f})")
+
+        # sonst: aus (nicht alleine vorlaufen)
+        return Desire(False, 0.0, 0.0, reason="no qualifying miner with PV")
+
 
     def apply_allocation(self, ctx: Ctx, alloc_kw: float) -> None:
         """

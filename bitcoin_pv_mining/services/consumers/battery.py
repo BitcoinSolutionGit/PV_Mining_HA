@@ -78,16 +78,35 @@ class BatteryConsumer(BaseConsumer):
 
     # ---- Scheduling-Logik ----
     def compute_desire(self, ctx: Ctx) -> Desire:
-        soc     = self._read_soc()
-        target  = self._target_soc()
-        max_kw  = max(0.0, self._max_charge_kw())
-        surplus = max(0.0, ctx.surplus_kw)
+        soc = self._read_soc()
+        target = self._target_soc()
+        max_kw = max(0.0, self._max_charge_kw())
+
+        # robust lesen (Ctx kann Attr oder Mapping sein)
+        def _ctx(name, default=0.0):
+            try:
+                return float(getattr(ctx, name))
+            except Exception:
+                try:
+                    return float(ctx.get(name, default))  # falls Mapping
+                except Exception:
+                    return default
+
+        surplus = max(0.0, _ctx("surplus_kw", 0.0))  # <- hier nutzt du den Planner-Wert
+        grid_c = _ctx("grid_cost_eur_kwh", None)  # optional für negative-Preis-Modus
+        allow_grid_charge = bool(bat_get("allow_grid_charge", False))
 
         if max_kw <= 0:
             return Desire(False, 0.0, 0.0, reason="no max power configured")
         if soc >= target:
             return Desire(False, 0.0, 0.0, reason=f"SoC {soc:.1f}% ≥ target {target:.1f}%")
-        if surplus <= 0:
+
+        # Sonderfall: explizit erlaubt + negativer Netzpreis -> aus Grid laden
+        if allow_grid_charge and (grid_c is not None) and (grid_c <= 0.0):
+            return Desire(True, 0.0, max_kw, reason="negative grid price, grid charge allowed")
+
+        # Normalfall: nur PV-Überschuss laden
+        if surplus <= 0.0:
             return Desire(False, 0.0, 0.0, reason="no PV surplus")
 
         want = min(max_kw, surplus)

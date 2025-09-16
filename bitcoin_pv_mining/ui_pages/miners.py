@@ -19,6 +19,8 @@ from services.ha_sensors import get_sensor_value
 from services.cooling_store import get_cooling, set_cooling
 from services.ha_entities import list_actions, call_action, get_entity_state, is_on_like, list_ready_entities
 from ui_pages.common import footer_license
+from services.power_planner import incremental_mix_for
+
 
 # SMOKE-TEST für Orchestrator: in _engine_tick ganz am Ende (nach Ampel-Berechnung), zusätzlich:
 from services.consumers.orchestrator import log_dry_run_plan
@@ -847,6 +849,152 @@ def register_callbacks(app):
         return list_miners()
 
 
+    # # 9) KPIs je Miner live berechnen (alle 10s + bei Eingaben)
+    # @app.callback(
+    #     Output({"type": "m-kpi-satthh", "mid": MATCH}, "children"),
+    #     Output({"type": "m-kpi-eurh", "mid": MATCH}, "children"),
+    #     Output({"type": "m-kpi-profit", "mid": MATCH}, "children"),
+    #     Input("miners-refresh", "n_intervals"),
+    #     Input({"type": "m-hash", "mid": MATCH}, "value"),
+    #     Input({"type": "m-pwr", "mid": MATCH}, "value"),
+    #     State({"type": "m-enabled", "mid": MATCH}, "value"),
+    #     State({"type": "m-mode", "mid": MATCH}, "value"),
+    #     State({"type": "m-on", "mid": MATCH}, "value"),
+    #     State({"type": "m-reqcool", "mid": MATCH}, "value"),
+    # )
+    # def _recalc(_tick, ths, pkw, enabled_val, mode_val, on_val, reqcool_val):
+    #     def _num(x, d=0.0):
+    #         try:
+    #             return float(x)
+    #         except (TypeError, ValueError):
+    #             return d
+    #
+    #     # --- Live BTC & Netzwerk ---
+    #     btc_eur = get_live_btc_price_eur(fallback=_num(set_get("btc_price_eur", 0.0)))
+    #     net_ths = get_live_network_hashrate_ths(fallback=_num(set_get("network_hashrate_ths", 0.0)))
+    #     reward = _num(set_get("block_reward_btc", 3.125), 3.125)
+    #     tax_pct = _num(set_get("sell_tax_percent", 0.0), 0.0)
+    #
+    #     sat_th_h = sats_per_th_per_hour(reward, net_ths)
+    #
+    #     ths = _num(ths, 0.0)
+    #     pkw = _num(pkw, 0.0)
+    #
+    #     # Einnahmen/h
+    #     sats_per_h = sat_th_h * ths
+    #     eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
+    #     revenue_eur_h = sats_per_h * eur_per_sat
+    #     after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
+    #
+    #     # --- Inkrementeller PV/Grid-Mix für diesen Miner ---
+    #     pv_id = _dash_resolve("pv_production")
+    #     grid_id = _dash_resolve("grid_consumption")
+    #     feed_id = _dash_resolve("grid_feed_in")
+    #
+    #     pv_val = _num(get_sensor_value(pv_id), 0.0)
+    #     grid_val = _num(get_sensor_value(grid_id), 0.0)
+    #     feed_val = max(_num(get_sensor_value(feed_id), 0.0), 0.0)  # >=0
+    #
+    #     base = elec_price() or 0.0
+    #     fee_down = _num(elec_get("network_fee_down_value", 0.0), 0.0)
+    #     pv_cost = _pv_cost_per_kwh()
+    #
+    #     # Cooling-Setup
+    #     cooling_feature = bool(set_get("cooling_feature_enabled", False))
+    #     require_cooling = bool(reqcool_val and "on" in reqcool_val)
+    #     c = get_cooling() if cooling_feature else {}
+    #     cooling_kw_cfg = float((c or {}).get("power_kw") or 0.0)
+    #     cooling_is_on = bool((c or {}).get("on"))
+    #
+    #     # Zusätzliche Last ΔP: Miner + ggf. Cooling, falls dieser Miner Cooling neu starten würde
+    #     delta_kw = pkw + (cooling_kw_cfg if (cooling_feature and require_cooling and not cooling_is_on) else 0.0)
+    #
+    #     if delta_kw > 0.0:
+    #         pv_share_add = max(min(feed_val / delta_kw, 1.0), 0.0)
+    #     else:
+    #         pv_share_add = 0.0
+    #     grid_share_add = 1.0 - pv_share_add
+    #
+    #     blended_eur_per_kwh = pv_share_add * pv_cost + grid_share_add * (base + fee_down)
+    #
+    #     # Cooling-Kostenanteil fair teilen (aktive cooling-Miner + dieser Miner)
+    #     cool_share = 0.0
+    #     if cooling_feature and require_cooling and cooling_kw_cfg > 0.0:
+    #         active = [m for m in list_miners() if m.get("enabled") and m.get("on") and m.get("require_cooling")]
+    #         n_future = len(active) + 1  # inkl. diesem Miner
+    #         cool_share = (cooling_kw_cfg * blended_eur_per_kwh) / max(n_future, 1)
+    #
+    #     # Kosten/h
+    #     cost_eur_h = pkw * blended_eur_per_kwh
+    #     total_cost_h = cost_eur_h + cool_share
+    #
+    #     profit = after_tax - total_cost_h
+    #     profitable = profit > 0.0
+    #
+    #     # ---------- Ausgabe ----------
+    #     def _fmt_int(x):
+    #         try:
+    #             return f"{x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    #         except Exception:
+    #             return "0"
+    #
+    #     sat_txt = f"SAT/h: {_fmt_int(sats_per_h)}"
+    #
+    #     mix_txt = (
+    #         f"Cost at incremental mix (PV {pv_share_add * 100:.1f}% / "
+    #         f"Grid {grid_share_add * 100:.1f}%)"
+    #     )
+    #     mix_hint = html.Span(
+    #         f"  [feed-in {feed_val:.2f} kW · ΔP {delta_kw:.2f} kW]",
+    #         style={"opacity": 0.6, "marginLeft": "6px"}
+    #     )
+    #
+    #     parts = [
+    #         f"Revenue: {_money(after_tax)} {currency_symbol()}/h",
+    #         html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
+    #         f"{mix_txt}: {_money(cost_eur_h)} {currency_symbol()}/h",
+    #         mix_hint,
+    #     ]
+    #     if cool_share > 0.0:
+    #         parts += [
+    #             html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
+    #             f"(+ Cooling share: {_money(cool_share)} {currency_symbol()}/h)",
+    #         ]
+    #     parts += [
+    #         html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
+    #         f"Δ = {_money(profit)} {currency_symbol()}/h",
+    #     ]
+    #     eur_txt = html.Span(parts)
+    #
+    #     # Break-even Gridpreis bei aktuellem PV-Mix
+    #     be_line = ""
+    #     if pkw > 0.0:
+    #         # "Äquivalente" kW inkl. anteiligem Cooling, wenn dieser Miner Cooling braucht
+    #         if cooling_feature and require_cooling and cooling_kw_cfg > 0.0:
+    #             active = [m for m in list_miners() if m.get("enabled") and m.get("on") and m.get("require_cooling")]
+    #             n_future = len(active) + 1
+    #             equiv_kw = pkw + (cooling_kw_cfg / max(n_future, 1))
+    #         else:
+    #             equiv_kw = pkw
+    #
+    #         if equiv_kw > 0.0:
+    #             blended_be = after_tax / equiv_kw  # benötigter €/kWh
+    #             if grid_share_add <= 1e-6:
+    #                 be_line = "Break-even grid price: n/a (PV fully covers incremental load)"
+    #             else:
+    #                 base_be = (blended_be - pv_share_add * pv_cost) / grid_share_add - fee_down
+    #                 base_be = max(base_be, 0.0)
+    #                 be_line = f"Break-even grid price at current PV mix: {_money(base_be)} €/kWh"
+    #
+    #     prof_txt = html.Div([
+    #         html.Span([_dot("#27ae60" if profitable else "#e74c3c"),
+    #                    "profitable" if profitable else "not profitable"]),
+    #         html.Br(),
+    #         html.Span(be_line, style={"opacity": 0.8})
+    #     ])
+    #
+    #     return sat_txt, eur_txt, prof_txt
+
     # 9) KPIs je Miner live berechnen (alle 10s + bei Eingaben)
     @app.callback(
         Output({"type": "m-kpi-satthh", "mid": MATCH}, "children"),
@@ -884,20 +1032,12 @@ def register_callbacks(app):
         revenue_eur_h = sats_per_h * eur_per_sat
         after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
 
-        # --- Inkrementeller PV/Grid-Mix für diesen Miner ---
-        pv_id = _dash_resolve("pv_production")
-        grid_id = _dash_resolve("grid_consumption")
-        feed_id = _dash_resolve("grid_feed_in")
-
-        pv_val = _num(get_sensor_value(pv_id), 0.0)
-        grid_val = _num(get_sensor_value(grid_id), 0.0)
-        feed_val = max(_num(get_sensor_value(feed_id), 0.0), 0.0)  # >=0
-
+        # --- Preise / Gebühren ---
         base = elec_price() or 0.0
         fee_down = _num(elec_get("network_fee_down_value", 0.0), 0.0)
         pv_cost = _pv_cost_per_kwh()
 
-        # Cooling-Setup
+        # --- Cooling-Setup ---
         cooling_feature = bool(set_get("cooling_feature_enabled", False))
         require_cooling = bool(reqcool_val and "on" in reqcool_val)
         c = get_cooling() if cooling_feature else {}
@@ -907,13 +1047,10 @@ def register_callbacks(app):
         # Zusätzliche Last ΔP: Miner + ggf. Cooling, falls dieser Miner Cooling neu starten würde
         delta_kw = pkw + (cooling_kw_cfg if (cooling_feature and require_cooling and not cooling_is_on) else 0.0)
 
-        if delta_kw > 0.0:
-            pv_share_add = max(min(feed_val / delta_kw, 1.0), 0.0)
-        else:
-            pv_share_add = 0.0
-        grid_share_add = 1.0 - pv_share_add
+        # ---------- EINHEITLICHER MIX aus dem Planner ----------
+        pv_share, grid_share, pv_kw_for_delta = incremental_mix_for(delta_kw)
 
-        blended_eur_per_kwh = pv_share_add * pv_cost + grid_share_add * (base + fee_down)
+        blended_eur_per_kwh = pv_share * pv_cost + grid_share * (base + fee_down)
 
         # Cooling-Kostenanteil fair teilen (aktive cooling-Miner + dieser Miner)
         cool_share = 0.0
@@ -938,12 +1075,15 @@ def register_callbacks(app):
 
         sat_txt = f"SAT/h: {_fmt_int(sats_per_h)}"
 
-        mix_txt = (
-            f"Cost at incremental mix (PV {pv_share_add * 100:.1f}% / "
-            f"Grid {grid_share_add * 100:.1f}%)"
-        )
+        # nur noch Anzeigezweck: Feed-in separat zeigen (nicht für die Rechnung nutzen)
+        pv_id = _dash_resolve("pv_production")
+        grid_id = _dash_resolve("grid_consumption")
+        feed_id = _dash_resolve("grid_feed_in")
+        feed_val = max(_num(get_sensor_value(feed_id), 0.0), 0.0) if feed_id else 0.0
+
+        mix_txt = f"Cost at incremental mix (PV {pv_share * 100:.1f}% / Grid {grid_share * 100:.1f}%)"
         mix_hint = html.Span(
-            f"  [feed-in {feed_val:.2f} kW · ΔP {delta_kw:.2f} kW]",
+            f"  [feed-in {feed_val:.2f} kW · ΔP {delta_kw:.2f} kW · PV share {pv_kw_for_delta:.2f} kW]",
             style={"opacity": 0.6, "marginLeft": "6px"}
         )
 
@@ -977,10 +1117,10 @@ def register_callbacks(app):
 
             if equiv_kw > 0.0:
                 blended_be = after_tax / equiv_kw  # benötigter €/kWh
-                if grid_share_add <= 1e-6:
+                if grid_share <= 1e-6:
                     be_line = "Break-even grid price: n/a (PV fully covers incremental load)"
                 else:
-                    base_be = (blended_be - pv_share_add * pv_cost) / grid_share_add - fee_down
+                    base_be = (blended_be - pv_share * pv_cost) / grid_share - fee_down
                     base_be = max(base_be, 0.0)
                     be_line = f"Break-even grid price at current PV mix: {_money(base_be)} €/kWh"
 
@@ -992,55 +1132,6 @@ def register_callbacks(app):
         ])
 
         return sat_txt, eur_txt, prof_txt
-
-    # @dash.callback(
-    #     Output("miners-data", "data", allow_duplicate=True),
-    #     Input({"type": "m-on", "mid": ALL}, "value"),
-    #     State({"type": "m-on", "mid": ALL}, "id"),
-    #     State({"type": "m-mode", "mid": ALL}, "value"),
-    #     State({"type": "m-enabled", "mid": ALL}, "value"),
-    #     State({"type": "m-act-on", "mid": ALL}, "value"),
-    #     State({"type": "m-act-off", "mid": ALL}, "value"),
-    #     prevent_initial_call=True
-    # )
-    # def _manual_switch(on_vals, on_ids, mode_vals, enabled_vals, act_on_vals, act_off_vals):
-    #     trg = callback_context.triggered_id
-    #     if not isinstance(trg, dict) or trg.get("type") != "m-on":
-    #         raise dash.exceptions.PreventUpdate
-    #     mid = trg.get("mid")
-    #
-    #     # Index des betroffenen Miners finden
-    #     try:
-    #         idx = next(i for i, sid in enumerate(on_ids) if isinstance(sid, dict) and sid.get("mid") == mid)
-    #     except StopIteration:
-    #         raise dash.exceptions.PreventUpdate
-    #
-    #     want_on = bool(on_vals[idx] and "on" in on_vals[idx])
-    #     is_auto = bool(mode_vals[idx] and "auto" in mode_vals[idx])
-    #     enabled = bool(enabled_vals[idx] and "on" in enabled_vals[idx])
-    #
-    #     # Nur im Manual-Mode und wenn enabled
-    #     if not enabled or is_auto:
-    #         raise dash.exceptions.PreventUpdate
-    #
-    #     act_on = (act_on_vals[idx] or "")
-    #     act_off = (act_off_vals[idx] or "")
-    #
-    #     # HA Script/Schalter ausführen
-    #     from services.ha_entities import call_action
-    #     if want_on and act_on:
-    #         ok = call_action(act_on, True)
-    #         print(f"[ui] miner {mid} ON via {act_on}: {ok}", flush=True)
-    #     elif (not want_on) and act_off:
-    #         ok = call_action(act_off, False)
-    #         print(f"[ui] miner {mid} OFF via {act_off}: {ok}", flush=True)
-    #
-    #     # Zustand im Store spiegeln
-    #     from services.miners_store import update_miner, list_miners
-    #     update_miner(mid, on=want_on)
-    #
-    #     return list_miners()
-
 
     # 10) KPI-Renderer + Cooling-Callbacks
     from dash import no_update
