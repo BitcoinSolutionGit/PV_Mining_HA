@@ -18,3 +18,5 @@ temperature_entity: ""    # z.B. sensor.battery_temperature   (°C)
 target_soc: 100.0          # %
 reserve_soc: 5.0         # %
 allow_grid_charge: false  # (für Auto-Logik später)
+
+

@@ -26,6 +26,9 @@ def _row():
 
 def layout():
     # gespeicherte Auswahl:
+    enabled = bool(bat_get("enabled", False))
+    mode = (bat_get("mode", "manual") or "manual").lower()
+
     cap  = bat_get("capacity_entity", "")
     soc  = bat_get("soc_entity", "")
     vdc  = bat_get("voltage_entity", "")
@@ -37,7 +40,27 @@ def layout():
     return html.Div(
         id="battery-page",
         children=[
-            html.H2("Battery"),
+            html.H2("Battery settings"),
+
+            html.Div([
+                html.Label("General"),
+                dcc.Checklist(
+                    id="bat-enabled-entity",
+                    options=[{"label": " Enabled", "value": "on"}],
+                    value=(["on"] if enabled else []),
+                    persistence=True, persistence_type="memory",
+                    style={"marginBottom": "8px"}
+                ),
+                dcc.RadioItems(
+                    id="bat-mode-entity",
+                    options=[
+                        {"label": " Manual", "value": "manual"},
+                        {"label": " Auto", "value": "auto"},
+                    ],
+                    value=mode,
+                    labelStyle={"display": "inline-block", "marginRight": "12px"}
+                ),
+            ], style={"marginBottom": "16px"}),
 
             html.Div([
                 html.Label("Capacity sensor (kWh)"),
@@ -103,9 +126,11 @@ def register_callbacks(app):
         State("bat-vdc-entity", "value"),
         State("bat-idc-entity", "value"),
         State("bat-temp-entity", "value"),
+        State("bat-enabled-entity", "value"),
+        State("bat-mode-entity", "value"),
         prevent_initial_call=True
     )
-    def _save(n, cap, soc, vdc, idc, temp):
+    def _save(n, cap, soc, vdc, idc, temp, enabled_val, mode_val):
         if not n:
             raise dash.exceptions.PreventUpdate
         bat_set(
@@ -114,6 +139,8 @@ def register_callbacks(app):
             voltage_entity=vdc or "",
             current_entity=idc or "",
             temperature_entity=temp or "",
+            enabled=bool(enabled_val and "on" in enabled_val),
+            mode=(mode_val or "manual")
         )
         return "Saved."
 
