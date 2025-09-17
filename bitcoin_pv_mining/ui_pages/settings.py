@@ -336,6 +336,12 @@ def layout():
     guard_w   = _num(set_get("surplus_guard_w", 100.0), 100.0)
     guard_pct = _num(set_get("surplus_guard_pct", 0.0), 0.0)  # als Anteil (0.00–0.05)
 
+    # --- Miner Hysterese & Anti-Flattern ---
+    miner_on_margin   = _num(set_get("miner_profit_on_eur_h",  0.05),  0.05)
+    miner_off_margin  = _num(set_get("miner_profit_off_eur_h", -0.01), -0.01)
+    miner_min_run_s   = int(_num(set_get("miner_min_run_s",  30), 30))
+    miner_min_off_s   = int(_num(set_get("miner_min_off_s", 20), 20))
+
     sensors = [{"label": s, "value": s} for s in list_all_sensors()]
     fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
     eff_pv_cost = max((fi_val if mode == "fixed" else _num(get_sensor_value(fi_sens), 0.0)) - fee_up, 0.0) if policy == "feedin" else 0.0
@@ -344,17 +350,54 @@ def layout():
     return html.Div([
         html.H2("Settings"),
 
-        _section("Cooling Circuit", [
+        _section("Cooling circuit / Miners", [
             dcc.Checklist(
                 id="set-cooling-enabled",
-                options=[{"label": " Cooling circuit feature activ", "value": "on"}],
+                options=[{"label": " Cooling circuit feature active", "value": "on"}],
                 value=(["on"] if cooling_enabled else []),
             ),
             html.Div(
                 "If enabled, a Cooling block appears in the Miners tab. "
-                "Miners with 'Cooling required' can only be turned on when Cooling is running.",
+                "Miners with 'Cooling required' can only switch on when Cooling ready/state is TRUE.",
                 style={"opacity": 0.8, "marginTop": "6px"}
-            )
+            ),
+
+            html.Hr(),
+
+            html.Div([
+                html.Label("Miner profit ON threshold (€/h)"),
+                dcc.Input(
+                    id="set-miner-on-margin", type="number", step=0.01,
+                    value=miner_on_margin, style=_input_style(140)
+                ),
+                html.Span("  (≥ this to switch ON)", style={"opacity": 0.7, "marginLeft": "6px"}),
+            ], style={"marginTop": "6px"}),
+
+            html.Div([
+                html.Label("Miner profit OFF threshold (€/h)"),
+                dcc.Input(
+                    id="set-miner-off-margin", type="number", step=0.01,
+                    value=miner_off_margin, style=_input_style(140)
+                ),
+                html.Span("  (≤ this to switch OFF; can be negative)", style={"opacity": 0.7, "marginLeft": "6px"}),
+            ], style={"marginTop": "8px"}),
+
+            html.Div([
+                html.Label("Minimum runtime after ON (s)"),
+                dcc.Input(
+                    id="set-miner-min-run-s", type="number", step=1, min=0,
+                    value=miner_min_run_s, style=_input_style(120)
+                ),
+                html.Span("  (debounce to avoid flapping)", style={"opacity": 0.7, "marginLeft": "6px"}),
+            ], style={"marginTop": "8px"}),
+
+            html.Div([
+                html.Label("Minimum OFF time after OFF (s)"),
+                dcc.Input(
+                    id="set-miner-min-off-s", type="number", step=1, min=0,
+                    value=miner_min_off_s, style=_input_style(120)
+                ),
+            ], style={"marginTop": "8px"}),
         ]),
 
         _section("PV-cost-model", [
@@ -511,12 +554,17 @@ def register_callbacks(app):
         State("set-reward", "value"),
         State("set-tax", "value"),
         State("set-cooling-enabled", "value"),
-        # NEW:
         State("set-guard-w", "value"),
         State("set-guard-pct", "value"),
+        State("set-miner-on-margin", "value"),
+        State("set-miner-off-margin", "value"),
+        State("set-miner-min-run-s", "value"),
+        State("set-miner-min-off-s", "value"),
         prevent_initial_call=True
     )
-    def _save(n, policy, mode, val, sens, cur, reward, tax, cool_enabled_val, guard_w, guard_pct):
+    def _save(n, policy, mode, val, sens, cur, reward, tax, cool_enabled_val,
+              guard_w, guard_pct,
+              miner_on_margin, miner_off_margin, miner_min_run_s, miner_min_off_s):
         if not n:
             return ""
         # Prozent robust interpretieren: 3 -> 0.03
@@ -533,12 +581,19 @@ def register_callbacks(app):
             block_reward_btc=_num(reward, 3.125),
             sell_tax_percent=_num(tax, 0.0),
             cooling_feature_enabled=bool(cool_enabled_val and "on" in cool_enabled_val),
-            # NEW:
             surplus_guard_w=_num(guard_w, 0.0),
             surplus_guard_pct=g_pct,
+            miner_profit_on_eur_h=_num(miner_on_margin, 0.05),
+            miner_profit_off_eur_h=_num(miner_off_margin, -0.01),
+            miner_min_run_s=int(_num(miner_min_run_s, 30)),
+            miner_min_off_s=int(_num(miner_min_off_s, 20)),
         )
         shown_pct = g_pct * 100.0
-        return f"Saved. Planner guard = {guard_w or 0:.0f} W and {shown_pct:.2f} %."
+        return (f"Saved. Planner guard = {guard_w or 0:.0f} W and {shown_pct:.2f} %.  "
+                f"Miner tuning: on≥{_num(miner_on_margin, 0.05):.2f} €/h, "
+                f"off≤{_num(miner_off_margin, -0.01):.2f} €/h, "
+                f"minRun={int(_num(miner_min_run_s, 30))} s, "
+                f"minOff={int(_num(miner_min_off_s, 20))} s.")
 
     # Store befüllen/aktualisieren, wenn Settings-Tab angezeigt wird
     @app.callback(
