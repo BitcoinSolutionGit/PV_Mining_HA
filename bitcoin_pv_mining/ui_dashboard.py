@@ -36,6 +36,10 @@ GAUGE_TICK_FONT   = {"size": 12}
 
 COLLAPSE_BATTERY_SOURCE = True  # keine extra Batterie-Quelle links zeigen
 
+def _num(x, d=0.0):
+    try: return float(x)
+    except: return d
+
 def _heater_power_kw():
     try:
         eid = heater_resolve_entity("input_heizstab_cache")  # Prozent (0–100) aus HA input_number

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from services.consumers.base import BaseConsumer, Desire, Ctx
-from services.cooling_store import get_cooling
+from services.cooling_store import get_cooling, set_cooling
 from services.settings_store import get_var as set_get
 from services.miners_store import list_miners
 from services.ha_entities import call_action
@@ -197,23 +197,49 @@ class CoolingConsumer(BaseConsumer):
 
     def apply_allocation(self, ctx: Ctx, alloc_kw: float) -> None:
         """
-        Schaltet Cooling via HA-Action an/aus.
-        Schwelle: >= 50% der konfigurierten Leistung -> ON, sonst OFF.
+        Schaltet Cooling via HA-Action an/aus. Wir setzen 'on' NICHT selbst,
+        sondern vertrauen ausschließlich auf HA (ready_entity).
+        Zusätzlich: Safety-Off – sind Cooling-Miner an, HA meldet aber 'off',
+        schalten wir die Miner sofort ab.
         """
         c = get_cooling() or {}
         power_kw = _num(c.get("power_kw"), 0.0)
         on_ent = c.get("action_on_entity", "") or ""
         off_ent = c.get("action_off_entity", "") or ""
+        is_on = bool(c.get("on"))  # ← kommt jetzt direkt aus HA ready_entity
 
+        # Schwelle: >= 50% der konfigurierten Leistung -> ON-Wunsch
         should_on = power_kw > 0.0 and alloc_kw >= 0.5 * power_kw
+
         try:
             if should_on:
+                # Wunsch: AN – wir triggern HA, aber setzen 'on' NICHT selbst
                 if on_ent:
                     call_action(on_ent, True)
-                print(f"[cooling] apply ~{alloc_kw:.2f} kW (ON)", flush=True)
+                print(f"[cooling] apply request ~{alloc_kw:.2f} kW (ASK ON)", flush=True)
             else:
+                # Wunsch: AUS
                 if off_ent:
                     call_action(off_ent, False)
-                print(f"[cooling] apply 0 kW (OFF)", flush=True)
+                print(f"[cooling] apply request 0 kW (ASK OFF)", flush=True)
+
+            # Safety: direkt nach dem Schalten Zustand aus HA prüfen
+            c2 = get_cooling() or {}
+            ha_on = bool(c2.get("on"))
+
+            if not ha_on:
+                # HA meldet 'off' → alle aktiven Miner mit Cooling-Pflicht sofort ausschalten
+                try:
+                    for m in (list_miners() or []):
+                        if _truthy(m.get("on"), False) and _truthy(m.get("require_cooling"), False):
+                            off_m = (m.get("action_off_entity") or "").strip()
+                            if off_m:
+                                call_action(off_m, False)
+                            update_miner(m.get("id"), on=False)
+                            print(f"[cooling] safety: turned OFF miner {m.get('name') or m.get('id')}", flush=True)
+                except Exception as e:
+                    print(f"[cooling] safety off miners error: {e}", flush=True)
+
         except Exception as e:
             print(f"[cooling] apply error: {e}", flush=True)
+
