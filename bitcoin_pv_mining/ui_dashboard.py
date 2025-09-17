@@ -407,8 +407,20 @@ def register_callbacks(app):
         if battery_src_idx is not None:
             add_link(battery_src_idx, inflow_idx, bat_discharge_kw, COLORS["battery"])
 
-        # Cooling (optional)
-        if cooling_feature:
+        # ---- Cooling (optional, wenns der miner braucht!) ----
+        cooling_kw = 0.0
+        cooling_feature = bool(set_get("cooling_feature_enabled", False))
+        cooling = get_cooling() if cooling_feature else None
+        if cooling_feature and cooling:
+            try:
+                # bevorzugt Ready/State-Entity lesen (True = running)
+                rs_id = (cooling.get("ready_state_entity") or cooling.get("state_entity") or "").strip()
+                running = bool(get_sensor_value(rs_id)) if rs_id else bool(cooling.get("on"))
+            except Exception:
+                running = bool(cooling.get("on"))
+            pkw_cfg = float(cooling.get("power_kw") or 0.0)
+            cooling_kw = pkw_cfg if running else 0.0
+
             cooling_is_active = cooling_kw > 0.0
             cooling_kw_eff = cooling_kw if cooling_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
             if cooling_is_active or SHOW_INACTIVE_REMINDERS:
