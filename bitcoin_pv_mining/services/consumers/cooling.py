@@ -80,24 +80,42 @@ def _any_auto_enabled_miner_profitable() -> bool:
     return False
 
 def _pv_cost_per_kwh() -> float:
+    """Opportunitätskosten PV gemäß Settings (zero | feedin)."""
     policy = (set_get("pv_cost_policy", "zero") or "zero").lower()
     if policy != "feedin":
         return 0.0
     mode = (set_get("feedin_price_mode", "fixed") or "fixed").lower()
-    fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
     if mode == "sensor":
         sens = set_get("feedin_price_sensor", "") or ""
-        val = _num(get_sensor_value(sens), 0.0) if sens else 0.0
+        try:
+            from services.ha_sensors import get_sensor_value
+            price = _num(get_sensor_value(sens), 0.0) if sens else 0.0
+        except Exception:
+            price = _num(set_get("feedin_price_value", 0.0), 0.0)
     else:
-        val = _num(set_get("feedin_price_value", 0.0), 0.0)
-    return max(0.0, val - fee_up)
+        price = _num(set_get("feedin_price_value", 0.0), 0.0)
+    fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
+    return max(price - fee_up, 0.0)
 
+# def _pv_cost_per_kwh() -> float:
+#     policy = (set_get("pv_cost_policy", "zero") or "zero").lower()
+#     if policy != "feedin":
+#         return 0.0
+#     mode = (set_get("feedin_price_mode", "fixed") or "fixed").lower()
+#     fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
+#     if mode == "sensor":
+#         sens = set_get("feedin_price_sensor", "") or ""
+#         val = _num(get_sensor_value(sens), 0.0) if sens else 0.0
+#     else:
+#         val = _num(set_get("feedin_price_value", 0.0), 0.0)
+#     return max(0.0, val - fee_up)
+
+# --- deine CoolingConsumer.compute_desire() ersetzt durch diese Version ---
 class CoolingConsumer(BaseConsumer):
     id = "cooling"
     label = "Cooling circuit"
 
     def compute_desire(self, ctx: Ctx) -> Desire:
-        # globales Feature
         feature = bool(set_get("cooling_feature_enabled", False))
         if not feature:
             return Desire(False, 0.0, 0.0, reason="feature disabled")
@@ -106,16 +124,28 @@ class CoolingConsumer(BaseConsumer):
         enabled = _truthy(c.get("enabled"), True)
         mode = str(c.get("mode") or "manual").lower()
         power_kw = _num(c.get("power_kw"), 0.0)
-        is_on = bool(c.get("on"))
+        is_on = _truthy(c.get("on"), False)  # <-- WICHTIG: jetzt definiert
 
         if not enabled:
             return Desire(False, 0.0, 0.0, reason="disabled")
-        if mode != "auto":
-            return Desire(False, 0.0, 0.0, reason="manual mode")
         if power_kw <= 0.0:
             return Desire(False, 0.0, 0.0, reason="no power configured")
 
-        # Falls bereits ein Miner läuft, der Kühlung braucht -> anlassen
+        # ---------- MANUAL OVERRIDE ----------
+        if mode != "auto":
+            if is_on:
+                return Desire(
+                    wants=True,
+                    min_kw=power_kw,
+                    max_kw=power_kw,
+                    must_run=True,       # Planner darf nötigenfalls Grid geben
+                    exact_kw=power_kw,
+                    reason="manual override",
+                )
+            return Desire(False, 0.0, 0.0, reason="manual mode (off)")
+
+        # ---------- Auto-Logik ----------
+        # Wenn schon ein Miner läuft, der Kühlung braucht -> anlassen
         try:
             active_need = any(
                 _truthy(m.get("on"), False) and _truthy(m.get("require_cooling"), False)
@@ -131,10 +161,10 @@ class CoolingConsumer(BaseConsumer):
             candidates = [
                 m for m in (list_miners() or [])
                 if _truthy(m.get("enabled"), False)
-                   and str(m.get("mode") or "manual").lower() == "auto"
-                   and _truthy(m.get("require_cooling"), False)
-                   and _num(m.get("power_kw"), 0.0) > 0.0
-                   and _num(m.get("hashrate_ths"), 0.0) > 0.0
+                and str(m.get("mode") or "manual").lower() == "auto"
+                and _truthy(m.get("require_cooling"), False)
+                and _num(m.get("power_kw"), 0.0) > 0.0
+                and _num(m.get("hashrate_ths"), 0.0) > 0.0
             ]
         except Exception:
             candidates = []
@@ -144,7 +174,8 @@ class CoolingConsumer(BaseConsumer):
         # Netzpreis
         eff_grid_cost = _num(elec_price(), 0.0) + _num(elec_get("network_fee_down_value", 0.0), 0.0)
         if eff_grid_cost <= 0.0:
-            return Desire(True, 0.0, power_kw, exact_kw=power_kw, reason="neg grid price")
+            # nur wenn Kandidaten existieren (oben bereits geprüft)
+            return Desire(True, 0.0, power_kw, exact_kw=power_kw, reason="neg grid price with candidates")
 
         # Kosten-Parameter
         pv_cost = _pv_cost_per_kwh()
@@ -152,18 +183,18 @@ class CoolingConsumer(BaseConsumer):
         # BTC-Erträge (einmal berechnen)
         btc_eur = get_live_btc_price_eur(fallback=_num(set_get("btc_price_eur", 0.0)))
         net_ths = get_live_network_hashrate_ths(fallback=_num(set_get("network_hashrate_ths", 0.0)))
-        reward = _num(set_get("block_reward_btc", 3.125), 3.125)
+        reward  = _num(set_get("block_reward_btc", 3.125), 3.125)
         tax_pct = _num(set_get("sell_tax_percent", 0.0), 0.0)
         sat_th_h = sats_per_th_per_hour(reward, net_ths) if net_ths > 0 else 0.0
         eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
 
-        # Gate: Cooling startet, wenn es mind. EINEN Kandidaten gibt, für den
+        # Cooling darf starten, wenn es mind. EINEN Kandidaten gibt, für den
         # Miner+Cooling im aktuellen Mix PV-only ODER profitabel (nach Steuer) ist.
         for m in candidates:
             m_kw = _num(m.get("power_kw"), 0.0)
-            ths = _num(m.get("hashrate_ths"), 0.0)
+            ths  = _num(m.get("hashrate_ths"), 0.0)
 
-            # ΔP: wenn Cooling noch aus, dann Miner+Cooling; wenn an, dann nur Miner
+            # ΔP: wenn Cooling noch aus, dann Miner+Cooling; wenn an, nur Miner
             delta = m_kw + (0.0 if is_on else power_kw)
             if delta <= 0.0:
                 continue
@@ -176,24 +207,23 @@ class CoolingConsumer(BaseConsumer):
             revenue_eur_h = sats_h * eur_per_sat
             after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
 
-            # Cooling-Anteil fair verteilen (angenommene Anzahl aktiver Cooling-Miner + dieser)
+            # Cooling-Anteil fair verteilen (hier: Cooling würde neu starten)
             cool_share = 0.0
             if not is_on and power_kw > 0.0:
-                # aktuell keine aktiven Cooling-Miner (sonst wären wir oben „active_need“)
-                n_future = 1  # nur dieser Miner
+                n_future = 1  # nur dieser Miner (keine aktiven Cooling-Miner -> oben hätten wir 'active_need')
                 cool_share = (power_kw / max(n_future, 1)) * blended
 
             miner_cost = m_kw * blended
             total_cost = miner_cost + cool_share
 
             if grid_share <= 1e-6 or after_tax >= total_cost:
-                # PV-only ODER profitabel mit Grid -> Cooling darf starten
-                return Desire(True, 0.0, power_kw, exact_kw=power_kw,
-                              reason=(
-                                  "pv_only_ok" if grid_share <= 1e-6 else f"profitable (Δ={after_tax - total_cost:.2f} €/h)"))
+                return Desire(
+                    True, 0.0, power_kw, exact_kw=power_kw,
+                    reason=("pv_only_ok" if grid_share <= 1e-6 else f"profitable (Δ={after_tax - total_cost:.2f} €/h)")
+                )
 
-        # kein qualifizierender Miner -> Cooling nicht alleine starten
         return Desire(False, 0.0, 0.0, reason="no qualifying miner (pv/profit)")
+
 
     def apply_allocation(self, ctx: Ctx, alloc_kw: float) -> None:
         """
