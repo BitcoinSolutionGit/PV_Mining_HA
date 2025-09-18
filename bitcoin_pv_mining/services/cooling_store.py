@@ -39,15 +39,24 @@ def get_cooling() -> dict:
     ovr  = load_yaml(COOL_OVR, {}) or {}
     data = _merge(base.get("cooling", {}), ovr.get("cooling", {}))
     out = _merge(_DEFAULT, data)
-    # Wenn ready_entity gesetzt ist, hat deren HA-Wert Vorrang für "on"
+
+    # Wunschzustand so lassen:
+    desired_on = bool(out.get("on"))
+
+    # Tatsächlicher Zustand aus Ready-Entity lesen:
+    ha_on = None
     try:
         rid = (out.get("ready_entity") or "").strip()
         if rid:
             val = get_sensor_value(rid)
-            out["on"] = _truthy(val)
+            ha_on = _truthy(val)
     except Exception:
-        pass
+        ha_on = None
+
+    out["on"] = desired_on    # gewünschter Zustand (UI/Auto)
+    out["ha_on"] = ha_on      # tatsächlicher Zustand (HA), kann True/False/None sein
     return out
+
 
 def set_cooling(**changes):
     cur = get_cooling()

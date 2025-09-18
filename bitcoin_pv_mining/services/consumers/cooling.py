@@ -4,7 +4,7 @@ from __future__ import annotations
 from services.consumers.base import BaseConsumer, Desire, Ctx
 from services.cooling_store import get_cooling, set_cooling
 from services.settings_store import get_var as set_get
-from services.miners_store import list_miners
+from services.miners_store import list_miners, update_miner
 from services.ha_entities import call_action
 from services.ha_sensors import get_sensor_value
 from services.electricity_store import current_price as elec_price, get_var as elec_get
@@ -124,7 +124,10 @@ class CoolingConsumer(BaseConsumer):
         enabled = _truthy(c.get("enabled"), True)
         mode = str(c.get("mode") or "manual").lower()
         power_kw = _num(c.get("power_kw"), 0.0)
-        is_on = _truthy(c.get("on"), False)  # <-- WICHTIG: jetzt definiert
+
+        is_on_desired = _truthy(c.get("on"), False)  # Wunsch (UI/Auto)
+        ha_on_val = c.get("ha_on")
+        is_running = bool(ha_on_val) if ha_on_val is not None else is_on_desired
 
         if not enabled:
             return Desire(False, 0.0, 0.0, reason="disabled")
@@ -133,15 +136,8 @@ class CoolingConsumer(BaseConsumer):
 
         # ---------- MANUAL OVERRIDE ----------
         if mode != "auto":
-            if is_on:
-                return Desire(
-                    wants=True,
-                    min_kw=power_kw,
-                    max_kw=power_kw,
-                    must_run=True,       # Planner darf nötigenfalls Grid geben
-                    exact_kw=power_kw,
-                    reason="manual override",
-                )
+            if is_on_desired:
+                return Desire(True, power_kw, power_kw, must_run=True, exact_kw=power_kw, reason="manual override")
             return Desire(False, 0.0, 0.0, reason="manual mode (off)")
 
         # ---------- Auto-Logik ----------
@@ -195,7 +191,7 @@ class CoolingConsumer(BaseConsumer):
             ths  = _num(m.get("hashrate_ths"), 0.0)
 
             # ΔP: wenn Cooling noch aus, dann Miner+Cooling; wenn an, nur Miner
-            delta = m_kw + (0.0 if is_on else power_kw)
+            delta = m_kw + (0.0 if is_running else power_kw) # nicht mehr 'is_on'
             if delta <= 0.0:
                 continue
 
@@ -209,7 +205,7 @@ class CoolingConsumer(BaseConsumer):
 
             # Cooling-Anteil fair verteilen (hier: Cooling würde neu starten)
             cool_share = 0.0
-            if not is_on and power_kw > 0.0:
+            if not is_running and power_kw > 0.0:
                 n_future = 1  # nur dieser Miner (keine aktiven Cooling-Miner -> oben hätten wir 'active_need')
                 cool_share = (power_kw / max(n_future, 1)) * blended
 
@@ -255,7 +251,7 @@ class CoolingConsumer(BaseConsumer):
 
             # Safety: direkt nach dem Schalten Zustand aus HA prüfen
             c2 = get_cooling() or {}
-            ha_on = bool(c2.get("on"))
+            ha_on = bool(c2.get("ha_on")) if (c2.get("ha_on") is not None) else _truthy(c2.get("on"), False)
 
             if not ha_on:
                 # HA meldet 'off' → alle aktiven Miner mit Cooling-Pflicht sofort ausschalten

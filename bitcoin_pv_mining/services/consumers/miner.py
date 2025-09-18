@@ -97,15 +97,17 @@ def _cooling_power_kw() -> float:
 
 
 def _cooling_running_now() -> bool:
-    """
-    True, wenn Cooling laut Ready/State-Entity läuft (Fallback: 'on' Flag).
-    """
     try:
         from services.cooling_store import get_cooling
         c = get_cooling() or {}
-        rs_id = (c.get("ready_state_entity") or c.get("state_entity") or "").strip()
+        # Wenn ha_on vorhanden ist, hat das Vorrang.
+        if "ha_on" in c and c["ha_on"] is not None:
+            return bool(c["ha_on"])
+        # Fallback: Ready-Entity lesen
+        rs_id = (c.get("ready_entity") or c.get("ready_state_entity") or c.get("state_entity") or "").strip()
         if rs_id:
             return _truthy(get_sensor_value(rs_id), False)
+        # Letzter Fallback: desired on (nicht ideal, aber besser als False)
         return _truthy(c.get("on"), False)
     except Exception:
         return False

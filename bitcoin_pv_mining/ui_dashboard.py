@@ -364,7 +364,8 @@ def register_callbacks(app):
         cooling_feature = bool(set_get("cooling_feature_enabled", False))
         cooling = get_cooling() if cooling_feature else None
         if cooling_feature and cooling:
-            cooling_kw = float(cooling.get("power_kw") or 0.0) if bool(cooling.get("on")) else 0.0
+            cooling_is_active = (cooling.get("ha_on") is True) or (cooling.get("ha_on") is None and bool(cooling.get("on")))
+            cooling_kw = float(cooling.get("power_kw") or 0.0) if cooling_is_active else 0.0
 
         # ---- House usage = Rest (ohne Ghosts) ----
         known_real = (
