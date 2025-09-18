@@ -319,6 +319,14 @@ def plan_and_allocate(
             allocations.append((cid, cons, 0.0))
             log_fn(f"[plan:alloc]  {cid}: pv=0.00 grid=0.00 total=0.00 pv_left={pv_left:.2f}")
             log_fn(f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} exact={_fmt(exact)} must={must} -> alloc=0.000 (pv=0.000, grid=0.000) | {reason}")
+            # Wichtig: auch bei 'kein Wunsch' den Apply-Hook ausführen,
+            # damit Consumer OFF/Idle-Zustände (z.B. Cooling OFF) an HA senden können.
+            do_apply = bool(apply) and not bool(dry_run)
+            if do_apply:
+                try:
+                    cons.apply_allocation(ctx, 0.0)
+                except Exception as e:
+                    log_fn(f"[plan] error: apply_allocation({cid}, 0.000) -> {e}")
             continue
 
         # Zuteilung: erst PV (mit Guard), optional Grid für must_run-Minimum
