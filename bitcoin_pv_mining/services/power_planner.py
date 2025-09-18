@@ -286,6 +286,7 @@ def plan_and_allocate(
         log_fn(f"[plan:surplus_dbg] failed: {_e}")
 
     # Durch die Prioritätsliste
+    collected = []  # [(cid, cons, desire)]
     for cid in order:
         if cid in ("grid_feed", "inflow"):
             log_fn(f"[plan] sink '{cid}' at end; leftover will be fed in.")
@@ -302,54 +303,100 @@ def plan_and_allocate(
             log_fn(f"[plan] error: compute_desire({cid}) -> {e}")
             continue
 
-        wants  = bool(desire.wants)
+        wants = bool(desire.wants)
         min_kw = max(desire.min_kw or 0.0, 0.0)
         max_kw = max(desire.max_kw or 0.0, 0.0)
-        exact  = getattr(desire, "exact_kw", None)
-        must   = bool(getattr(desire, "must_run", False))
+        exact = getattr(desire, "exact_kw", None)
+        must = bool(getattr(desire, "must_run", False))
         reason = getattr(desire, "reason", "")
 
         log_fn(f"[plan:desire] {cid}: wants={wants} min={min_kw:.2f} max={max_kw:.2f} must={must} reason={reason}")
+        collected.append((cid, cons, desire))
 
-        pv_alloc   = 0.0
+    # Aufteilen
+    must_runs = [(cid, cons, de) for (cid, cons, de) in collected if bool(getattr(de, "must_run", False))]
+    normals = [(cid, cons, de) for (cid, cons, de) in collected if not bool(getattr(de, "must_run", False))]
+
+    # ---------- 1) MUST-RUNS ZUERST (Grid erlaubt) ----------
+    for cid, cons, de in must_runs:
+        # geforderte Leistung: exact_kw vor min/max
+        req = de.exact_kw if (getattr(de, "exact_kw", None) is not None) else max(de.min_kw or 0.0, de.max_kw or 0.0)
+        req = max(0.0, float(req or 0.0))
+
+        if req <= 0.0 or not bool(de.wants):
+            allocations.append((cid, cons, 0.0))
+            log_fn(f"[plan:must] {cid}: req=0 -> alloc=0.000 pv=0.000 grid=0.000 pv_left={pv_left:.3f}")
+            if apply and not dry_run:
+                try:
+                    cons.apply_allocation(ctx, 0.0)
+                except Exception as e:
+                    log_fn(f"[plan] must_run apply 0.0 error for {cid}: {e}")
+            continue
+
+        # PV-Anteil bestimmen, Rest ist Grid (immer erlaubt für must_run)
+        pv_share, grid_share, pv_kw_for_req = incremental_mix_for(req)
+        alloc_kw = req  # diskrete Lasten erwarten volle Leistung
+
+        # PV-Budget reduzieren, Grid summieren
+        pv_left = max(0.0, pv_left - pv_kw_for_req)
+        grid_part = max(0.0, alloc_kw - pv_kw_for_req)
+        if grid_part > 0.0:
+            grid_draw += grid_part
+
+        allocations.append((cid, cons, alloc_kw))
+        log_fn(f"[plan:must] {cid}: req={req:.3f} -> pv={pv_kw_for_req:.3f} grid={grid_part:.3f} pv_left={pv_left:.3f}")
+
+        if apply and not dry_run:
+            try:
+                cons.apply_allocation(ctx, alloc_kw)
+            except Exception as e:
+                log_fn(f"[plan] must_run apply error for {cid}: {e}")
+
+        log_fn(
+            f"[DRY] {cid:12s} wants={bool(de.wants)} min={_fmt(de.min_kw)} max={_fmt(de.max_kw)} exact={_fmt(getattr(de, 'exact_kw', None))} must=True -> alloc={alloc_kw:.3f} (pv={pv_kw_for_req:.3f}, grid={grid_part:.3f}) | {getattr(de, 'reason', '')}")
+
+    # ---------- 2) NORMALE LOADS wie bisher ----------
+    for cid, cons, de in normals:
+        wants = bool(de.wants)
+        min_kw = max(de.min_kw or 0.0, 0.0)
+        max_kw = max(de.max_kw or 0.0, 0.0)
+        exact = getattr(de, "exact_kw", None)
+        must = bool(getattr(de, "must_run", False))  # hier idR False
+        reason = getattr(de, "reason", "")
+
+        pv_alloc = 0.0
         grid_alloc = 0.0
         alloc_total = 0.0
 
         if not wants or (min_kw <= 0.0 and max_kw <= 0.0):
             allocations.append((cid, cons, 0.0))
             log_fn(f"[plan:alloc]  {cid}: pv=0.00 grid=0.00 total=0.00 pv_left={pv_left:.2f}")
-            log_fn(f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} exact={_fmt(exact)} must={must} -> alloc=0.000 (pv=0.000, grid=0.000) | {reason}")
-            # Wichtig: auch bei 'kein Wunsch' den Apply-Hook ausführen,
-            # damit Consumer OFF/Idle-Zustände (z.B. Cooling OFF) an HA senden können.
-            do_apply = bool(apply) and not bool(dry_run)
-            if do_apply:
+            log_fn(
+                f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} exact={_fmt(exact)} must={must} -> alloc=0.000 (pv=0.000, grid=0.000) | {reason}")
+            if apply and not dry_run:
                 try:
                     cons.apply_allocation(ctx, 0.0)
                 except Exception as e:
                     log_fn(f"[plan] error: apply_allocation({cid}, 0.000) -> {e}")
             continue
 
-        # Zuteilung: erst PV (mit Guard), optional Grid für must_run-Minimum
         if grid_free:
-            # Bei negativen Preisen: alle dürfen volle Max-Leistung ziehen.
-            if wants and max_kw > 0.0:
-                desired = max_kw
-                pv_alloc = min(pv_left, desired)
-                grid_alloc = desired - pv_alloc
-                pv_left -= pv_alloc
-                alloc_total = pv_alloc + grid_alloc
-                if grid_alloc > 0:
-                    grid_draw += grid_alloc
-            else:
-                alloc_total = pv_alloc = grid_alloc = 0.0
+            # Negative Preise: volle Max-Leistung gestatten
+            desired = max_kw
+            pv_alloc = min(pv_left, desired)
+            grid_alloc = max(0.0, desired - pv_alloc)
+            pv_left -= pv_alloc
+            alloc_total = pv_alloc + grid_alloc
+            if grid_alloc > 0.0:
+                grid_draw += grid_alloc
         else:
-            # bisherige Logik (PV zuerst, Grid nur als must_run-Minimum; Heater ausgenommen)
+            # Deine bisherige PV-first-Logik
             need_from_pv = min(max_kw, pv_left)
             pv_alloc = max(0.0, need_from_pv)
             pv_left -= pv_alloc
 
             if must and pv_alloc < min_kw:
-                if cid == "heater":  # Heater: kein Grid-Fallback im Normalbetrieb
+                if cid == "heater":  # bestehende Ausnahme
                     grid_alloc = 0.0
                 else:
                     grid_alloc = max(0.0, min_kw - pv_alloc)
@@ -357,22 +404,22 @@ def plan_and_allocate(
                 grid_alloc = 0.0
 
             alloc_total = pv_alloc + grid_alloc
-            if grid_alloc > 0:
+            if grid_alloc > 0.0:
                 grid_draw += grid_alloc
 
-        log_fn(f"[plan:alloc]  {cid}: pv={pv_alloc:.2f} grid={grid_alloc:.2f} total={alloc_total:.2f} pv_left={pv_left:.2f}")
+        log_fn(
+            f"[plan:alloc]  {cid}: pv={pv_alloc:.2f} grid={grid_alloc:.2f} total={alloc_total:.2f} pv_left={pv_left:.2f}")
         allocations.append((cid, cons, alloc_total))
 
-        do_apply = bool(apply) and not bool(dry_run)
-        if do_apply:
+        if apply and not dry_run:
             try:
                 cons.apply_allocation(ctx, alloc_total)
             except Exception as e:
                 log_fn(f"[plan] error: apply_allocation({cid}, {alloc_total:.3f}) -> {e}")
 
-        log_fn(f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} exact={_fmt(exact)} must={must} -> alloc={alloc_total:.3f} (pv={pv_alloc:.3f}, grid={grid_alloc:.3f}) | {reason}")
+        log_fn(
+            f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} exact={_fmt(exact)} must={must} -> alloc={alloc_total:.3f} (pv={pv_alloc:.3f}, grid={grid_alloc:.3f}) | {reason}")
 
-    log_fn(f"[plan] end   surplus={pv_left:.3f} kW, grid_draw={grid_draw:.3f} kW")
 
     return {"pv_left": pv_left, "grid_draw": grid_draw, "allocations": allocations}
 

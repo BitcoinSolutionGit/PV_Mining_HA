@@ -162,10 +162,10 @@ class MinerConsumer(BaseConsumer):
             return Desire(False, 0.0, 0.0, reason="not found")
 
         # --- Hysterese-/Zeit-Parameter ---
-        on_margin = _cfg_num("miner_profit_on_eur_h", 0.05)  # Gewinnschwelle zum Einschalten
-        off_margin = _cfg_num("miner_profit_off_eur_h", -0.01)  # Schwelle zum Ausschalten
-        min_run_s = int(_cfg_num("miner_min_run_s", 30))  # Mindestlaufzeit
-        min_off_s = int(_cfg_num("miner_min_off_s", 20))  # Mindest-Auszeit
+        on_margin = _cfg_num("miner_profit_on_eur_h", 0.05)
+        off_margin = _cfg_num("miner_profit_off_eur_h", -0.01)
+        min_run_s = int(_cfg_num("miner_min_run_s", 30))
+        min_off_s = int(_cfg_num("miner_min_off_s", 20))
 
         now_ts = time.time()
         last_flip = float(m.get("last_flip_ts") or 0.0)
@@ -180,32 +180,27 @@ class MinerConsumer(BaseConsumer):
         if not _truthy(m.get("enabled"), False):
             return Desire(False, 0.0, 0.0, reason="disabled")
 
-        mode = str(m.get("mode") or "manual").lower()
+        # WICHTIG: schon hier definieren, damit beide Zweige sie haben
         ths = _num(m.get("hashrate_ths"), 0.0)
         pkw = _num(m.get("power_kw"), 0.0)
 
+        mode = str(m.get("mode") or "manual").lower()
+
         # ---------- MANUAL OVERRIDE ----------
         if mode != "auto":
-            want_on_manual = _truthy(m.get("on"), False)
+            want_on = _truthy(m.get("on"), False)
 
-            # Safety: Miner mit Cooling-Pflicht nur einschalten, wenn Cooling läuft
-            if want_on_manual and _cooling_required(m) and not _cooling_running_now():
+            # Safety: Cooling muss laufen, wenn erforderlich
+            if _cooling_required(m) and not _cooling_running_now():
                 return Desire(False, 0.0, 0.0, reason="cooling not ready (manual)")
 
-            if want_on_manual and pkw > 0.0:
-                # Planner MUSS Leistung reservieren (auch Grid) -> must_run + exact
-                return Desire(
-                    wants=True,
-                    min_kw=pkw,
-                    max_kw=pkw,
-                    must_run=True,
-                    exact_kw=pkw,
-                    reason="manual override",
-                )
+            if want_on and pkw > 0.0:
+                # Volle Leistung anfordern; Planner versorgt must_run zuerst (auch mit Grid)
+                return Desire(True, pkw, pkw, must_run=True, exact_kw=pkw, reason="manual override")
             else:
                 return Desire(False, 0.0, 0.0, reason="manual mode (off)")
 
-        # ---------- ab hier: AUTO-Modus ----------
+        # ---------- AUTO-Modus ----------
         if ths <= 0.0 or pkw <= 0.0:
             return Desire(False, 0.0, 0.0, reason="no hashrate/power")
 
@@ -240,7 +235,7 @@ class MinerConsumer(BaseConsumer):
 
         # Negativer Netzpreis → „alles ziehen“
         if eff_grid_cost <= 0.0:
-            return Desire(True, 0.0, pkw, must_run=False, exact_kw=pkw, reason="neg grid price")
+            return Desire(True, 0.0, pkw, exact_kw=pkw, reason="neg grid price")
 
         # Cooling-Bedarf/Zustand
         need_cool = _cooling_required(m)
@@ -265,7 +260,7 @@ class MinerConsumer(BaseConsumer):
 
         # PV-only ist immer OK
         if grid_share <= 1e-6:
-            return Desire(True, 0.0, pkw, must_run=False, exact_kw=pkw, reason="pv_only_ok")
+            return Desire(True, 0.0, pkw, exact_kw=pkw, reason="pv_only_ok")
 
         # Gewinn (nach Steuer) gegen Kosten
         profit = after_tax - total_cost_h
@@ -304,8 +299,8 @@ class MinerConsumer(BaseConsumer):
                 return
 
         pkw = _num(m.get("power_kw"), 0.0)
-        on_ent = m.get("action_on_entity", "") or ""
-        off_ent = m.get("action_off_entity", "") or ""
+        on_ent = (m.get("action_on_entity") or "").strip()
+        off_ent = (m.get("action_off_entity") or "").strip()
         prev_on = bool(m.get("on"))
 
         mode = str(m.get("mode") or "manual").lower()
@@ -324,7 +319,7 @@ class MinerConsumer(BaseConsumer):
                     return
 
                 if want_on_manual:
-                    # Nutzer will AN -> sicherstellen, dass AN (egal, was alloc_kw sagt)
+                    # Nutzer will AN -> sicherstellen, dass AN (unabhängig von alloc_kw)
                     if not prev_on:
                         if on_ent: call_action(on_ent, True)
                         update_miner(self.miner_id, on=True, last_flip_ts=time.time())
@@ -342,13 +337,11 @@ class MinerConsumer(BaseConsumer):
             should_on = pkw > 0.0 and alloc_kw >= 0.95 * pkw
 
             if should_on and not prev_on:
-                if on_ent:
-                    call_action(on_ent, True)
+                if on_ent: call_action(on_ent, True)
                 update_miner(self.miner_id, on=True, last_flip_ts=time.time())
                 print(f"[miner {self.miner_id}] apply ~{alloc_kw:.2f} kW (ON)", flush=True)
             elif (not should_on) and prev_on:
-                if off_ent:
-                    call_action(off_ent, False)
+                if off_ent: call_action(off_ent, False)
                 update_miner(self.miner_id, on=False, last_flip_ts=time.time())
                 print(f"[miner {self.miner_id}] apply 0 kW (OFF)", flush=True)
             else:
@@ -357,3 +350,4 @@ class MinerConsumer(BaseConsumer):
 
         except Exception as e:
             print(f"[miner {self.miner_id}] apply error: {e}", flush=True)
+
