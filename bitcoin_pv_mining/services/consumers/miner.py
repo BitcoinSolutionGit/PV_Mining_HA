@@ -162,10 +162,10 @@ class MinerConsumer(BaseConsumer):
             return Desire(False, 0.0, 0.0, reason="not found")
 
         # --- Hysterese-/Zeit-Parameter ---
-        on_margin = _cfg_num("miner_profit_on_eur_h", 0.05)    # Gewinnschwelle zum Einschalten
-        off_margin = _cfg_num("miner_profit_off_eur_h", -0.01) # Schwelle zum Ausschalten
-        min_run_s = int(_cfg_num("miner_min_run_s", 30))       # Mindestlaufzeit
-        min_off_s = int(_cfg_num("miner_min_off_s", 20))       # Mindest-Auszeit
+        on_margin = _cfg_num("miner_profit_on_eur_h", 0.05)  # Gewinnschwelle zum Einschalten
+        off_margin = _cfg_num("miner_profit_off_eur_h", -0.01)  # Schwelle zum Ausschalten
+        min_run_s = int(_cfg_num("miner_min_run_s", 30))  # Mindestlaufzeit
+        min_off_s = int(_cfg_num("miner_min_off_s", 20))  # Mindest-Auszeit
 
         now_ts = time.time()
         last_flip = float(m.get("last_flip_ts") or 0.0)
@@ -181,11 +181,31 @@ class MinerConsumer(BaseConsumer):
             return Desire(False, 0.0, 0.0, reason="disabled")
 
         mode = str(m.get("mode") or "manual").lower()
-        if mode != "auto":
-            return Desire(False, 0.0, 0.0, reason="manual mode")
-
         ths = _num(m.get("hashrate_ths"), 0.0)
         pkw = _num(m.get("power_kw"), 0.0)
+
+        # ---------- MANUAL OVERRIDE ----------
+        if mode != "auto":
+            want_on_manual = _truthy(m.get("on"), False)
+
+            # Safety: Miner mit Cooling-Pflicht nur einschalten, wenn Cooling läuft
+            if want_on_manual and _cooling_required(m) and not _cooling_running_now():
+                return Desire(False, 0.0, 0.0, reason="cooling not ready (manual)")
+
+            if want_on_manual and pkw > 0.0:
+                # Planner MUSS Leistung reservieren (auch Grid) -> must_run + exact
+                return Desire(
+                    wants=True,
+                    min_kw=pkw,
+                    max_kw=pkw,
+                    must_run=True,
+                    exact_kw=pkw,
+                    reason="manual override",
+                )
+            else:
+                return Desire(False, 0.0, 0.0, reason="manual mode (off)")
+
+        # ---------- ab hier: AUTO-Modus ----------
         if ths <= 0.0 or pkw <= 0.0:
             return Desire(False, 0.0, 0.0, reason="no hashrate/power")
 
@@ -195,16 +215,10 @@ class MinerConsumer(BaseConsumer):
                 return Desire(False, 0.0, 0.0, reason="cooling lost")
             return Desire(False, 0.0, 0.0, reason="cooling not ready")
 
-        # Sperrzeiten gegen Flattern
+        # Sperrzeiten gegen Flattern (nur Auto)
         if is_on_now and (now_ts - last_flip) < max(0, min_run_s):
-            return Desire(
-                True,
-                pkw,
-                pkw,
-                must_run=True,
-                exact_kw=pkw,
-                reason=f"min-run lock {int(min_run_s - (now_ts - last_flip))}s",
-            )
+            return Desire(True, pkw, pkw, must_run=True, exact_kw=pkw,
+                          reason=f"min-run lock {int(min_run_s - (now_ts - last_flip))}s")
         if (not is_on_now) and (now_ts - last_flip) < max(0, min_off_s):
             return Desire(False, 0.0, 0.0, reason=f"min-off lock {int(min_off_s - (now_ts - last_flip))}s")
 
@@ -269,7 +283,8 @@ class MinerConsumer(BaseConsumer):
     def apply_allocation(self, ctx: Ctx, alloc_kw: float) -> None:
         """
         Diskret: >=95% der Nennleistung -> ON, sonst OFF.
-        Schaltet via action_on_entity/off_entity und schreibt last_flip_ts bei Zustandswechsel.
+        Im MANUAL-Modus: UI-Schalter hat Vorrang (Planner schaltet NICHT „dazwischen“),
+        aber Cooling-Safety bleibt: ohne Cooling kein MANUAL-Start.
         """
         # Datensatz suchen
         m = None
@@ -291,11 +306,41 @@ class MinerConsumer(BaseConsumer):
         pkw = _num(m.get("power_kw"), 0.0)
         on_ent = m.get("action_on_entity", "") or ""
         off_ent = m.get("action_off_entity", "") or ""
-
-        should_on = pkw > 0.0 and alloc_kw >= 0.95 * pkw
         prev_on = bool(m.get("on"))
 
+        mode = str(m.get("mode") or "manual").lower()
+        is_manual = (mode != "auto")
+        want_on_manual = _truthy(m.get("on"), False)
+
         try:
+            # ---------- MANUAL ----------
+            if is_manual:
+                # Safety: Cooling nötig aber nicht bereit -> AUS
+                if _cooling_required(m) and not _cooling_running_now():
+                    if prev_on:
+                        if off_ent: call_action(off_ent, False)
+                        update_miner(self.miner_id, on=False, last_flip_ts=time.time())
+                        print(f"[miner {self.miner_id}] manual SAFETY OFF (cooling not ready)", flush=True)
+                    return
+
+                if want_on_manual:
+                    # Nutzer will AN -> sicherstellen, dass AN (egal, was alloc_kw sagt)
+                    if not prev_on:
+                        if on_ent: call_action(on_ent, True)
+                        update_miner(self.miner_id, on=True, last_flip_ts=time.time())
+                        print(f"[miner {self.miner_id}] manual override ON", flush=True)
+                    return
+                else:
+                    # Nutzer will AUS
+                    if prev_on:
+                        if off_ent: call_action(off_ent, False)
+                        update_miner(self.miner_id, on=False, last_flip_ts=time.time())
+                        print(f"[miner {self.miner_id}] manual override OFF", flush=True)
+                    return
+
+            # ---------- AUTO ----------
+            should_on = pkw > 0.0 and alloc_kw >= 0.95 * pkw
+
             if should_on and not prev_on:
                 if on_ent:
                     call_action(on_ent, True)
@@ -309,5 +354,6 @@ class MinerConsumer(BaseConsumer):
             else:
                 # kein Zustandswechsel
                 pass
+
         except Exception as e:
             print(f"[miner {self.miner_id}] apply error: {e}", flush=True)
