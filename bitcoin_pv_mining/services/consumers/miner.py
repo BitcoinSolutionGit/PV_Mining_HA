@@ -319,7 +319,7 @@ class MinerConsumer(BaseConsumer):
                     return
 
                 if want_on_manual:
-                    # Nutzer will AN -> sicherstellen, dass AN (unabhängig von alloc_kw)
+                    # Nutzer will AN -> sicherstellen, dass AN (egal, was alloc_kw sagt)
                     if not prev_on:
                         if on_ent: call_action(on_ent, True)
                         update_miner(self.miner_id, on=True, last_flip_ts=time.time())
@@ -344,10 +344,8 @@ class MinerConsumer(BaseConsumer):
                 if off_ent: call_action(off_ent, False)
                 update_miner(self.miner_id, on=False, last_flip_ts=time.time())
                 print(f"[miner {self.miner_id}] apply 0 kW (OFF)", flush=True)
-            else:
-                # kein Zustandswechsel
-                pass
-
+            # sonst: kein Zustandswechsel
         except Exception as e:
             print(f"[miner {self.miner_id}] apply error: {e}", flush=True)
+
 
