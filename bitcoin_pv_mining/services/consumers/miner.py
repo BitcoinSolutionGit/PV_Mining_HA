@@ -354,6 +354,7 @@ class MinerConsumer(BaseConsumer):
                         update_miner(self.miner_id, on=True, last_flip_ts=time.time())
                         print(f"[miner {self.miner_id}] manual override ON", flush=True)
                     return
+
                 else:
                     # Nutzer will AUS -> abschalten (nur wenn an)
                     if prev_on:

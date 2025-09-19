@@ -231,21 +231,34 @@ class CoolingConsumer(BaseConsumer):
                     call_action(off_ent, False)
                 print(f"[cooling] apply request 0 kW (ASK OFF)", flush=True)
 
-            # Safety: nach dem Schalten den HA-Istwert prüfen
+            # Safety: direkt nach dem Schalten Zustand aus HA prüfen
             c2 = get_cooling() or {}
-            ha_on2 = c2.get("ha_on")
-            ha_running = bool(ha_on2) if ha_on2 is not None else _truthy(c2.get("on"), False)
+            ha_raw = c2.get("ha_on")
+            ha_on = (bool(ha_raw) if ha_raw is not None else _truthy(c2.get("on"), False))
 
-            if not ha_running:
-                # HA meldet 'off' → alle aktiven Miner mit Cooling-Pflicht sofort ausschalten
+            # WICHTIG: Nur bei *explizit* False reagieren (None = unklar, kein Kill)
+            if ha_on is False:
                 try:
                     for m in (list_miners() or []):
-                        if _truthy(m.get("on"), False) and _truthy(m.get("require_cooling"), False):
-                            off_m = (m.get("action_off_entity") or "").strip()
-                            if off_m:
-                                call_action(off_m, False)
-                            update_miner(m.get("id"), on=False)
-                            print(f"[cooling] safety: turned OFF miner {m.get('name') or m.get('id')}", flush=True)
+                        # nur Miner, die JETZT laufen und Cooling brauchen
+                        if not _truthy(m.get("on"), False):
+                            continue
+                        if not _truthy(m.get("require_cooling"), False):
+                            continue
+
+                        # MANUAL hat Vorrang → nicht ausschalten
+                        mode = str(m.get("mode") or "manual").lower()
+                        if mode != "auto":
+                            print(
+                                f"[cooling] safety: cooling OFF but miner {m.get('name') or m.get('id')} is MANUAL -> skipping",
+                                flush=True)
+                            continue
+
+                        off_m = (m.get("action_off_entity") or "").strip()
+                        if off_m:
+                            call_action(off_m, False)
+                        update_miner(m.get("id"), on=False)
+                        print(f"[cooling] safety: AUTO miner OFF {m.get('name') or m.get('id')}", flush=True)
                 except Exception as e:
                     print(f"[cooling] safety off miners error: {e}", flush=True)
 
