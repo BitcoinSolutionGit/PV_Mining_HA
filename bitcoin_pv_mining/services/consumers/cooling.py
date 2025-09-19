@@ -209,51 +209,79 @@ class CoolingConsumer(BaseConsumer):
         return Desire(False, 0.0, 0.0, reason="no qualifying miner (pv/profit)")
 
     def apply_allocation(self, ctx: Ctx, alloc_kw: float) -> None:
+        """
+        Cooling über HA-Action an/aus.
+        - MANUAL-Modus: Planner-Zuteilung wird komplett ignoriert, UI-Wunsch hat Vorrang.
+        - AUTO-Modus: Nur bei Zustandswechsel schalten (kein periodisches Re-Triggern).
+        - Safety: Nur wenn ON angefordert wurde, HA aber explizit OFF meldet.
+        """
         c = get_cooling() or {}
         power_kw = _num(c.get("power_kw"), 0.0)
-        on_ent = c.get("action_on_entity", "") or ""
-        off_ent = c.get("action_off_entity", "") or ""
+        on_ent = (c.get("action_on_entity") or "").strip()
+        off_ent = (c.get("action_off_entity") or "").strip()
 
-        # Läuft gerade? -> aus ha_on ableiten
-        ha_on = c.get("ha_on")
-        is_running = bool(ha_on) if ha_on is not None else _truthy(c.get("on"), False)
+        mode = str(c.get("mode") or "manual").lower()
+        is_manual = (mode != "auto")
+        desired_ui = _truthy(c.get("on"), False)  # UI-Wunsch (nicht ha_on!)
+        ha_raw = c.get("ha_on")
+        running = bool(ha_raw) if ha_raw is not None else desired_ui  # Istzustand (Fallback: UI)
 
-        # Schwelle: >= 50% der konfigurierten Leistung -> ON-Wunsch
+        # --- MANUAL: harter Lock, Planner hat hier NULL zu melden ---
+        if is_manual:
+            try:
+                if desired_ui and not running:
+                    if on_ent:
+                        call_action(on_ent, True)
+                    print("[cooling] MANUAL -> enforcing ON (ignore alloc_kw)", flush=True)
+                elif (not desired_ui) and running:
+                    if off_ent:
+                        call_action(off_ent, False)
+                    print("[cooling] MANUAL -> enforcing OFF (ignore alloc_kw)", flush=True)
+                else:
+                    # bereits im gewünschten Zustand -> nichts tun
+                    pass
+            except Exception as e:
+                print(f"[cooling] apply error (manual): {e}", flush=True)
+            return
+
+        # --- AUTO: Schwelle & nur bei Zustandswechsel schalten ---
         should_on = power_kw > 0.0 and alloc_kw >= 0.5 * power_kw
-
         try:
-            if should_on:
+            requested_on = should_on and (not running)
+            requested_off = (not should_on) and running
+
+            if requested_on:
                 if on_ent:
                     call_action(on_ent, True)
-                print(f"[cooling] apply request ~{alloc_kw:.2f} kW (ASK ON)", flush=True)
-            else:
+                print(f"[cooling] AUTO request ON (~{alloc_kw:.2f} kW)", flush=True)
+            elif requested_off:
                 if off_ent:
                     call_action(off_ent, False)
-                print(f"[cooling] apply request 0 kW (ASK OFF)", flush=True)
+                print(f"[cooling] AUTO request OFF (~{alloc_kw:.2f} kW)", flush=True)
+            else:
+                # Kein Zustandswechsel -> nichts triggern (vermeidet Push-Spam)
+                # print(f"[cooling] AUTO keep state (should_on={should_on}, running={running})", flush=True)
+                return
 
-            # Safety: direkt nach dem Schalten Zustand aus HA prüfen
+            # --- Safety NUR wenn wir ON angefordert haben und HA explizit OFF meldet ---
             c2 = get_cooling() or {}
-            ha_raw = c2.get("ha_on")
-            ha_on = (bool(ha_raw) if ha_raw is not None else _truthy(c2.get("on"), False))
+            ha2_raw = c2.get("ha_on")
+            ha2 = (bool(ha2_raw) if ha2_raw is not None else _truthy(c2.get("on"), False))
 
-            # WICHTIG: Nur bei *explizit* False reagieren (None = unklar, kein Kill)
-            if ha_on is False:
+            if requested_on and (ha2 is False):
                 try:
                     for m in (list_miners() or []):
-                        # nur Miner, die JETZT laufen und Cooling brauchen
+                        # nur Miner, die JETZT laufen und Cooling-Pflicht haben
                         if not _truthy(m.get("on"), False):
                             continue
                         if not _truthy(m.get("require_cooling"), False):
                             continue
-
-                        # MANUAL hat Vorrang → nicht ausschalten
-                        mode = str(m.get("mode") or "manual").lower()
-                        if mode != "auto":
+                        # MANUAL-Miner niemals killen
+                        if str(m.get("mode") or "manual").lower() != "auto":
                             print(
-                                f"[cooling] safety: cooling OFF but miner {m.get('name') or m.get('id')} is MANUAL -> skipping",
+                                f"[cooling] safety: cooling OFF, but miner {m.get('name') or m.get('id')} is MANUAL -> skip",
                                 flush=True)
                             continue
-
                         off_m = (m.get("action_off_entity") or "").strip()
                         if off_m:
                             call_action(off_m, False)
@@ -263,6 +291,7 @@ class CoolingConsumer(BaseConsumer):
                     print(f"[cooling] safety off miners error: {e}", flush=True)
 
         except Exception as e:
-            print(f"[cooling] apply error: {e}", flush=True)
+            print(f"[cooling] apply error (auto): {e}", flush=True)
+
 
 
