@@ -95,6 +95,18 @@ def _cooling_power_kw() -> float:
     except Exception:
         return 0.0
 
+def _cooling_running_strict() -> Optional[bool]:
+    """True/FALSE anhand ha_on; None = unbekannt (kein ready_entity)."""
+    try:
+        from services.cooling_store import get_cooling
+        c = get_cooling() or {}
+        ha = c.get("ha_on")
+        if ha is None:
+            return None
+        return bool(ha)
+    except Exception:
+        return None
+
 
 def _cooling_running_now() -> bool:
     try:
@@ -189,16 +201,28 @@ class MinerConsumer(BaseConsumer):
         # ---------- MANUAL OVERRIDE ----------
         if mode != "auto":
             want_on = _truthy(m.get("on"), False)
+            need_cool = _cooling_required(m)
+            cool_ok = _cooling_running_strict()
+            print(f"[miner {self.miner_id}] manual desire: want_on={want_on} need_cool={need_cool} cool_ok={cool_ok}", flush=True)
 
-            # Safety: Cooling muss laufen, wenn erforderlich
-            if _cooling_required(m) and not _cooling_running_now():
+            if need_cool and (cool_ok is False):
                 return Desire(False, 0.0, 0.0, reason="cooling not ready (manual)")
-
             if want_on and pkw > 0.0:
-                # Volle Leistung anfordern; Planner versorgt must_run zuerst (auch mit Grid)
                 return Desire(True, pkw, pkw, must_run=True, exact_kw=pkw, reason="manual override")
-            else:
-                return Desire(False, 0.0, 0.0, reason="manual mode (off)")
+            return Desire(False, 0.0, 0.0, reason="manual mode (off)")
+
+        # if mode != "auto":
+        #     want_on = _truthy(m.get("on"), False)
+        #
+        #     # Safety: Cooling muss laufen, wenn erforderlich
+        #     if _cooling_required(m) and not _cooling_running_now():
+        #         return Desire(False, 0.0, 0.0, reason="cooling not ready (manual)")
+        #
+        #     if want_on and pkw > 0.0:
+        #         # Volle Leistung anfordern; Planner versorgt must_run zuerst (auch mit Grid)
+        #         return Desire(True, pkw, pkw, must_run=True, exact_kw=pkw, reason="manual override")
+        #     else:
+        #         return Desire(False, 0.0, 0.0, reason="manual mode (off)")
 
         # ---------- AUTO-Modus ----------
         if ths <= 0.0 or pkw <= 0.0:
@@ -310,23 +334,28 @@ class MinerConsumer(BaseConsumer):
         try:
             # ---------- MANUAL ----------
             if is_manual:
-                # Safety: Cooling nötig aber nicht bereit -> AUS
-                if _cooling_required(m) and not _cooling_running_now():
-                    if prev_on:
-                        if off_ent: call_action(off_ent, False)
-                        update_miner(self.miner_id, on=False, last_flip_ts=time.time())
-                        print(f"[miner {self.miner_id}] manual SAFETY OFF (cooling not ready)", flush=True)
-                    return
+                need_cool = _cooling_required(m)
+                cool_strict = _cooling_running_strict()  # True/False/None
+
+                # Debug
+                print(f"[miner {self.miner_id}] manual apply: want_on={want_on_manual} prev_on={prev_on} "
+                      f"need_cool={need_cool} cool_strict={cool_strict}", flush=True)
 
                 if want_on_manual:
-                    # Nutzer will AN -> sicherstellen, dass AN (egal, was alloc_kw sagt)
+                    # Safety: Wenn Cooling explizit als 'aus' gemeldet wird -> NICHT einschalten.
+                    if need_cool and (cool_strict is False):
+                        print(f"[miner {self.miner_id}] manual ON requested but cooling not running -> skip ON",
+                              flush=True)
+                        return
+
+                    # Einschalten (nur wenn noch nicht an)
                     if not prev_on:
                         if on_ent: call_action(on_ent, True)
                         update_miner(self.miner_id, on=True, last_flip_ts=time.time())
                         print(f"[miner {self.miner_id}] manual override ON", flush=True)
                     return
                 else:
-                    # Nutzer will AUS
+                    # Nutzer will AUS -> abschalten (nur wenn an)
                     if prev_on:
                         if off_ent: call_action(off_ent, False)
                         update_miner(self.miner_id, on=False, last_flip_ts=time.time())
