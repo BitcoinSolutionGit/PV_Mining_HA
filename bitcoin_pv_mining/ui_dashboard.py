@@ -547,7 +547,7 @@ def register_callbacks(app):
 
         return (
             build_gauge(pv_val, "PV production (kW)", "green"),
-            build_gauge(grid_val, "Grid consumption (kW)", "orange"),
+            build_gauge(grid_val, "Grid consumption (kW)", "red"),
             build_gauge(feed_val, "Grid feed-in (kW)", "red"),
         )
 
