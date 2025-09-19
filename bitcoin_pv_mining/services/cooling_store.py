@@ -53,8 +53,8 @@ def get_cooling() -> dict:
     except Exception:
         ha_on = None
 
-    out["on"] = desired_on    # gewünschter Zustand (UI/Auto)
     out["ha_on"] = ha_on      # tatsächlicher Zustand (HA), kann True/False/None sein
+    out["on"] = (ha_on if ha_on is not None else desired_on)  # tatsächlicher Zustand (HA) - sonst gewünschter Zustand (UI/Auto)
     return out
 
 

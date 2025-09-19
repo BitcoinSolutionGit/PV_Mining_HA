@@ -100,17 +100,10 @@ def _cooling_running_now() -> bool:
     try:
         from services.cooling_store import get_cooling
         c = get_cooling() or {}
-        # Wenn ha_on vorhanden ist, hat das Vorrang.
-        if "ha_on" in c and c["ha_on"] is not None:
-            return bool(c["ha_on"])
-        # Fallback: Ready-Entity lesen
-        rs_id = (c.get("ready_entity") or c.get("ready_state_entity") or c.get("state_entity") or "").strip()
-        if rs_id:
-            return _truthy(get_sensor_value(rs_id), False)
-        # Letzter Fallback: desired on (nicht ideal, aber besser als False)
-        return _truthy(c.get("on"), False)
+        return bool(c.get("on"))   # <- 'on' spiegelt jetzt den echten HA-State (falls vorhanden)
     except Exception:
         return False
+
 
 
 def _eligible_miners() -> List[dict]:
