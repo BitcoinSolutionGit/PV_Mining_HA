@@ -35,6 +35,17 @@ def _f(x, d=0.0):
     except (TypeError, ValueError):
         return d
 
+def _truthy(x, default=False) -> bool:
+    if x is None:
+        return default
+    s = str(x).strip().lower()
+    if s in ("1", "true", "on", "yes", "y", "auto", "enabled"):
+        return True
+    try:
+        return float(s) > 0.0
+    except Exception:
+        return False
+
 
 def _map(key: str) -> str:
     def _mget(path, k):
@@ -181,7 +192,8 @@ def _controllable_now_kw() -> float:
         from services.cooling_store import get_cooling
         c = get_cooling() or {}
         pkw = _f(c.get("power_kw"), 0.0)
-        is_on = bool(c.get("on"))  # optional; wenn fehlt, nix addieren
+        ha_on = c.get("ha_on")
+        is_on = (bool(ha_on) if ha_on is not None else _truthy(c.get("on"), False))
         if is_on and pkw > 0.0:
             now_kw += pkw
     except Exception:

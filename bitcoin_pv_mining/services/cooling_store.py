@@ -40,10 +40,10 @@ def get_cooling() -> dict:
     data = _merge(base.get("cooling", {}), ovr.get("cooling", {}))
     out = _merge(_DEFAULT, data)
 
-    # Wunschzustand so lassen:
+    # Wunschzustand AUS DER UI merken (nicht überschreiben!)
     desired_on = bool(out.get("on"))
 
-    # Tatsächlicher Zustand aus Ready-Entity lesen:
+    # Tatsächlichen Zustand aus HA lesen (kann True/False/None sein)
     ha_on = None
     try:
         rid = (out.get("ready_entity") or "").strip()
@@ -53,12 +53,15 @@ def get_cooling() -> dict:
     except Exception:
         ha_on = None
 
-    out["ha_on"] = ha_on      # tatsächlicher Zustand (HA), kann True/False/None sein
-    out["on"] = (ha_on if ha_on is not None else desired_on)  # tatsächlicher Zustand (HA) - sonst gewünschter Zustand (UI/Auto)
+    out["on"]    = desired_on   # Wunsch bleibt Wunsch
+    out["ha_on"] = ha_on        # Istwert aus HA
     return out
+
 
 
 def set_cooling(**changes):
     cur = get_cooling()
     cur.update({k: v for k, v in (changes or {}).items() if v is not None})
+    # dynamische Felder nicht persistieren
+    cur.pop("ha_on", None)
     save_yaml(COOL_OVR, {"cooling": cur})

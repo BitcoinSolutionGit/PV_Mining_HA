@@ -97,18 +97,6 @@ def _pv_cost_per_kwh() -> float:
     fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
     return max(price - fee_up, 0.0)
 
-# def _pv_cost_per_kwh() -> float:
-#     policy = (set_get("pv_cost_policy", "zero") or "zero").lower()
-#     if policy != "feedin":
-#         return 0.0
-#     mode = (set_get("feedin_price_mode", "fixed") or "fixed").lower()
-#     fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
-#     if mode == "sensor":
-#         sens = set_get("feedin_price_sensor", "") or ""
-#         val = _num(get_sensor_value(sens), 0.0) if sens else 0.0
-#     else:
-#         val = _num(set_get("feedin_price_value", 0.0), 0.0)
-#     return max(0.0, val - fee_up)
 
 # --- deine CoolingConsumer.compute_desire() ersetzt durch diese Version ---
 class CoolingConsumer(BaseConsumer):
@@ -220,40 +208,35 @@ class CoolingConsumer(BaseConsumer):
 
         return Desire(False, 0.0, 0.0, reason="no qualifying miner (pv/profit)")
 
-
     def apply_allocation(self, ctx: Ctx, alloc_kw: float) -> None:
-        """
-        Schaltet Cooling via HA-Action an/aus. Wir setzen 'on' NICHT selbst,
-        sondern vertrauen ausschließlich auf HA (ready_entity).
-        Zusätzlich: Safety-Off – sind Cooling-Miner an, HA meldet aber 'off',
-        schalten wir die Miner sofort ab.
-        """
         c = get_cooling() or {}
         power_kw = _num(c.get("power_kw"), 0.0)
         on_ent = c.get("action_on_entity", "") or ""
         off_ent = c.get("action_off_entity", "") or ""
-        is_on = bool(c.get("on"))  # ← kommt jetzt direkt aus HA ready_entity
+
+        # Läuft gerade? -> aus ha_on ableiten
+        ha_on = c.get("ha_on")
+        is_running = bool(ha_on) if ha_on is not None else _truthy(c.get("on"), False)
 
         # Schwelle: >= 50% der konfigurierten Leistung -> ON-Wunsch
         should_on = power_kw > 0.0 and alloc_kw >= 0.5 * power_kw
 
         try:
             if should_on:
-                # Wunsch: AN – wir triggern HA, aber setzen 'on' NICHT selbst
                 if on_ent:
                     call_action(on_ent, True)
                 print(f"[cooling] apply request ~{alloc_kw:.2f} kW (ASK ON)", flush=True)
             else:
-                # Wunsch: AUS
                 if off_ent:
                     call_action(off_ent, False)
                 print(f"[cooling] apply request 0 kW (ASK OFF)", flush=True)
 
-            # Safety: direkt nach dem Schalten Zustand aus HA prüfen
+            # Safety: nach dem Schalten den HA-Istwert prüfen
             c2 = get_cooling() or {}
-            ha_on = bool(c2.get("ha_on")) if (c2.get("ha_on") is not None) else _truthy(c2.get("on"), False)
+            ha_on2 = c2.get("ha_on")
+            ha_running = bool(ha_on2) if ha_on2 is not None else _truthy(c2.get("on"), False)
 
-            if not ha_on:
+            if not ha_running:
                 # HA meldet 'off' → alle aktiven Miner mit Cooling-Pflicht sofort ausschalten
                 try:
                     for m in (list_miners() or []):
@@ -268,4 +251,5 @@ class CoolingConsumer(BaseConsumer):
 
         except Exception as e:
             print(f"[cooling] apply error: {e}", flush=True)
+
 
