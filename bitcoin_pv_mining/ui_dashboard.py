@@ -16,6 +16,12 @@ from services.cooling_store import get_cooling
 from services.settings_store import get_var as set_get
 from ui_pages.common import footer_license, page_wrap
 
+# extra Quell-Knoten links im Sanke anzeigen
+# True   / False
+COLLAPSE_BATTERY_SOURCE = False
+COLLAPSE_PV_SOURCE = False
+COLLAPSE_GRID_SOURCE = False
+SHOW_INACTIVE_REMINDERS = True
 
 CONFIG_DIR = "/config/pv_mining_addon"
 DASHB_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
@@ -33,8 +39,6 @@ GAUGE_LAYOUT = dict(paper_bgcolor="rgba(0,0,0,0)",
 GAUGE_NUMBER_FONT = {"font": {"size": 56}}
 GAUGE_TITLE_FONT  = {"font": {"size": 18}}
 GAUGE_TICK_FONT   = {"size": 12}
-
-COLLAPSE_BATTERY_SOURCE = True  # keine extra Batterie-Quelle links zeigen
 
 def _num(x, d=0.0):
     try: return float(x)
@@ -296,6 +300,8 @@ def _price_color_blended(v: float) -> str:
 # ------------------------------
 COLORS = {
     "inflow": "#FFD700",
+    "pv": "#27ae60",
+    "grid": "#e74c3c",
     "cooling": "#5DADE2",
     "miners":  "#FF9900",
     "battery": "#8E44AD",
@@ -392,21 +398,50 @@ def register_callbacks(app):
             link_value.append(max(float(v or 0.0), 0.0))
             link_color.append(color)
 
-        # (Optional) Batterie-Quelle links – per Flag abschaltbar - zuerst anlegen, damit sie links landet
-        if not COLLAPSE_BATTERY_SOURCE and bat_discharge_kw > 0.0:
-            battery_src_idx = add_node(f"Battery (discharge)<br>{_fmt_kw(bat_discharge_kw)}", COLORS["battery"])
-        else:
-            battery_src_idx = None
+        # PV-Quelle
+        pv_src_idx = None
+        pv_kw_eff = 0.0
+        pv_color = COLORS["inactive"]
+        if not COLLAPSE_PV_SOURCE and (pv_val > 0.0 or SHOW_INACTIVE_REMINDERS):
+            pv_active = pv_val > 0.0
+            pv_kw_eff = pv_val if pv_active else GHOST_KW
+            pv_color = COLORS["pv"] if pv_active else COLORS["inactive"]
+            pv_src_idx = add_node(f"PV source<br>{_fmt_kw(pv_val)}", pv_color)
 
-        # Energy Inflow (zeigt die effektiv verfügbare Leistung)
+        # Grid-Quelle (Import)
+        grid_src_idx = None
+        grid_kw_eff = 0.0
+        grid_color = COLORS["inactive"]
+        if not COLLAPSE_GRID_SOURCE and (grid_val > 0.0 or SHOW_INACTIVE_REMINDERS):
+            grid_active = grid_val > 0.0
+            grid_kw_eff = grid_val if grid_active else GHOST_KW
+            grid_color = COLORS["grid"] if grid_active else COLORS["inactive"]
+            grid_src_idx = add_node(f"Grid (import)<br>{_fmt_kw(grid_val)}", grid_color)
+
+        # Batterie-Quelle (Entladung)
+        battery_src_idx = None
+        bat_kw_eff = 0.0
+        bat_color = COLORS["inactive"]
+        if not COLLAPSE_BATTERY_SOURCE and (bat_discharge_kw > 0.0 or SHOW_INACTIVE_REMINDERS):
+            bat_active = bat_discharge_kw > 0.0
+            bat_kw_eff = bat_discharge_kw if bat_active else GHOST_KW
+            bat_color = COLORS["battery"] if bat_active else COLORS["inactive"]
+            battery_src_idx = add_node(f"Battery (discharge)<br>{_fmt_kw(bat_discharge_kw)}", bat_color)
+
+        # ---------- Inflow-Knoten (Aggregat) ----------
         inflow_idx = add_node(
-            f"Energy Inflow<br>{_fmt_kw(inflow_eff)}<br>PV: {pv_pct}%<br>Grid: {grid_pct}%<br>Battery: {batt_pct}%",
+            f"Energy Inflow<br>{_fmt_kw(inflow_eff)}"
+            f"<br>PV: {pv_pct}%<br>Grid: {grid_pct}%<br>Battery: {batt_pct}%",
             COLORS["inflow"]
         )
 
-        # Link von Batterie ➜ Inflow, wenn entladen wird
+        # Links von den Quellen zum Inflow
+        if pv_src_idx is not None:
+            add_link(pv_src_idx, inflow_idx, pv_kw_eff, pv_color)
+        if grid_src_idx is not None:
+            add_link(grid_src_idx, inflow_idx, grid_kw_eff, grid_color)
         if battery_src_idx is not None:
-            add_link(battery_src_idx, inflow_idx, bat_discharge_kw, COLORS["battery"])
+            add_link(battery_src_idx, inflow_idx, bat_kw_eff, bat_color)
 
         # ---- Cooling (optional, wenns der miner braucht!) ----
         cooling_kw = 0.0
