@@ -432,11 +432,33 @@ def register_callbacks(app):
             battery_src_idx = add_node(f"Battery (discharge)<br>{_fmt_kw(bat_discharge_kw)}", bat_color)
 
         # ---------- Inflow-Knoten ----------
-        inflow_idx = add_node(
-            f"Energy Inflow<br>{_fmt_kw(inflow_eff)}"
-            f"<br>PV: {pv_pct}%<br>Grid: {grid_pct}%<br>Battery: {batt_pct}%",
-            COLORS.get("inflow", "#FFD700")
+        #Variante 4 Oberhalb, aber schöner
+        inflow_idx = add_node(" ", COLORS["inflow"])
+        inflow_text = (
+            f"Energy Inflow — {_fmt_kw(inflow_eff)}"
+            f"<br>PV: {pv_pct}% · Grid: {grid_pct}% · Battery: {batt_pct}%"
         )
+
+        #Variante 3 Oberhalb
+        # Node-Label leer lassen; Text zeigen wir als Annotation oben mittig.
+        # inflow_line1 = f"Energy Inflow — {_fmt_kw(inflow_eff)}"
+        # inflow_line2 = f"PV: {pv_pct}% · Grid: {grid_pct}% · Battery: {batt_pct}%"
+        # inflow_idx = add_node(" ", COLORS["inflow"])
+
+        #Variante 2 links davon
+        # Label NICHT am Node zeigen (sonst steht es rechts); wir zeichnen es gleich als Annotation links.
+        # inflow_text = (
+        #     f"Energy Inflow<br>{_fmt_kw(inflow_eff)}"
+        #     f"<br>PV: {pv_pct}%<br>Grid: {grid_pct}%<br>Battery: {batt_pct}%"
+        # )
+        # inflow_idx = add_node(" ", COLORS["inflow"])  # bewusst leer/Space
+
+        #Variante 1 alt, rechts daneben
+        # inflow_idx = add_node(
+        #     f"Energy Inflow<br>{_fmt_kw(inflow_eff)}"
+        #     f"<br>PV: {pv_pct}%<br>Grid: {grid_pct}%<br>Battery: {batt_pct}%",
+        #     COLORS.get("inflow", "#FFD700")
+        # )
 
         # Links von den Quellen zum Inflow
         if pv_src_idx is not None:
@@ -517,9 +539,61 @@ def register_callbacks(app):
             font=dict(size=14, color="black"),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=20, r=20, t=40, b=20)
+            margin=dict(l=20, r=20, t=40, b=20) #Top Margin ist der abstand darüber!
         )
         fig.update_traces(hoverlabel=dict(bgcolor="white"))
+
+        #Variante 4
+        fig.add_annotation(
+            x=0.5, y=0.992, xref="paper", yref="paper",
+            xanchor="center", yanchor="top",  # sitzt ohne Abstand direkt oben
+            text=inflow_text,
+            showarrow=False, align="center",
+            font=dict(size=14, color="black"),  # gleiche Größe wie Nodes
+            bgcolor="rgba(0,0,0,0)"
+        )
+
+        #Variante 3
+        # # etwas mehr Platz oben für die Überschrift
+        # fig.update_layout(
+        #     font=dict(size=14, color="black"),
+        #     plot_bgcolor="rgba(0,0,0,0)",
+        #     paper_bgcolor="rgba(0,0,0,0)",
+        #     margin=dict(l=20, r=20, t=84, b=20)  # t von 40 → 84
+        # )
+        #
+        # # 1. Zeile: Energy Inflow — kW
+        # fig.add_annotation(
+        #     x=0.5, y=1.08, xref="paper", yref="paper",
+        #     xanchor="center", yanchor="bottom",
+        #     text=f"<b>{inflow_line1}</b>",
+        #     showarrow=False, align="center",
+        #     font=dict(size=16, color="black"),
+        #     bgcolor="rgba(0,0,0,0)"
+        # )
+        #
+        # # 2. Zeile: PV %, Grid %, Battery %
+        # fig.add_annotation(
+        #     x=0.5, y=1.045, xref="paper", yref="paper",
+        #     xanchor="center", yanchor="bottom",
+        #     text=inflow_line2,
+        #     showarrow=False, align="center",
+        #     font=dict(size=13, color="black"),
+        #     bgcolor="rgba(0,0,0,0)"
+        # )
+
+        #Variante 2
+        # # Text links neben dem Mittelbalken zeigen
+        # fig.add_annotation(
+        #     x=0.40, y=0.50,  # leicht links der Mitte
+        #     xref="paper", yref="paper",
+        #     xanchor="right", align="right",
+        #     text=inflow_text,
+        #     showarrow=False,
+        #     font=dict(size=14, color="black"),
+        #     bgcolor="rgba(255,255,255,0.5)",  # leicht lesbarer Hintergrund; bei Bedarf auf "rgba(0,0,0,0)" setzen
+        #     borderpad=2,
+        # )
 
         return fig
 
