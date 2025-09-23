@@ -316,22 +316,112 @@ COLORS = {
 # ------------------------------
 def register_callbacks(app):
     @app.callback(
-        Output("sankey-diagram", "figure"),
+        Output("frame", "data"),
         Input("pv-update", "n_intervals")
     )
-
-    def update_sankey(_):
-        # --- Eingänge (PV/Grid) ---
+    def collect_frame(_):
+        # IDs einmal ermitteln
         pv_id = resolve_sensor_id("pv_production")
         grid_id = resolve_sensor_id("grid_consumption")
         feed_id = resolve_sensor_id("grid_feed_in")
 
+        # Grundwerte lesen (einmal!)
         pv_val = float(get_sensor_value(pv_id) or 0.0)
         grid_val = float(get_sensor_value(grid_id) or 0.0)
         feed_val = float(get_sensor_value(feed_id) or 0.0)
 
-        # --- Batterie: + = Laden (Senke), - = Entladen (Quelle) ---
         bat_pwr = float(_battery_power_kw_live() or 0.0)
+        heater_kw = float(_heater_power_kw() or 0.0)
+        wallbox_kw = float(_wallbox_power_kw() or 0.0)
+
+        # Cooling (einmal!) – trotzdem Feature-Flag respektieren
+        cooling_enabled = bool(set_get("cooling_feature_enabled", False))
+        cooling_running = False
+        cooling_pkw = 0.0
+        if cooling_enabled:
+            try:
+                c = get_cooling() or {}
+                cooling_running = (c.get("ha_on") is True) or (c.get("ha_on") is None and bool(c.get("on")))
+                cooling_pkw = float(c.get("power_kw") or 0.0)
+            except Exception:
+                cooling_running = False
+                cooling_pkw = 0.0
+
+        # Miners (nur das Nötigste)
+        try:
+            miners_raw = list_miners() or []
+        except Exception:
+            miners_raw = []
+        miners = [{
+            "name": (m.get("name") or "Miner").strip(),
+            "kw": float(m.get("power_kw") or 0.0),
+            "active": bool(m.get("enabled")) and bool(m.get("on")),
+        } for m in miners_raw]
+
+        return {
+            "pv": pv_val,
+            "grid": grid_val,
+            "feed": feed_val,
+            "bat_pwr": bat_pwr,
+            "heater_kw": heater_kw,
+            "wallbox_kw": wallbox_kw,
+            "cooling": {"enabled": cooling_enabled, "running": cooling_running, "pkw": cooling_pkw},
+            "miners": miners,
+        }
+
+    # @app.callback(
+    #     Output("sankey-diagram", "figure"),
+    #     Input("pv-update", "n_intervals")
+    # )
+    #
+    # def update_sankey(_):
+    #     # --- Eingänge (PV/Grid) ---
+    #     pv_id = resolve_sensor_id("pv_production")
+    #     grid_id = resolve_sensor_id("grid_consumption")
+    #     feed_id = resolve_sensor_id("grid_feed_in")
+    #
+    #     pv_val = float(get_sensor_value(pv_id) or 0.0)
+    #     grid_val = float(get_sensor_value(grid_id) or 0.0)
+    #     feed_val = float(get_sensor_value(feed_id) or 0.0)
+    #
+    #     # --- Batterie: + = Laden (Senke), - = Entladen (Quelle) ---
+    #     bat_pwr = float(_battery_power_kw_live() or 0.0)
+
+    @app.callback(
+        Output("sankey-diagram", "figure"),
+        Input("frame", "data")
+    )
+    def update_sankey(data):
+        if not data:
+            return go.Figure()
+
+        # --- Werte aus dem Snapshot ---
+        pv_val = data["pv"]
+        grid_val = data["grid"]
+        feed_val = data["feed"]
+        bat_pwr = data["bat_pwr"]
+        heater_kw = data["heater_kw"]
+        wallbox_kw = data["wallbox_kw"]
+
+        cooling_info = data.get("cooling", {})
+        cooling_feature = bool(cooling_info.get("enabled", False))
+        cooling_kw = float(cooling_info.get("pkw", 0.0)) if cooling_info.get("running") else 0.0
+
+        miners_in = data.get("miners", [])
+        miner_entries = []
+        sum_active_miners_kw = 0.0
+        for m in miners_in:
+            if m["active"]:
+                miner_entries.append({"name": m["name"], "kw": max(m["kw"], 0.0),
+                                      "color": COLORS["miners"], "ghost": False})
+                sum_active_miners_kw += max(m["kw"], 0.0)
+            elif SHOW_INACTIVE_REMINDERS:
+                miner_entries.append({"name": m["name"], "kw": GHOST_KW,
+                                      "color": COLORS["inactive"], "ghost": True})
+
+        # --- Rest deiner bisherigen Berechnung unverändert ---
+
+        # --- Batterie: + = Laden (Senke), - = Entladen (Quelle) ---
         bat_charge_kw = max(bat_pwr, 0.0)  # Senke
         bat_discharge_kw = max(-bat_pwr, 0.0)  # Quelle
 
@@ -369,18 +459,18 @@ def register_callbacks(app):
         heater_kw = _heater_power_kw()
         wallbox_kw = _wallbox_power_kw()
 
-        # ---- Cooling: EINMAL berechnen und überall gleich verwenden ----
-        cooling_kw = 0.0
-        try:
-            cooling_feature = bool(set_get("cooling_feature_enabled", False))
-            if cooling_feature:
-                c = get_cooling() or {}
-                # bevorzugt HA-Ready: ha_on True/False/None
-                running = (c.get("ha_on") is True) or (c.get("ha_on") is None and bool(c.get("on")))
-                pkw_cfg = float(c.get("power_kw") or 0.0)
-                cooling_kw = pkw_cfg if running else 0.0
-        except Exception:
-            pass
+        # # ---- Cooling: EINMAL berechnen und überall gleich verwenden ----
+        # cooling_kw = 0.0
+        # try:
+        #     cooling_feature = bool(set_get("cooling_feature_enabled", False))
+        #     if cooling_feature:
+        #         c = get_cooling() or {}
+        #         # bevorzugt HA-Ready: ha_on True/False/None
+        #         running = (c.get("ha_on") is True) or (c.get("ha_on") is None and bool(c.get("on")))
+        #         pkw_cfg = float(c.get("power_kw") or 0.0)
+        #         cooling_kw = pkw_cfg if running else 0.0
+        # except Exception:
+        #     pass
 
         # ---- House usage = Rest (ohne Ghosts) ----
         # WICHTIG: feed_val und bat_charge_kw sind echte Outflows und werden hier abgezogen
@@ -391,6 +481,30 @@ def register_callbacks(app):
                 + bat_charge_kw
         )
         house_kw = max(inflow_eff - known_real, 0.0)
+
+        # === NEW: Outflows auf Inflow kappen (proportional skalieren) ===
+        EPS = 0.02  # ~20 W Rauschtoleranz
+        requested = (
+                sum_active_miners_kw
+                + heater_kw + wallbox_kw + cooling_kw
+                + bat_charge_kw + max(feed_val, 0.0)
+        )
+
+        if requested > inflow_eff + EPS:
+            scale = (inflow_eff / requested) if requested > 0 else 0.0
+
+            for me in miner_entries:
+                if not me.get("ghost"):
+                    me["kw"] *= scale
+
+            heater_kw *= scale
+            wallbox_kw *= scale
+            cooling_kw *= scale
+            bat_charge_kw *= scale
+            feed_val *= scale  # wichtig: skaliert den gezeichneten Feed-in
+
+            house_kw = 0.0
+        # === END NEW ===
 
         # ---- Node/Link-Builder ----
         node_labels, node_colors = [], []
@@ -471,13 +585,23 @@ def register_callbacks(app):
                      COLORS.get("battery", "#8E44AD") if bat_discharge_kw > 0 else COLORS.get("inactive", "#DDDDDD"))
 
         # ---------- Verbraucher/Senken rechts ----------
-        # Cooling
-        cooling_is_active = cooling_kw > 0.0
-        if cooling_is_active or SHOW_INACTIVE_REMINDERS:
-            cooling_color = COLORS.get("cooling", "#5DADE2") if cooling_is_active else COLORS.get("inactive", "#DDDDDD")
-            cooling_eff = cooling_kw if cooling_is_active else GHOST_KW
-            cooling_idx = add_node(f"Cooling circuit<br>{_fmt_kw(cooling_kw)}", cooling_color)
-            add_link(inflow_idx, cooling_idx, cooling_eff, cooling_color)
+
+        # ---- Cooling zeichnen (einmal) ----
+        if cooling_feature:
+            cooling_is_active = cooling_kw > 0.0
+            cooling_kw_eff = cooling_kw if cooling_is_active else (GHOST_KW if SHOW_INACTIVE_REMINDERS else 0.0)
+            if cooling_is_active or SHOW_INACTIVE_REMINDERS:
+                cooling_color = COLORS["cooling"] if cooling_is_active else COLORS["inactive"]
+                cooling_idx = add_node(f"Cooling circuit<br>{_fmt_kw(cooling_kw)}", cooling_color)
+                add_link(inflow_idx, cooling_idx, cooling_kw_eff, cooling_color)
+
+        # # Cooling
+        # cooling_is_active = cooling_kw > 0.0
+        # if cooling_is_active or SHOW_INACTIVE_REMINDERS:
+        #     cooling_color = COLORS.get("cooling", "#5DADE2") if cooling_is_active else COLORS.get("inactive", "#DDDDDD")
+        #     cooling_eff = cooling_kw if cooling_is_active else GHOST_KW
+        #     cooling_idx = add_node(f"Cooling circuit<br>{_fmt_kw(cooling_kw)}", cooling_color)
+        #     add_link(inflow_idx, cooling_idx, cooling_eff, cooling_color)
 
         # Miner
         for me in miner_entries:
@@ -793,6 +917,8 @@ def layout():
                 style={"textDecoration": "none"}
             )
         ], className="page-title"),
+
+        dcc.Store(id="frame", storage_type="memory"),
 
         dcc.Graph(id="sankey-diagram", figure=go.Figure()),
 
