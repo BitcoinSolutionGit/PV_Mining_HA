@@ -463,8 +463,6 @@ def register_callbacks(app):
                 miner_entries.append({"name": m["name"], "kw": GHOST_KW,
                                       "color": COLORS["inactive"], "ghost": True})
 
-        # --- Rest deiner bisherigen Berechnung unverändert ---
-
         # --- Batterie: + = Laden (Senke), - = Entladen (Quelle) ---
         bat_charge_kw = max(bat_pwr, 0.0)  # Senke
         bat_discharge_kw = max(-bat_pwr, 0.0)  # Quelle
@@ -479,42 +477,9 @@ def register_callbacks(app):
         grid_pct = round((grid_val / den) * 100.0, 1) if den else 0.0
         batt_pct = round((bat_discharge_kw / den) * 100.0, 1) if den else 0.0
 
-        # # ---- Miner (dynamisch) ----
-        # try:
-        #     miners = list_miners()
-        # except Exception:
-        #     miners = []
-        #
-        # miner_entries = []
-        # sum_active_miners_kw = 0.0
-        # for m in miners:
-        #     name = (m.get("name") or "Miner").strip()
-        #     pkw = float(m.get("power_kw") or 0.0)
-        #     active = bool(m.get("enabled")) and bool(m.get("on"))
-        #     if active:
-        #         miner_entries.append(
-        #             {"name": name, "kw": max(pkw, 0.0), "color": COLORS.get("miners", "#FF9900"), "ghost": False})
-        #         sum_active_miners_kw += max(pkw, 0.0)
-        #     elif SHOW_GHOST_SINK:
-        #         miner_entries.append(
-        #             {"name": name, "kw": GHOST_KW, "color": COLORS.get("inactive", "#DDDDDD"), "ghost": True})
-
         # ---- Weitere Lasten (Heater/Wallbox) ----
         heater_kw = _heater_power_kw()
         wallbox_kw = _wallbox_power_kw()
-
-        # # ---- Cooling: EINMAL berechnen und überall gleich verwenden ----
-        # cooling_kw = 0.0
-        # try:
-        #     cooling_feature = bool(set_get("cooling_feature_enabled", False))
-        #     if cooling_feature:
-        #         c = get_cooling() or {}
-        #         # bevorzugt HA-Ready: ha_on True/False/None
-        #         running = (c.get("ha_on") is True) or (c.get("ha_on") is None and bool(c.get("on")))
-        #         pkw_cfg = float(c.get("power_kw") or 0.0)
-        #         cooling_kw = pkw_cfg if running else 0.0
-        # except Exception:
-        #     pass
 
         # ---- House usage = Rest (ohne Ghosts) ----
         # WICHTIG: feed_val und bat_charge_kw sind echte Outflows und werden hier abgezogen
@@ -572,27 +537,6 @@ def register_callbacks(app):
         inflow_idx = add_node(" ", COLORS["inflow"])
 
         # ---------- Linke Quellknoten (optional) ----------
-        # pv_src_idx = None
-        # if not COLLAPSE_PV_SOURCE and (pv_val > 0.0 or SHOW_INACTIVE_REMINDERS):
-        #     pv_active = pv_val > 0.0
-        #     pv_color = COLORS.get("pv", "#27ae60") if pv_active else COLORS.get("inactive", "#DDDDDD")
-        #     pv_kw_eff = pv_val if pv_active else GHOST_KW
-        #     pv_src_idx = add_node(f"PV source<br>{_fmt_kw(pv_val)}", pv_color)
-        #
-        # grid_src_idx = None
-        # if not COLLAPSE_GRID_SOURCE and (grid_val > 0.0 or SHOW_INACTIVE_REMINDERS):
-        #     grid_active = grid_val > 0.0
-        #     grid_color = COLORS.get("grid", "#e74c3c") if grid_active else COLORS.get("inactive", "#DDDDDD")
-        #     grid_kw_eff = grid_val if grid_active else GHOST_KW
-        #     grid_src_idx = add_node(f"Grid (import)<br>{_fmt_kw(grid_val)}", grid_color)
-        #
-        # battery_src_idx = None
-        # if not COLLAPSE_BATTERY_SOURCE and (bat_discharge_kw > 0.0 or SHOW_INACTIVE_REMINDERS):
-        #     bat_active = bat_discharge_kw > 0.0
-        #     bat_color = COLORS.get("battery", "#8E44AD") if bat_active else COLORS.get("inactive", "#DDDDDD")
-        #     bat_kw_eff = bat_discharge_kw if bat_active else GHOST_KW
-        #     battery_src_idx = add_node(f"Battery (discharge)<br>{_fmt_kw(bat_discharge_kw)}", bat_color)
-
         pv_src_idx = None
         if (pv_val > 0.0) or (SHOW_GHOST_SRC):
             pv_active = pv_val > 0.0
@@ -621,19 +565,18 @@ def register_callbacks(app):
                 add_link(battery_src_idx, inflow_idx, bat_eff, bat_color)
 
 
-        # Links von den Quellen zum Inflow
-        if pv_src_idx is not None:
-            add_link(pv_src_idx, inflow_idx, pv_val if pv_val > 0 else GHOST_KW,
-                     COLORS.get("pv", "#27ae60") if pv_val > 0 else COLORS.get("inactive", "#DDDDDD"))
-        if grid_src_idx is not None:
-            add_link(grid_src_idx, inflow_idx, grid_val if grid_val > 0 else GHOST_KW,
-                     COLORS.get("grid", "#e74c3c") if grid_val > 0 else COLORS.get("inactive", "#DDDDDD"))
-        if battery_src_idx is not None:
-            add_link(battery_src_idx, inflow_idx, bat_discharge_kw if bat_discharge_kw > 0 else GHOST_KW,
-                     COLORS.get("battery", "#8E44AD") if bat_discharge_kw > 0 else COLORS.get("inactive", "#DDDDDD"))
+        # # Links von den Quellen zum Inflow
+        # if pv_src_idx is not None:
+        #     add_link(pv_src_idx, inflow_idx, pv_val if pv_val > 0 else GHOST_KW,
+        #              COLORS.get("pv", "#27ae60") if pv_val > 0 else COLORS.get("inactive", "#DDDDDD"))
+        # if grid_src_idx is not None:
+        #     add_link(grid_src_idx, inflow_idx, grid_val if grid_val > 0 else GHOST_KW,
+        #              COLORS.get("grid", "#e74c3c") if grid_val > 0 else COLORS.get("inactive", "#DDDDDD"))
+        # if battery_src_idx is not None:
+        #     add_link(battery_src_idx, inflow_idx, bat_discharge_kw if bat_discharge_kw > 0 else GHOST_KW,
+        #              COLORS.get("battery", "#8E44AD") if bat_discharge_kw > 0 else COLORS.get("inactive", "#DDDDDD"))
 
         # ---------- Verbraucher/Senken rechts ----------
-
         # ---- Cooling zeichnen (einmal) ----
         if cooling_feature:
             cooling_is_active = cooling_kw > 0.0
