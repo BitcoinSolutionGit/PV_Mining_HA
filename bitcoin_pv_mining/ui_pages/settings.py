@@ -489,6 +489,44 @@ def layout():
             ], style={"display": "flex", "flexWrap": "wrap", "gap": "10px", "alignItems": "center"})
         ]),
 
+        _section("Dashboard / Sankey", [
+            html.Div("Show all lanes in chart (also shows inactive lanes if the feature is enabled):",
+                     style={"marginBottom": "6px", "opacity": 0.85}),
+
+            dcc.Checklist(
+                id="ui-show-inactive-desktop",
+                options=[{"label": " Desktop", "value": "on"}],
+                value=(["on"] if bool(set_get("ui_show_inactive_desktop", True)) else []),
+                style={"marginBottom": "4px"}
+            ),
+            dcc.Checklist(
+                id="ui-show-inactive-tablet",
+                options=[{"label": " Tablet", "value": "on"}],
+                value=(["on"] if bool(set_get("ui_show_inactive_tablet", True)) else []),
+                style={"marginBottom": "4px"}
+            ),
+            dcc.Checklist(
+                id="ui-show-inactive-phone",
+                options=[{"label": " Phone", "value": "on"}],
+                value=(["on"] if bool(set_get("ui_show_inactive_phone", True)) else []),
+                style={"marginBottom": "8px"}
+            ),
+
+            html.Div("What to include when showing inactive lanes:", style={"marginTop": "6px", "opacity": 0.85}),
+            dcc.Checklist(
+                id="ui-show-src-inactive",
+                options=[{"label": " Sources (PV, Grid, Battery discharge)", "value": "on"}],
+                value=(["on"] if bool(set_get("ui_show_inactive_sources", True)) else []),
+                style={"marginBottom": "4px"}
+            ),
+            dcc.Checklist(
+                id="ui-show-sink-inactive",
+                options=[
+                    {"label": " Sinks (Miners, Heater, Wallbox, Battery charge, Feed-in, Cooling)", "value": "on"}],
+                value=(["on"] if bool(set_get("ui_show_inactive_sinks", True)) else []),
+            ),
+        ]),
+
         html.Button("Save", id="set-save", className="custom-tab", style={"marginTop": "12px"}),
         html.Span(id="set-status", style={"marginLeft": "10px", "color": "green"}),
 
@@ -560,17 +598,29 @@ def register_callbacks(app):
         State("set-miner-off-margin", "value"),
         State("set-miner-min-run-s", "value"),
         State("set-miner-min-off-s", "value"),
+        State("ui-show-inactive-desktop", "value"),
+        State("ui-show-inactive-tablet", "value"),
+        State("ui-show-inactive-phone", "value"),
+        State("ui-show-src-inactive", "value"),
+        State("ui-show-sink-inactive", "value"),
+
         prevent_initial_call=True
     )
     def _save(n, policy, mode, val, sens, cur, reward, tax, cool_enabled_val,
               guard_w, guard_pct,
-              miner_on_margin, miner_off_margin, miner_min_run_s, miner_min_off_s):
+              miner_on_margin, miner_off_margin, miner_min_run_s, miner_min_off_s,
+              show_desktop, show_tablet, show_phone, show_src, show_sink):
         if not n:
             return ""
         # Prozent robust interpretieren: 3 -> 0.03
         g_pct_raw = _num(guard_pct, 0.0)
         g_pct = g_pct_raw / 100.0 if g_pct_raw > 1.0 else g_pct_raw
         g_pct = max(0.0, min(0.2, g_pct))  # clamp 0–20%
+        ui_show_inactive_desktop = bool(show_desktop and "on" in show_desktop)
+        ui_show_inactive_tablet = bool(show_tablet and "on" in show_tablet)
+        ui_show_inactive_phone = bool(show_phone and "on" in show_phone)
+        ui_show_inactive_sources = bool(show_src and "on" in show_src)
+        ui_show_inactive_sinks = bool(show_sink and "on" in show_sink)
 
         set_set(
             pv_cost_policy=(policy or "zero"),
@@ -587,9 +637,16 @@ def register_callbacks(app):
             miner_profit_off_eur_h=_num(miner_off_margin, -0.01),
             miner_min_run_s=int(_num(miner_min_run_s, 30)),
             miner_min_off_s=int(_num(miner_min_off_s, 20)),
+            ui_show_inactive_desktop=ui_show_inactive_desktop,
+            ui_show_inactive_tablet=ui_show_inactive_tablet,
+            ui_show_inactive_phone=ui_show_inactive_phone,
+            ui_show_inactive_sources=ui_show_inactive_sources,
+            ui_show_inactive_sinks=ui_show_inactive_sinks,
         )
         shown_pct = g_pct * 100.0
-        return (f"Saved. Planner guard = {guard_w or 0:.0f} W and {shown_pct:.2f} %.  "
+        return (f"Saved. Planner guard = {guard_w or 0:.0f} W and {shown_pct:.2f} %. "
+                f"ShowAll lanes: D={int(ui_show_inactive_desktop)} T={int(ui_show_inactive_tablet)} P={int(ui_show_inactive_phone)}; "
+                f"src={int(ui_show_inactive_sources)} sink={int(ui_show_inactive_sinks)}.  "
                 f"Miner tuning: on≥{_num(miner_on_margin, 0.05):.2f} €/h, "
                 f"off≤{_num(miner_off_margin, -0.01):.2f} €/h, "
                 f"minRun={int(_num(miner_min_run_s, 30))} s, "
