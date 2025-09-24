@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import time
 from typing import Optional, List
-
 from services.consumers.base import BaseConsumer, Desire, Ctx
 from services.license import is_premium_enabled
 from services.miners_store import list_miners, update_miner
@@ -11,11 +10,7 @@ from services.settings_store import get_var as set_get
 from services.electricity_store import get_var as elec_get
 from services.electricity_store import current_price as elec_price
 from services.ha_entities import call_action
-from services.btc_metrics import (
-    get_live_btc_price_eur,
-    get_live_network_hashrate_ths,
-    sats_per_th_per_hour,
-)
+from services.btc_metrics import get_live_btc_price_eur, get_live_network_hashrate_ths, sats_per_th_per_hour
 from services.energy_mix import incremental_mix_for
 from services.ha_sensors import get_sensor_value
 
@@ -31,13 +26,11 @@ def _truthy(x, default=False) -> bool:
     except Exception:
         return False
 
-
 def _num(x, d=0.0) -> float:
     try:
         return float(x)
     except (TypeError, ValueError):
         return d
-
 
 def _cfg_num(path: str, default: float) -> float:
     try:
@@ -45,6 +38,22 @@ def _cfg_num(path: str, default: float) -> float:
     except Exception:
         return default
 
+def _min_run_seconds_for(mid: str) -> int:
+    """
+    Per-Device Mindestlaufzeit in Sekunden.
+    miner.<id>.min_run_min  (GANZE Minuten)
+    None  -> globaler Fallback (Default 60 s)
+    0     -> exakt 0 (keine Mindestlaufzeit)
+    """
+    raw = set_get(f"miner.{mid}.min_run_min", None)
+    if raw is not None:
+        try:
+            return max(0, int(float(raw) * 60.0))
+        except Exception:
+            return 60  # sicherer Default
+
+    # kein per-Device Wert -> globalen nehmen, Standard 60 s
+    return int(_cfg_num("miner_min_run_s", 60))
 
 def _free_miner_id() -> Optional[str]:
     """Erster Eintrag in der Miners-Liste (= „freier“ Miner ohne Premium)."""
@@ -55,7 +64,6 @@ def _free_miner_id() -> Optional[str]:
         return miners[0].get("id")
     except Exception:
         return None
-
 
 def _pv_cost_per_kwh() -> float:
     """Opportunitätskosten der PV gemäß Settings (zero | feedin)."""
@@ -75,7 +83,6 @@ def _pv_cost_per_kwh() -> float:
 
     fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
     return max(tarif - fee_up, 0.0)
-
 
 def _cooling_required(m: dict) -> bool:
     flags = [
@@ -153,6 +160,12 @@ class MinerConsumer(BaseConsumer):
 
     @property
     def label(self) -> str:
+        # 1) benutzerdefiniertes Label aus Settings
+        custom = set_get(f"miner.{self.miner_id}.label", None)
+        if isinstance(custom, str) and custom.strip():
+            return custom.strip()
+
+        # 2) Fallback auf Miner-Name aus Store
         name = None
         try:
             for m in list_miners() or []:
@@ -176,7 +189,8 @@ class MinerConsumer(BaseConsumer):
         # --- Hysterese-/Zeit-Parameter ---
         on_margin = _cfg_num("miner_profit_on_eur_h", 0.05)
         off_margin = _cfg_num("miner_profit_off_eur_h", -0.01)
-        min_run_s = int(_cfg_num("miner_min_run_s", 30))
+        # per-Device Mindestlaufzeit (Minuten -> Sekunden) + globales min_off wie gehabt
+        min_run_s = _min_run_seconds_for(self.miner_id)
         min_off_s = int(_cfg_num("miner_min_off_s", 20))
 
         now_ts = time.time()
@@ -210,19 +224,6 @@ class MinerConsumer(BaseConsumer):
             if want_on and pkw > 0.0:
                 return Desire(True, pkw, pkw, must_run=True, exact_kw=pkw, reason="manual override")
             return Desire(False, 0.0, 0.0, reason="manual mode (off)")
-
-        # if mode != "auto":
-        #     want_on = _truthy(m.get("on"), False)
-        #
-        #     # Safety: Cooling muss laufen, wenn erforderlich
-        #     if _cooling_required(m) and not _cooling_running_now():
-        #         return Desire(False, 0.0, 0.0, reason="cooling not ready (manual)")
-        #
-        #     if want_on and pkw > 0.0:
-        #         # Volle Leistung anfordern; Planner versorgt must_run zuerst (auch mit Grid)
-        #         return Desire(True, pkw, pkw, must_run=True, exact_kw=pkw, reason="manual override")
-        #     else:
-        #         return Desire(False, 0.0, 0.0, reason="manual mode (off)")
 
         # ---------- AUTO-Modus ----------
         if ths <= 0.0 or pkw <= 0.0:

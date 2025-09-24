@@ -455,12 +455,17 @@ def register_callbacks(app):
         miner_entries = []
         sum_active_miners_kw = 0.0
         for m in miners_in:
+            mid = (m.get("id") or m.get("name") or "").strip()
+            # label override from settings_store
+            disp = set_get(f"miner.{mid}.label", None)
+            name = (disp if (disp is not None and str(disp).strip()) else m["name"]).strip()
+
             if m["active"]:
-                miner_entries.append({"name": m["name"], "kw": max(m["kw"], 0.0),
+                miner_entries.append({"name": name, "kw": max(m["kw"], 0.0),
                                       "color": COLORS["miners"], "ghost": False})
                 sum_active_miners_kw += max(m["kw"], 0.0)
             elif SHOW_GHOST_SINK:
-                miner_entries.append({"name": m["name"], "kw": GHOST_KW,
+                miner_entries.append({"name": name, "kw": GHOST_KW,
                                       "color": COLORS["inactive"], "ghost": True})
 
         # --- Batterie: + = Laden (Senke), - = Entladen (Quelle) ---

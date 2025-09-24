@@ -5,7 +5,6 @@ import time
 import logging, pathlib, datetime
 import requests
 
-from dash import no_update
 from dash import html, dcc, callback_context
 from dash.dependencies import Input, Output, State, MATCH, ALL
 
@@ -125,11 +124,13 @@ def _pv_cost_per_kwh():
         tarif = _num(set_get("feedin_price_value", 0.0), 0.0)
     return max(tarif - fee_up, 0.0)  # nicht negativ
 
+
 def _is_profitable_for_start(m: dict, cooling_running_now: bool) -> bool:
     """
     Prüft, ob dieser Miner bei aktuellem Mix profitabel wäre.
-    Wenn Cooling noch nicht läuft und dieser Miner Cooling braucht,
-    rechnen wir die Cooling-Last in ΔP mit ein.
+    Verwendet den einheitlichen Planner-Mix (incremental_mix_for) statt Feed-Heuristik.
+    Wenn Cooling noch nicht läuft und dieser Miner Cooling braucht, wird die Cooling-Last
+    in ΔP mit eingerechnet und Kosten fair anteilig verteilt.
     """
     try:
         ths = float(m.get("hashrate_ths") or 0.0)
@@ -137,50 +138,51 @@ def _is_profitable_for_start(m: dict, cooling_running_now: bool) -> bool:
         if ths <= 0.0 or pkw <= 0.0:
             return False
 
+        # Einnahmen
         btc_eur = get_live_btc_price_eur(fallback=_num(set_get("btc_price_eur", 0.0)))
         net_ths = get_live_network_hashrate_ths(fallback=_num(set_get("network_hashrate_ths", 0.0)))
         reward  = _num(set_get("block_reward_btc", 3.125), 3.125)
         tax_pct = _num(set_get("sell_tax_percent", 0.0), 0.0)
         eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
 
-        sat_th_h = sats_per_th_per_hour(reward, net_ths)
+        sat_th_h = sats_per_th_per_hour(reward, net_ths) if net_ths > 0 else 0.0
         sats_per_h = sat_th_h * ths
         revenue_eur_h = sats_per_h * eur_per_sat
         after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
 
-        pv_id   = _dash_resolve("pv_production")
-        grid_id = _dash_resolve("grid_consumption")
-        feed_id = _dash_resolve("grid_feed_in")
-        pv_val   = _num(get_sensor_value(pv_id), 0.0)
-        grid_val = _num(get_sensor_value(grid_id), 0.0)
-        feed_val = max(_num(get_sensor_value(feed_id), 0.0), 0.0)
-
+        # Kosten-Parameter
         base = elec_price() or 0.0
         fee_down = _num(elec_get("network_fee_down_value", 0.0), 0.0)
         pv_cost = _pv_cost_per_kwh()
 
-        cooling_feature = bool(set_get("cooling_feature_enabled", False))
-        require_cooling = bool(m.get("require_cooling"))
-        cooling = get_cooling() if cooling_feature else {}
-        cooling_kw_cfg = float((cooling or {}).get("power_kw") or 0.0)
+        # Cooling-Setup
+        cooling_feature   = bool(set_get("cooling_feature_enabled", False))
+        require_cooling   = bool(m.get("require_cooling"))
+        cooling           = get_cooling() if cooling_feature else {}
+        cooling_kw_cfg    = float((cooling or {}).get("power_kw") or 0.0)
 
+        # ΔP: Miner + ggf. Cooling, falls es wegen dieses Miners starten müsste
         extra_cool_kw = cooling_kw_cfg if (cooling_feature and require_cooling and not cooling_running_now) else 0.0
         delta_kw = pkw + extra_cool_kw
 
-        pv_share_add = max(min(feed_val / delta_kw, 1.0), 0.0) if delta_kw > 0.0 else 0.0
-        grid_share_add = 1.0 - pv_share_add
-        blended_eur_per_kwh = pv_share_add * pv_cost + grid_share_add * (base + fee_down)
+        # Einheitlicher Mix aus dem Planner
+        pv_share, grid_share, _pv_kw_for_delta = incremental_mix_for(delta_kw)
+        blended_eur_per_kwh = pv_share * pv_cost + grid_share * (base + fee_down)
 
-        cool_share = 0.0
+        # Cooling-Kosten fair anteilig, nur wenn Cooling wegen dieses Miners zusätzlich nötig wäre
+        cool_share_eur_h = 0.0
         if cooling_feature and require_cooling and cooling_kw_cfg > 0.0:
             active = [mx for mx in list_miners() if mx.get("enabled") and mx.get("on") and mx.get("require_cooling")]
-            n_future = len(active) + 1
-            cool_share = (cooling_kw_cfg * blended_eur_per_kwh) / max(n_future, 1)
+            n_future = len(active) + 1  # inkl. diesem Miner
+            cool_share_eur_h = (cooling_kw_cfg * blended_eur_per_kwh) / max(n_future, 1)
 
-        total_cost_h = pkw * blended_eur_per_kwh + cool_share
+        miner_cost_eur_h = pkw * blended_eur_per_kwh
+        total_cost_h = miner_cost_eur_h + cool_share_eur_h
+
         return (after_tax - total_cost_h) > 0.0
     except Exception:
         return False
+
 
 
 
@@ -224,7 +226,8 @@ def _should_show_cooling_block() -> bool:
     return _any_miner_requires_cooling()
 
 def _cool_card(c: dict, sym: str, ha_actions: list[dict], ready_options: list[dict]):
-    ready_options = [{"label": e, "value": e} for e in list_ready_entities(("input_boolean", "binary_sensor"))]
+    if not ready_options:
+        ready_options = [{"label": e, "value": e} for e in list_ready_entities(("input_boolean", "binary_sensor"))]
 
     return html.Div([
         html.Div([ html.Strong(c.get("name","Cooling circuit")) ],
@@ -417,7 +420,15 @@ def layout():
 def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[dict]):
     mid = m["id"]
     is_free = (idx == 0)  # erster Miner gratis
-    frame_style = {} if is_free else {"border":"2px solid #27ae60","borderRadius":"8px","padding":"10px"}
+
+    # --- Per-Miner Mindestlaufzeit (Minuten) laden (Default 1) ---
+    try:
+        _raw_minrun = set_get(f"miner.{mid}.min_run_min", None)
+        _minrun_val = int(float(_raw_minrun)) if _raw_minrun is not None else 1
+        if _minrun_val < 0:
+            _minrun_val = 0
+    except Exception:
+        _minrun_val = 1
 
     return html.Div([
         html.Div([
@@ -458,7 +469,7 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
                     persistence=True, persistence_type="memory"
                 )
             ], style={"flex": "1", "marginLeft": "10px"}),
-        ], style={"display":"flex","gap":"10px","marginTop":"6px"}),
+        ], style={"display":"flex","gap":"10px","marginTop":"6px","flexWrap":"wrap"}),
 
         html.Div([
             html.Div([
@@ -473,6 +484,21 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
                           value=_num(m.get("power_kw", 0)), style={"width": "100%"},
                           persistence=True, persistence_type="memory"),
             ], style={"flex":"1","marginLeft":"10px"}),
+        ], style={"display":"flex","gap":"10px","marginTop":"8px","flexWrap":"wrap"}),
+
+        # --- NEU: Mindestlaufzeit (in Minuten) ---
+        html.Div([
+            html.Div([
+                html.Label("Minimum runtime (min)"),
+                dcc.Input(
+                    id={"type": "m-minrun", "mid": mid},
+                    type="number", step=1, min=0,
+                    value=_minrun_val,
+                    style={"width": "160px"},
+                    persistence=True, persistence_type="memory",
+                ),
+                html.Span("  (Default 1; 0 = no lock)", style={"marginLeft":"8px","opacity":0.7}),
+            ], style={"flex":"1"}),
         ], style={"display":"flex","gap":"10px","marginTop":"8px"}),
 
         html.Div([
@@ -496,7 +522,7 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
                     persistence=True, persistence_type="memory"
                 )
             ], style={"flex": "1", "marginLeft": "10px"}),
-        ], style={"display": "flex", "gap": "10px", "marginTop": "8px"}),
+        ], style={"display": "flex", "gap": "10px", "marginTop": "8px","flexWrap":"wrap"}),
 
         html.Hr(),
 
@@ -786,10 +812,11 @@ def register_callbacks(app):
         State({"type": "m-reqcool", "mid": ALL}, "value"),
         State({"type": "m-act-on", "mid": ALL}, "value"),
         State({"type": "m-act-off", "mid": ALL}, "value"),
+        State({"type": "m-minrun", "mid": ALL}, "value"),
         prevent_initial_call=True
     )
     def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals,
-                    ths_vals, pkw_vals, reqcool_vals, act_on_vals, act_off_vals):
+                    ths_vals, pkw_vals, reqcool_vals, act_on_vals, act_off_vals, minrun_vals):
         trg = callback_context.triggered_id
         if not trg:
             raise dash.exceptions.PreventUpdate
@@ -844,6 +871,17 @@ def register_callbacks(app):
             elif (not want_on) and act_off:
                 ok = call_action(act_off, False)
                 print(f"[save] miner {mid} OFF via {act_off}: {ok}", flush=True)
+
+        # Mindestlaufzeit (min) robust lesen und speichern
+        try:
+            raw_minrun = minrun_vals[idx] if idx < len(minrun_vals) else None
+            minrun_min = int(float(raw_minrun)) if raw_minrun is not None else 1  # Default 1
+            if minrun_min < 0:
+                minrun_min = 0
+            set_set(**{f"miner.{mid}.min_run_min": minrun_min})
+        except Exception:
+            # falls irgendwas schiefgeht, nichts crashen – einfach zum nächsten zurück
+            pass
 
         # Liste neu laden
         return list_miners()
