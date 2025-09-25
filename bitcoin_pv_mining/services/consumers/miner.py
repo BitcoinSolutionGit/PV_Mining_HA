@@ -174,7 +174,9 @@ class MinerConsumer(BaseConsumer):
                     break
         except Exception:
             pass
-        return f"Miner {name or self.miner_id or '?'}"
+        if bool(m.get("is_miner", True)):
+            return f"Miner {name or self.miner_id or '?'}"
+        return f"Consumer {name or self.miner_id or '?'}"
 
     def compute_desire(self, ctx: Ctx) -> Desire:
         # Datensatz suchen
@@ -185,6 +187,8 @@ class MinerConsumer(BaseConsumer):
                 break
         if not m:
             return Desire(False, 0.0, 0.0, reason="not found")
+
+        is_miner = bool(m.get("is_miner", True))
 
         # --- Hysterese-/Zeit-Parameter ---
         on_margin = _cfg_num("miner_profit_on_eur_h", 0.05)
@@ -226,7 +230,7 @@ class MinerConsumer(BaseConsumer):
             return Desire(False, 0.0, 0.0, reason="manual mode (off)")
 
         # ---------- AUTO-Modus ----------
-        if ths <= 0.0 or pkw <= 0.0:
+        if pkw <= 0.0 or (is_miner and ths <= 0.0):
             return Desire(False, 0.0, 0.0, reason="no hashrate/power")
 
         # Sicherheitsregel: Cooling muss laufen, wenn benötigt
@@ -248,11 +252,15 @@ class MinerConsumer(BaseConsumer):
         reward = _num(set_get("block_reward_btc", 3.125), 3.125)
         tax_pct = _num(set_get("sell_tax_percent", 0.0), 0.0)
 
-        sat_th_h = sats_per_th_per_hour(reward, net_ths) if net_ths > 0 else 0.0
-        sats_per_h = sat_th_h * ths
-        eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
-        revenue_eur_h = sats_per_h * eur_per_sat
-        after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
+        if is_miner:
+            sat_th_h = sats_per_th_per_hour(reward, net_ths) if net_ths > 0 else 0.0
+            sats_per_h = sat_th_h * ths
+            eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
+            revenue_eur_h = sats_per_h * eur_per_sat
+            after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
+        else:
+            # Pure consumer: keine Einnahmen
+            after_tax = 0.0
 
         # Kostenparameter
         pv_cost = _pv_cost_per_kwh()
@@ -269,7 +277,6 @@ class MinerConsumer(BaseConsumer):
 
         # ΔP für Mixberechnung: Miner + ggf. Cooling, falls Cooling noch aus ist
         delta_kw = pkw + (cool_kw if (need_cool and not cool_on) else 0.0)
-
         pv_share, grid_share, _pv_kw_for_delta = incremental_mix_for(delta_kw)
         blended_eur_per_kwh = pv_share * pv_cost + grid_share * eff_grid_cost
 
@@ -283,22 +290,26 @@ class MinerConsumer(BaseConsumer):
         miner_cost_eur_h = pkw * blended_eur_per_kwh
         total_cost_h = miner_cost_eur_h + cool_share_eur_h
 
-        # PV-only ist immer OK
+        # PV-only immer OK (gilt jetzt auch für Consumer)
         if grid_share <= 1e-6:
             return Desire(True, 0.0, pkw, exact_kw=pkw, reason="pv_only_ok")
 
         # Gewinn (nach Steuer) gegen Kosten
         profit = after_tax - total_cost_h
 
-        # Entscheidung mit Hysterese
-        if is_on_now:
-            if profit <= off_margin:
-                return Desire(False, 0.0, 0.0, reason=f"not profitable (Δ={profit:.2f} €/h ≤ off_margin)")
-            return Desire(True, 0.0, pkw, exact_kw=pkw, reason=f"keep on (Δ={profit:.2f} €/h)")
+        # Nur Miner entscheiden ab hier über Profit-Hysterese:
+        if is_miner:
+            if is_on_now:
+                if profit <= off_margin:
+                    return Desire(False, 0.0, 0.0, reason=f"not profitable (Δ={profit:.2f} €/h ≤ off_margin)")
+                return Desire(True, 0.0, pkw, exact_kw=pkw, reason=f"keep on (Δ={profit:.2f} €/h)")
+            else:
+                if profit >= on_margin:
+                    return Desire(True, 0.0, pkw, exact_kw=pkw, reason=f"profitable (Δ={profit:.2f} €/h ≥ on_margin)")
+                return Desire(False, 0.0, 0.0, reason=f"not profitable (Δ={profit:.2f} €/h < on_margin)")
         else:
-            if profit >= on_margin:
-                return Desire(True, 0.0, pkw, exact_kw=pkw, reason=f"profitable (Δ={profit:.2f} €/h ≥ on_margin)")
-            return Desire(False, 0.0, 0.0, reason=f"not profitable (Δ={profit:.2f} €/h < on_margin)")
+            # Consumer: kein Profit-Kriterium -> aus, wenn nicht PV-only o. neg. Grid
+            return Desire(False, 0.0, 0.0, reason="consumer: grid share > 0")
 
     def apply_allocation(self, ctx: Ctx, alloc_kw: float) -> None:
         """

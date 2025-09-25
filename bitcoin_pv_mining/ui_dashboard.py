@@ -17,12 +17,6 @@ from services.settings_store import get_var as set_get
 from services.wallbox_store import get_var as wb_get
 from ui_pages.common import footer_license, page_wrap
 
-# # extra Quell-Knoten links im Sanke anzeigen
-# # True   / False
-# COLLAPSE_BATTERY_SOURCE = False
-# COLLAPSE_PV_SOURCE = False
-# COLLAPSE_GRID_SOURCE = False
-# SHOW_INACTIVE_REMINDERS = True # 1W-“Erinnerung” für inaktive Lasten
 
 CONFIG_DIR = "/config/pv_mining_addon"
 DASHB_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
@@ -569,17 +563,6 @@ def register_callbacks(app):
                 battery_src_idx = add_node(f"Battery (discharge)<br>{_fmt_kw(bat_discharge_kw)}", bat_color)
                 add_link(battery_src_idx, inflow_idx, bat_eff, bat_color)
 
-
-        # # Links von den Quellen zum Inflow
-        # if pv_src_idx is not None:
-        #     add_link(pv_src_idx, inflow_idx, pv_val if pv_val > 0 else GHOST_KW,
-        #              COLORS.get("pv", "#27ae60") if pv_val > 0 else COLORS.get("inactive", "#DDDDDD"))
-        # if grid_src_idx is not None:
-        #     add_link(grid_src_idx, inflow_idx, grid_val if grid_val > 0 else GHOST_KW,
-        #              COLORS.get("grid", "#e74c3c") if grid_val > 0 else COLORS.get("inactive", "#DDDDDD"))
-        # if battery_src_idx is not None:
-        #     add_link(battery_src_idx, inflow_idx, bat_discharge_kw if bat_discharge_kw > 0 else GHOST_KW,
-        #              COLORS.get("battery", "#8E44AD") if bat_discharge_kw > 0 else COLORS.get("inactive", "#DDDDDD"))
 
         # ---------- Verbraucher/Senken rechts ----------
         # ---- Cooling zeichnen (einmal) ----

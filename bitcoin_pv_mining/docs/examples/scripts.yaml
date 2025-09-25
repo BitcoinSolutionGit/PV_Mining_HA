@@ -1,3 +1,4 @@
+
 scr_miner_cooling_on:
   alias: Script Miner Cooling ON
   mode: restart

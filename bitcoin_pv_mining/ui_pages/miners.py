@@ -363,7 +363,7 @@ def layout():
     cooling = get_cooling() if cooling_feature else None
 
     return html.Div([
-        html.H2("Miners"),
+        html.H2("Consumers"),
 
         # --- Global economics box ---
         html.Details([
@@ -392,7 +392,7 @@ def layout():
         ], open=False),
 
         html.Div([
-            html.Button("Add miner", id="miners-add", className="custom-tab"),
+            html.Button("Add consumer", id="miners-add", className="custom-tab"),
             html.Span(id="miners-add-status", style={"marginLeft":"10px","color":"#e74c3c"})
         ], style={"margin":"10px 0"}),
 
@@ -435,6 +435,20 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
             html.Strong(m.get("name","")),
             html.Button("🗑", id={"type":"m-del", "mid":mid}, n_clicks=0, title="Löschen", style={"float":"right"})
         ], style={"display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"6px"}),
+
+        html.Div([
+            html.Label("Device type"),
+            dcc.RadioItems(
+                id={"type": "m-kind", "mid": mid},
+                options=[
+                    {"label": "Miner", "value": "miner"},
+                    {"label": "Pure consumer", "value": "consumer"},
+                ],
+                value=("miner" if m.get("is_miner", True) else "consumer"),
+                inline=True,
+                persistence=True, persistence_type="memory",
+            ),
+        ], style={"marginBottom": "6px"}),
 
         html.Label("Name"),
         dcc.Input(id={"type": "m-name", "mid": mid}, type="text",
@@ -704,7 +718,7 @@ def register_callbacks(app):
         prem = is_premium_enabled()
         cur = cur or []
         if not prem and len(cur) >= 1:
-            return "Premium required for additional miners.", dash.no_update
+            return "Premium required for additional consumers.", dash.no_update
         add_miner()
         return "", list_miners()
 
@@ -761,39 +775,46 @@ def register_callbacks(app):
         Input("cool-enabled", "value"),
         Input("cool-mode", "value"),  # NEU: Cooling-Mode (auto/manual)
         Input("cool-on", "value"),
+        Input({"type": "m-kind", "mid": MATCH}, "value"),
     )
-    def _apply_enable_mode_with_cooling(enabled_val, mode_val, reqcool_val, cool_en_val, cool_mode_val, cool_on_val):
+    def _apply_enable_mode_with_cooling(enabled_val, mode_val, reqcool_val, cool_en_val, cool_mode_val, cool_on_val, kind_val):
         enabled = bool(enabled_val and "on" in enabled_val)
         mode_auto_now = bool(mode_val and "auto" in mode_val)
         require_cooling = bool(reqcool_val and "on" in reqcool_val)
+        kind = (kind_val or "miner")
+        is_consumer = (kind != "miner")
 
         cooling_feature = bool(set_get("cooling_feature_enabled", False))
         cooling_enabled = bool(cool_en_val and "on" in cool_en_val) if cooling_feature else False
         cooling_on = bool(cool_on_val and "on" in cool_on_val) if cooling_feature else False
         cooling_mode_auto = bool(cool_mode_val and "auto" in cool_mode_val) if cooling_feature else False
 
-        # Regel 1: "Power (on)" gesperrt, wenn:
-        # - Miner disabled ODER
-        # - Miner im Auto-Modus ODER
-        # - Miner braucht Cooling und Cooling nicht "bereit" (manuell aus oder aus)
+        # Power-Schalter sperren?
         lock_on = (not enabled) or mode_auto_now or (
                 cooling_feature and require_cooling and (not cooling_enabled or not cooling_on)
         )
         on_style = {"opacity": 0.6, "pointerEvents": "none"} if lock_on else {}
 
-        # Regel 2: Mode (auto) nicht erlauben, wenn Cooling im Manual und Miner Cooling braucht
+        # Mode (auto) nicht erlauben, wenn Cooling im Manual und Miner Cooling braucht
         mode_disabled = bool(cooling_feature and require_cooling and not cooling_mode_auto)
-        # Falls gesperrt -> Wert sicher auf "manual" halten
         out_mode_value = (["auto"] if (mode_auto_now and not mode_disabled) else [])
 
         inputs_disabled = not enabled
         opts = [{"label": " on", "value": "auto"}]
 
+        # Alle Felder wie bisher…
+        name_disabled = inputs_disabled
+        pwr_disabled = inputs_disabled
+        act_on_disabled = inputs_disabled
+        act_off_disabled = inputs_disabled
+        # …nur Hashrate zusätzlich bei "Pure consumer" sperren:
+        hash_disabled = inputs_disabled or is_consumer
+
         return (
             opts,
             out_mode_value,
             on_style,
-            inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled, inputs_disabled,
+            name_disabled, hash_disabled, pwr_disabled, act_on_disabled, act_off_disabled,
             mode_disabled
         )
 
@@ -813,10 +834,11 @@ def register_callbacks(app):
         State({"type": "m-act-on", "mid": ALL}, "value"),
         State({"type": "m-act-off", "mid": ALL}, "value"),
         State({"type": "m-minrun", "mid": ALL}, "value"),
+        State({"type": "m-kind", "mid": ALL}, "value"),
         prevent_initial_call=True
     )
     def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals,
-                    ths_vals, pkw_vals, reqcool_vals, act_on_vals, act_off_vals, minrun_vals):
+                    ths_vals, pkw_vals, reqcool_vals, act_on_vals, act_off_vals, minrun_vals, kinds_vals):
         trg = callback_context.triggered_id
         if not trg:
             raise dash.exceptions.PreventUpdate
@@ -833,11 +855,15 @@ def register_callbacks(app):
             except (TypeError, ValueError):
                 return d
 
+        kind = (kinds_vals[idx] if idx < len(kinds_vals) else "miner")
+        is_miner = (kind == "miner")
         name = names[idx] if idx < len(names) else ""
         enable = bool(enabled_vals[idx] and "on" in enabled_vals[idx]) if idx < len(enabled_vals) else False
         mode = "auto" if (idx < len(mode_vals) and mode_vals[idx] and "auto" in mode_vals[idx]) else "manual"
         want_on = bool(on_vals[idx] and "on" in on_vals[idx]) if idx < len(on_vals) else False
         ths = _num(ths_vals[idx] if idx < len(ths_vals) else 0.0, 0.0)
+        if not is_miner:
+            ths = 0.0
         pkw = _num(pkw_vals[idx] if idx < len(pkw_vals) else 0.0, 0.0)
         reqc = bool(reqcool_vals[idx] and "on" in reqcool_vals[idx]) if idx < len(reqcool_vals) else False
         act_on = (act_on_vals[idx] if idx < len(act_on_vals) else None) or ""
@@ -899,8 +925,11 @@ def register_callbacks(app):
         State({"type": "m-mode", "mid": MATCH}, "value"),
         State({"type": "m-on", "mid": MATCH}, "value"),
         State({"type": "m-reqcool", "mid": MATCH}, "value"),
+        State({"type": "m-kind", "mid": MATCH}, "value"),
     )
-    def _recalc(_tick, ths, pkw, enabled_val, mode_val, on_val, reqcool_val):
+    def _recalc(_tick, ths, pkw, enabled_val, mode_val, on_val, reqcool_val, kind_val):
+        kind = (kind_val or "miner")
+        is_consumer = (kind != "miner")
 
         # --- Live BTC & Netzwerk ---
         btc_eur = get_live_btc_price_eur(fallback=_num(set_get("btc_price_eur", 0.0)))
@@ -914,10 +943,14 @@ def register_callbacks(app):
         pkw = _num(pkw, 0.0)
 
         # Einnahmen/h
-        sats_per_h = sat_th_h * ths
-        eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
-        revenue_eur_h = sats_per_h * eur_per_sat
-        after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
+        if is_consumer:
+            sats_per_h = 0.0
+            after_tax = 0.0
+        else:
+            sats_per_h = sat_th_h * ths
+            eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
+            revenue_eur_h = sats_per_h * eur_per_sat
+            after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
 
         # --- Preise / Gebühren ---
         base = elec_price() or 0.0
@@ -951,7 +984,7 @@ def register_callbacks(app):
         total_cost_h = cost_eur_h + cool_share
 
         profit = after_tax - total_cost_h
-        profitable = profit > 0.0
+        profitable = (profit > 0.0) if (not is_consumer) else False
 
         # ---------- Ausgabe ----------
         def _fmt_int(x):
@@ -960,7 +993,7 @@ def register_callbacks(app):
             except Exception:
                 return "0"
 
-        sat_txt = f"SAT/h: {_fmt_int(sats_per_h)}"
+        sat_txt = "SAT/h: —" if is_consumer else f"SAT/h: {_fmt_int(sats_per_h)}"
 
         # nur noch Anzeigezweck: Feed-in separat zeigen (nicht für die Rechnung nutzen)
         pv_id = _dash_resolve("pv_production")
@@ -993,7 +1026,7 @@ def register_callbacks(app):
 
         # Break-even Gridpreis bei aktuellem PV-Mix
         be_line = ""
-        if pkw > 0.0:
+        if (not is_consumer) and pkw > 0.0:
             # "Äquivalente" kW inkl. anteiligem Cooling, wenn dieser Miner Cooling braucht
             if cooling_feature and require_cooling and cooling_kw_cfg > 0.0:
                 active = [m for m in list_miners() if m.get("enabled") and m.get("on") and m.get("require_cooling")]
@@ -1011,12 +1044,19 @@ def register_callbacks(app):
                     base_be = max(base_be, 0.0)
                     be_line = f"Break-even grid price at current PV mix: {_money(base_be)} €/kWh"
 
-        prof_txt = html.Div([
-            html.Span([_dot("#27ae60" if profitable else "#e74c3c"),
-                       "profitable" if profitable else "not profitable"]),
-            html.Br(),
-            html.Span(be_line, style={"opacity": 0.8})
-        ])
+        # Status-Zeile
+        if is_consumer:
+            prof_txt = html.Div([
+                html.Span(
+                    [_dot("#3498db"), "Pure consumer mode: runs only with PV-only (ΔP) or negative grid price"]),
+            ])
+        else:
+            prof_txt = html.Div([
+                html.Span([_dot("#27ae60" if profitable else "#e74c3c"),
+                           "profitable" if profitable else "not profitable"]),
+                html.Br(),
+                html.Span(be_line, style={"opacity": 0.8})
+            ])
 
         return sat_txt, eur_txt, prof_txt
 
