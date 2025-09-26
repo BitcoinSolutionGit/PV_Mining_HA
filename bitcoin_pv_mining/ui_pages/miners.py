@@ -1018,20 +1018,48 @@ def register_callbacks(app):
             style={"opacity": 0.6, "marginLeft": "6px"}
         )
 
+        # parts = [
+        #     f"Revenue: {_money(after_tax)} {currency_symbol()}/h",
+        #     html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
+        #     f"{mix_txt}: {_money(cost_eur_h)} {currency_symbol()}/h",
+        #     mix_hint,
+        # ]
+        # if cool_share > 0.0:
+        #     parts += [
+        #         html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
+        #         f"(+ Cooling share: {_money(cool_share)} {currency_symbol()}/h)",
+        #     ]
+        # parts += [
+        #     html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
+        #     f"Δ = {_money(profit)} {currency_symbol()}/h",
+        # ]
+        # eur_txt = html.Span(parts)
+
+        cs = currency_symbol()
+
+        # Revenue mit €/kW nur für Miner (wenn pkw > 0)
+        if not is_consumer:
+            rev_line = f"Revenue: {_money(after_tax)} {cs}/h"
+            if pkw > 0.0:
+                rev_per_kw = after_tax / pkw
+                rev_line += f" ({_money(rev_per_kw)} {cs}/kW)"
+        else:
+            rev_line = f"Revenue: {_money(after_tax)} {cs}/h"
+
         parts = [
-            f"Revenue: {_money(after_tax)} {currency_symbol()}/h",
+            rev_line,
             html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
-            f"{mix_txt}: {_money(cost_eur_h)} {currency_symbol()}/h",
+            f"{mix_txt}: {_money(cost_eur_h)} {cs}/h",
             mix_hint,
         ]
         if cool_share > 0.0:
             parts += [
                 html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
-                f"(+ Cooling share: {_money(cool_share)} {currency_symbol()}/h)",
+                f"(+ Cooling share: {_money(cool_share)} {cs}/h)",
             ]
         parts += [
             html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
-            f"Δ = {_money(profit)} {currency_symbol()}/h",
+            f"Δ = {_money(profit)} {cs}/h",
         ]
         eur_txt = html.Span(parts)
 
