@@ -1042,7 +1042,7 @@ def register_callbacks(app):
             rev_line = f"Revenue: {_money(after_tax)} {cs}/h"
             if pkw > 0.0:
                 rev_per_kw = after_tax / pkw
-                rev_line += f" ({_money(rev_per_kw)} {cs}/kW)"
+                rev_line += f" ({_money(rev_per_kw)} {cs}/kWh)"
         else:
             rev_line = f"Revenue: {_money(after_tax)} {cs}/h"
 
