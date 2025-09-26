@@ -20,9 +20,9 @@ from services.power_planner import plan_and_allocate_auto
 from services.settings_store import get_var as settings_get
 from urllib.parse import urlparse, parse_qs
 
-from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
+#from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
 from ui_pages.miners import layout as miners_layout, register_callbacks as reg_miners
-from ui_pages.electricity import layout as electricity_layout, register_callbacks as reg_electricity
+#from ui_pages.electricity import layout as electricity_layout, register_callbacks as reg_electricity
 from ui_pages.battery import layout as battery_layout, register_callbacks as reg_battery
 from ui_pages.wallbox import layout as wallbox_layout, register_callbacks as reg_wallbox
 from ui_pages.heater import layout as heater_layout, register_callbacks as reg_heater
@@ -540,18 +540,18 @@ def toggle_premium_button(data):
 @app.callback(
     Output("active-tab", "data"),
     Output("btn-dashboard", "className"),
-    Output("btn-sensors", "className"),
+    #Output("btn-sensors", "className"),
     Output("btn-miners", "className"),
-    Output("btn-electricity", "className"),
+    #Output("btn-electricity", "className"),
     Output("btn-battery", "className"),
     Output("btn-heater", "className"),
     Output("btn-wallbox", "className"),
     Output("btn-settings","className"),
     Output("btn-dev","className"),
     Input("btn-dashboard", "n_clicks"),
-    Input("btn-sensors", "n_clicks"),
+    #Input("btn-sensors", "n_clicks"),
     Input("btn-miners", "n_clicks"),
-    Input("btn-electricity", "n_clicks"),
+    #Input("btn-electricity", "n_clicks"),
     Input("btn-battery", "n_clicks"),
     Input("btn-heater", "n_clicks"),
     Input("btn-wallbox", "n_clicks"),
@@ -560,7 +560,8 @@ def toggle_premium_button(data):
     State("premium-enabled", "data"),
     prevent_initial_call=True
 )
-def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, n9, premium_data):
+#def switch_tabs(n1, n2, n3, n4, n5, n6, n7, n8, n9, premium_data):
+def switch_tabs(n1, n2, n3, n4, n5, n6, n7, premium_data):
     enabled = bool((premium_data or {}).get("enabled"))
     ctx = dash.callback_context
     if not ctx.triggered:
@@ -568,12 +569,12 @@ def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, n9, premium_data):
     btn = ctx.triggered[0]["prop_id"].split(".")[0]
 
     target = "dashboard"
-    if btn == "btn-sensors":
-        target = "sensors"
-    elif btn == "btn-miners":
+    #if btn == "btn-sensors":
+    #    target = "sensors"
+    if btn == "btn-miners":
         target = "miners"
-    elif btn == "btn-electricity":
-        target = "electricity"
+    #elif btn == "btn-electricity":
+    #    target = "electricity"
     elif btn == "btn-battery":
         target = "battery" if (SHOW_BATTERY_TAB and enabled) else "dashboard"  # Premium required
     elif btn == "btn-heater":
@@ -588,9 +589,9 @@ def switch_tabs(n1, n2,n3, n4, n5, n6, n7, n8, n9, premium_data):
     return (
         target,
         "custom-tab custom-tab-selected" if target == "dashboard" else "custom-tab",
-        "custom-tab custom-tab-selected" if target == "sensors" else "custom-tab",
+        #"custom-tab custom-tab-selected" if target == "sensors" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "miners" else "custom-tab",
-        "custom-tab custom-tab-selected" if target == "electricity" else "custom-tab",
+        #"custom-tab custom-tab-selected" if target == "electricity" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "battery" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "heater" else "custom-tab",
         "custom-tab custom-tab-selected" if target == "wallbox" else "custom-tab",
@@ -689,13 +690,13 @@ def render_tab(tab, premium_data):
     enabled = bool((premium_data or {}).get("enabled"))
     if tab == "dashboard":
         return dashboard_layout()
-    if tab == "sensors":
-        return sensors_layout()
+    #if tab == "sensors":
+    #    return sensors_layout()
     if tab == "miners":
         # ⬇️ früher: return miners_layout() if enabled else premium_upsell()
         return miners_layout()  # Miners-Tab ist immer sichtbar (Miner 2+ werden innen gegated)
-    if tab == "electricity":
-        return electricity_layout()
+    #if tab == "electricity":
+    #    return electricity_layout()
     if tab == "battery":
         return battery_layout() if SHOW_BATTERY_TAB else dashboard_layout()
     if tab == "heater":
@@ -710,8 +711,8 @@ def render_tab(tab, premium_data):
 
 
 register_callbacks(app)     # Dashboard
-reg_sensors(app)            # Sensors
-reg_electricity(app)        # electricity
+#reg_sensors(app)            # Sensors
+#reg_electricity(app)        # electricity
 reg_miners(app)             # miners
 reg_battery(app)            # battery
 reg_heater(app)             # heater
@@ -1136,9 +1137,9 @@ app.layout = page_wrap([
         # zentrierte Tab-Gruppe
         html.Div([
             html.Button("Dashboard", id="btn-dashboard", n_clicks=0, className="custom-tab custom-tab-selected", **{"data-tab": "dashboard"}),
-            html.Button("Sensors", id="btn-sensors", n_clicks=0, className="custom-tab", **{"data-tab": "sensors"}),
+            #html.Button("Sensors", id="btn-sensors", n_clicks=0, className="custom-tab", **{"data-tab": "sensors"}),
             html.Button("Consumers", id="btn-miners", n_clicks=0, className="custom-tab", **{"data-tab": "miners"}),
-            html.Button("Electricity", id="btn-electricity", n_clicks=0, className="custom-tab", **{"data-tab": "electricity"}),
+            #html.Button("Electricity", id="btn-electricity", n_clicks=0, className="custom-tab", **{"data-tab": "electricity"}),
             html.Button("Battery", id="btn-battery", n_clicks=0, className="custom-tab", **{"data-tab": "battery"}),
             html.Button("Water Heater", id="btn-heater", n_clicks=0, className="custom-tab", **{"data-tab": "heater"}),
             html.Button("Wall-Box", id="btn-wallbox", n_clicks=0, className="custom-tab", **{"data-tab": "wallbox"}),

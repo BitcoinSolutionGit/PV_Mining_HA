@@ -1,12 +1,13 @@
 # ui_pages/settings.py
 import json
 import dash
+import os
 from dash import html, dcc
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 
 from services.settings_store import get_var as set_get, set_vars as set_set
-from services.electricity_store import get_var as elec_get
+from services.electricity_store import resolve_sensor_id as elec_resolve, set_mapping as elec_set_mapping, get_var as elec_get, set_vars as elec_set_vars
 from services.ha_sensors import list_all_sensors, get_sensor_value
 from services.forex import usd_to_eur_rate
 from services.miners_store import list_miners
@@ -15,9 +16,16 @@ from services.battery_store import get_var as bat_get
 from services.wallbox_store import get_var as wb_get
 from services.heater_store import resolve_entity_id as heat_resolve, get_var as heat_get
 from ui_pages.common import footer_license
+from services.utils import load_yaml, save_yaml
 
 PRIO_KEY = "priority_order"
 PRIO_KEY_JSON = "priority_order_json"
+CONFIG_DIR = "/config/pv_mining_addon"
+SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
+SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
+MAIN_CFG = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
+ELEC_DEF = os.path.join(CONFIG_DIR, "electricity.yaml")
+ELEC_OVR = os.path.join(CONFIG_DIR, "electricity.local.yaml")
 
 PRIO_COLORS = {
     "inflow":    "#FFD700",
@@ -121,6 +129,24 @@ def _is_miner_enabled(m: dict) -> bool:
         if k in m:
             return _truthy(m.get(k), default=True)
     return True
+
+def _resolve_sensor_id(kind: str) -> str:
+    """
+    kind ∈ {"pv_production","grid_consumption","grid_feed_in"}
+    """
+    mapping_def = load_yaml(SENS_DEF, {}).get("mapping", {})
+    mapping_ovr = load_yaml(SENS_OVR, {}).get("mapping", {})
+    sid = (mapping_ovr.get(kind) or mapping_def.get(kind) or "").strip()
+    if sid:
+        return sid
+    cfg = load_yaml(MAIN_CFG, {})
+    ents = cfg.get("entities", {})
+    fallback_keys = {
+        "pv_production": "sensor_pv_production",
+        "grid_consumption": "sensor_grid_consumption",
+        "grid_feed_in": "sensor_grid_feed_in",
+    }
+    return (ents.get(fallback_keys[kind], "") or "").strip()
 
 def _is_cooling_auto_enabled() -> bool:
     """
@@ -350,6 +376,106 @@ def layout():
     return html.Div([
         html.H2("Settings"),
 
+    # --- NEW: SENSORS (top) ---
+    _section("Sensors", [
+        html.Label("PV production"),
+        dcc.Dropdown(
+            id="set-sens-pv",
+            options=[{"label": s, "value": s} for s in list_all_sensors()],
+            value=_resolve_sensor_id("pv_production") or None,
+            placeholder="Select sensor..."
+        ),
+        html.Label("Grid consumption", style={"marginTop": "12px"}),
+        dcc.Dropdown(
+            id="set-sens-grid",
+            options=[{"label": s, "value": s} for s in list_all_sensors()],
+            value=_resolve_sensor_id("grid_consumption") or None,
+            placeholder="Select sensor..."
+        ),
+        html.Label("Grid feed-in", style={"marginTop": "12px"}),
+        dcc.Dropdown(
+            id="set-sens-feed",
+            options=[{"label": s, "value": s} for s in list_all_sensors()],
+            value=_resolve_sensor_id("grid_feed_in") or None,
+            placeholder="Select sensor..."
+        ),
+        html.Button("Save sensors", id="set-sens-save", className="custom-tab", style={"marginTop": "12px"}),
+        html.Span(id="set-sens-status", style={"marginLeft": "10px", "color": "green"}),
+    ]),
+
+    # --- NEW: ELECTRICITY (second) ---
+    _section("Electricity", [
+        html.Div([
+            html.Label("Pricing mode"),
+            html.Div([
+                dcc.Checklist(
+                    id="set-elec-fixed-active",
+                    options=[{"label": " Fixed price", "value": "on"}],
+                    value=(["on"] if ((elec_get("pricing_mode","") or "").lower() or
+                                      ("dynamic" if elec_resolve("current_electricity_price") else "fixed")) == "fixed" else [])
+                ),
+                dcc.Checklist(
+                    id="set-elec-dyn-active",
+                    options=[{"label": " Dynamic (sensor)", "value": "on"}],
+                    value=(["on"] if ((elec_get("pricing_mode","") or "").lower() or
+                                      ("dynamic" if elec_resolve("current_electricity_price") else "fixed")) == "dynamic" else [])
+                ),
+            ], style={"display": "flex", "gap": "18px", "alignItems": "center"})
+        ], style={"marginBottom": "10px"}),
+
+        # dynamic row
+        html.Div([
+            html.Label("Dynamic price sensor"),
+            dcc.Dropdown(
+                id="sensor-current-electricity-price",
+                options=[{"label": s, "value": s} for s in list_all_sensors()],
+                value=elec_resolve("current_electricity_price") or None,
+                placeholder="Select sensor..."
+            ),
+        ], id="set-elec-row-sensor", style={"marginTop": "6px"}),
+
+        # fixed row
+        html.Div([
+            html.Label("Fixed price value (per kWh)"),
+            dcc.Input(
+                id="elec-fixed-value",
+                type="number",
+                step="0.0001",
+                min=0, max=2,
+                value=float(elec_get("fixed_price_value", 0.0) or 0.0),
+                style={"width": "180px"}
+            ),
+        ], id="set-elec-row-fixed", style={"marginTop": "6px"}),
+
+        html.Hr(),
+
+        html.Div([
+            html.Label("Network fee (down / import)"),
+            dcc.Input(
+                id="elec-fee-down",
+                type="number",
+                step="0.0001",
+                min=0, max=2,
+                value=float(elec_get("network_fee_down_value", 0.0) or 0.0),
+                style={"width": "160px"}
+            ),
+            html.Span(" "),
+            html.Label("Network fee (up / export)", style={"marginLeft": "16px"}),
+            dcc.Input(
+                id="elec-fee-up",
+                type="number",
+                step="0.0001",
+                min=0, max=2,
+                value=float(elec_get("network_fee_up_value", 0.0) or 0.0),
+                style={"width": "160px"}
+            ),
+        ], style={"marginTop": "6px"}),
+
+        html.Button("Save electricity", id="set-elec-save", className="custom-tab", style={"marginTop": "12px"}),
+        html.Span(id="set-elec-status", style={"marginLeft": "10px", "color": "green"}),
+    ]),
+
+
         _section("Cooling circuit / Miners", [
             dcc.Checklist(
                 id="set-cooling-enabled",
@@ -546,6 +672,121 @@ def layout():
 # --------------------------------
 
 def register_callbacks(app):
+
+    # ----------------------------
+    # SENSORS: Save mapping
+    # ----------------------------
+    @app.callback(
+        Output("set-sens-status", "children"),
+        Input("set-sens-save", "n_clicks"),
+        State("set-sens-pv", "value"),
+        State("set-sens-grid", "value"),
+        State("set-sens-feed", "value"),
+        prevent_initial_call=True
+    )
+    def _save_sensors(n, pv, grid, feed):
+        if not n:
+            raise PreventUpdate
+        mapping = {
+            "pv_production": pv or "",
+            "grid_consumption": grid or "",
+            "grid_feed_in": feed or "",
+        }
+        # Write to sensors.local.yaml (keeps old resolver paths working)
+        save_yaml(SENS_OVR, {"mapping": mapping})
+
+        # Mirror to pv_mining_local_config.yaml for backwards compatibility
+        cfg = load_yaml(MAIN_CFG, {})
+        cfg.setdefault("entities", {})
+        cfg["entities"]["sensor_pv_production"]   = pv or ""
+        cfg["entities"]["sensor_grid_consumption"] = grid or ""
+        cfg["entities"]["sensor_grid_feed_in"]     = feed or ""
+        save_yaml(MAIN_CFG, cfg)
+        return "Sensors saved!"
+
+    # ----------------------------
+    # ELECTRICITY: toggle visibility / exclusivity
+    # ----------------------------
+    @app.callback(
+        Output("set-elec-fixed-active", "value"),
+        Output("set-elec-dyn-active", "value"),
+        Output("sensor-current-electricity-price", "disabled"),
+        Output("elec-fixed-value", "disabled"),
+        Output("set-elec-row-sensor", "style"),
+        Output("set-elec-row-fixed", "style"),
+        Input("set-elec-fixed-active", "value"),
+        Input("set-elec-dyn-active", "value"),
+        prevent_initial_call=True
+    )
+    def _toggle_elec_mode(fixed_val, dyn_val):
+        fixed_on = bool(fixed_val and "on" in fixed_val)
+        dyn_on   = bool(dyn_val and "on" in dyn_val)
+
+        ctx = dash.callback_context
+        if fixed_on and dyn_on:
+            # last click wins
+            who = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else ""
+            if who == "set-elec-fixed-active":
+                dyn_on = False
+            else:
+                fixed_on = False
+        elif not fixed_on and not dyn_on:
+            fixed_on = True  # fallback
+
+        sensor_disabled = not dyn_on
+        fixed_disabled  = not fixed_on
+        style_sensor = {"marginTop": "6px", "display": "block" if dyn_on else "none"}
+        style_fixed  = {"marginTop": "6px", "display": "block" if fixed_on else "none"}
+
+        return (
+            (["on"] if fixed_on else []),
+            (["on"] if dyn_on else []),
+            sensor_disabled,
+            fixed_disabled,
+            style_sensor,
+            style_fixed,
+        )
+
+    # ----------------------------
+    # ELECTRICITY: save
+    # ----------------------------
+    @app.callback(
+        Output("set-elec-status", "children"),
+        Input("set-elec-save", "n_clicks"),
+        State("set-elec-fixed-active", "value"),
+        State("set-elec-dyn-active", "value"),
+        State("sensor-current-electricity-price", "value"),
+        State("elec-fixed-value", "value"),
+        State("elec-fee-down", "value"),
+        State("elec-fee-up", "value"),
+        prevent_initial_call=True
+    )
+    def _save_electricity(n, fixed_val, dyn_val, sensor_id, fixed_price, fee_down, fee_up):
+        if not n:
+            raise PreventUpdate
+
+        fixed_on = bool(fixed_val and "on" in fixed_val)
+        dyn_on   = bool(dyn_val and "on" in dyn_val)
+        if fixed_on and dyn_on:
+            # prefer the last selection; here: dynamic wins
+            fixed_on, dyn_on = False, True
+        if not fixed_on and not dyn_on:
+            fixed_on = True
+
+        pricing_mode = "fixed" if fixed_on else "dynamic"
+
+        # write mapping always (harmless when fixed)
+        elec_set_mapping("current_electricity_price", sensor_id or "")
+
+        # persist variables
+        elec_set_vars(
+            pricing_mode=pricing_mode,
+            fixed_price_value=float(fixed_price or 0.0),
+            network_fee_down_value=float(fee_down or 0.0),
+            network_fee_up_value=float(fee_up or 0.0),
+        )
+        return "Electricity settings saved!"
+
 
     # Sichtbarkeit PV-Inputreihen
     @app.callback(
