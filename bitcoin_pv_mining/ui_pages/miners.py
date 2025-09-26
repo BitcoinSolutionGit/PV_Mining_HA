@@ -768,7 +768,8 @@ def register_callbacks(app):
         Output({"type": "m-pwr", "mid": MATCH}, "disabled"),
         Output({"type": "m-act-on", "mid": MATCH}, "disabled"),
         Output({"type": "m-act-off", "mid": MATCH}, "disabled"),
-        Output({"type": "m-mode", "mid": MATCH}, "disabled"),  # NEU: Mode-Feld sperren
+        Output({"type": "m-mode", "mid": MATCH}, "disabled"),
+        Output({"type": "m-hash", "mid": MATCH}, "value"),
         Input({"type": "m-enabled", "mid": MATCH}, "value"),
         Input({"type": "m-mode", "mid": MATCH}, "value"),
         Input({"type": "m-reqcool", "mid": MATCH}, "value"),
@@ -789,17 +790,21 @@ def register_callbacks(app):
         cooling_on = bool(cool_on_val and "on" in cool_on_val) if cooling_feature else False
         cooling_mode_auto = bool(cool_mode_val and "auto" in cool_mode_val) if cooling_feature else False
 
-        # Power-Schalter sperren?
+        # Regel 1 Power-Schalter sperren?
         lock_on = (not enabled) or mode_auto_now or (
                 cooling_feature and require_cooling and (not cooling_enabled or not cooling_on)
         )
         on_style = {"opacity": 0.6, "pointerEvents": "none"} if lock_on else {}
 
-        # Mode (auto) nicht erlauben, wenn Cooling im Manual und Miner Cooling braucht
+        # Regel 2 Mode (auto) nicht erlauben, wenn Cooling im Manual und Miner Cooling braucht
         mode_disabled = bool(cooling_feature and require_cooling and not cooling_mode_auto)
         out_mode_value = (["auto"] if (mode_auto_now and not mode_disabled) else [])
 
         inputs_disabled = not enabled
+
+        # NEU: Wenn consumer -> Hashrate-Wert aktiv auf 0 setzen, sonst Wert unverändert lassen
+        hash_value_out = 0.0 if is_consumer else dash.no_update
+
         opts = [{"label": " on", "value": "auto"}]
 
         # Alle Felder wie bisher…
@@ -814,8 +819,13 @@ def register_callbacks(app):
             opts,
             out_mode_value,
             on_style,
-            name_disabled, hash_disabled, pwr_disabled, act_on_disabled, act_off_disabled,
-            mode_disabled
+            name_disabled,
+            hash_disabled,
+            pwr_disabled,
+            act_on_disabled,
+            act_off_disabled,
+            mode_disabled,
+            hash_value_out
         )
 
     # 8) Save pro Miner (ALL statt MATCH)
@@ -886,6 +896,7 @@ def register_callbacks(app):
             require_cooling=reqc,
             action_on_entity=act_on,
             action_off_entity=act_off,
+            is_miner=is_miner,
         )
 
         # HA-Aktion NUR bei Save ausführen – und nur im Manual-Mode
