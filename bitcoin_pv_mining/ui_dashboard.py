@@ -362,15 +362,26 @@ def register_callbacks(app):
         heater_kw = float(_heater_power_kw() or 0.0)
         wallbox_kw = float(_wallbox_power_kw() or 0.0)
 
-        # Cooling (einmal!) – trotzdem Feature-Flag respektieren
+        # Cooling (einmal!) – Feature-Flag respektieren
         cooling_enabled = bool(set_get("cooling_feature_enabled", False))
         cooling_running = False
         cooling_pkw = 0.0
         if cooling_enabled:
             try:
                 c = get_cooling() or {}
-                cooling_running = (c.get("ha_on") is True) or (c.get("ha_on") is None and bool(c.get("on")))
-                cooling_pkw = float(c.get("power_kw") or 0.0)
+                mode = str(c.get("mode") or "manual").lower()
+                desired_on = bool(c.get("on"))  # UI-Wunsch
+                ha_on = c.get("ha_on")  # True/False/None (Ready)
+                pkw = float(c.get("power_kw") or 0.0)
+
+                if mode != "auto":
+                    # MANUAL: nur der UI-Schalter zählt
+                    cooling_running = desired_on
+                else:
+                    # AUTO: Ready-Sensor maßgeblich; ohne Sensor fallback auf UI-Wunsch
+                    cooling_running = (ha_on is True) or (ha_on is None and desired_on)
+
+                cooling_pkw = pkw
             except Exception:
                 cooling_running = False
                 cooling_pkw = 0.0
