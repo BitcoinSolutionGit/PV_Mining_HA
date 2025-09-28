@@ -1,6 +1,7 @@
 # services/consumers/cooling.py
 from __future__ import annotations
 
+import time
 from services.consumers.base import BaseConsumer, Desire, Ctx
 from services.cooling_store import get_cooling, set_cooling
 from services.settings_store import get_var as set_get
@@ -12,6 +13,19 @@ from services.energy_mix import incremental_mix_for
 from services.btc_metrics import get_live_btc_price_eur, get_live_network_hashrate_ths, sats_per_th_per_hour
 
 _last_ui_on_state: "Optional[bool]" = None  # remembers last UI 'on' flag we saw
+# NEU: Entprell-/Laufzeit-States
+_last_cmd: "Optional[str]" = None     # "on" | "off"
+_last_cmd_ts: float = 0.0
+_last_on_ts: float = 0.0
+_last_off_ts: float = 0.0
+
+def _can_send(cmd: str, now: float, cooldown_s: float) -> bool:
+    """Unterdrückt gleiche Kommandos innerhalb eines Cooldowns."""
+    global _last_cmd, _last_cmd_ts
+    if _last_cmd == cmd and (now - _last_cmd_ts) < cooldown_s:
+        return False
+    _last_cmd, _last_cmd_ts = cmd, now
+    return True
 
 def _is_auto(m) -> bool:
     return str(m.get("mode") or "manual").lower() == "auto"
@@ -216,7 +230,7 @@ class CoolingConsumer(BaseConsumer):
         - AUTO: Nur bei Zustandswechsel schalten (kein periodisches retriggern).
         - Safety: nur wenn ON angefordert wurde, HA aber explizit OFF meldet.
         """
-        global _last_ui_on_state
+        global _last_ui_on_state, _last_on_ts, _last_off_ts
 
         c = get_cooling() or {}
         power_kw = _num(c.get("power_kw"), 0.0)
@@ -240,9 +254,11 @@ class CoolingConsumer(BaseConsumer):
                         # Nur wenn der UI-Wunsch *jetzt* geändert wurde, setzen wir HA entsprechend.
                         if ui_on and not bool(ha_raw):
                             if on_ent: call_action(on_ent, True)
+                            _last_on_ts = time.time()  # ⬅️ NEU
                             print("[cooling] MANUAL: UI->ON (apply to HA)", flush=True)
                         elif (not ui_on) and bool(ha_raw):
                             if off_ent: call_action(off_ent, False)
+                            _last_off_ts = time.time()  # ⬅️ NEU
                             print("[cooling] MANUAL: UI->OFF (apply to HA)", flush=True)
                     else:
                         # UI nicht geändert → HA hat wahrscheinlich manuell Vorrang -> nichts tun
@@ -253,9 +269,11 @@ class CoolingConsumer(BaseConsumer):
                         # Kein Ready-Sensor: wir treiben über UI-Wunsch
                         if ui_on and not running:
                             if on_ent: call_action(on_ent, True)
+                            _last_on_ts = time.time()  # ⬅️ NEU
                             print("[cooling] MANUAL: no ha_on, switching ON", flush=True)
                         elif (not ui_on) and running:
                             if off_ent: call_action(off_ent, False)
+                            _last_off_ts = time.time()  # ⬅️ NEU
                             print("[cooling] MANUAL: no ha_on, switching OFF", flush=True)
                     # wenn ha_raw vorhanden und gleich UI → nichts tun
             except Exception as e:
@@ -265,19 +283,30 @@ class CoolingConsumer(BaseConsumer):
             return
 
         # ---------- AUTO ----------
-        should_on = power_kw > 0.0 and alloc_kw >= 0.5 * power_kw
-        try:
-            requested_on = should_on and (not running)
-            requested_off = (not should_on) and running
+        now = time.time()
+        COOL_MIN_RUN_S = int(_num(set_get("cooling_min_run_s", 30), 30))  # mind. Laufzeit nach ON
+        COOL_MIN_OFF_S = int(_num(set_get("cooling_min_off_s", 20), 20))  # mind. Auszeit nach OFF
+        RETRIGGER_BLOCK_S = int(_num(set_get("cooling_retrigger_block_s", 25), 25))  # gleiches Kommando blocken
 
-            if requested_on:
+        should_on = power_kw > 0.0 and alloc_kw >= 0.5 * power_kw
+
+        # Nur Zustandswechsel zulassen, respektiere Mindestlauf-/Auszeit
+        requested_on = should_on and (not running) and ((now - _last_off_ts) >= COOL_MIN_OFF_S)
+        requested_off = (not should_on) and running and ((now - _last_on_ts) >= COOL_MIN_RUN_S)
+
+        try:
+            if requested_on and _can_send("on", now, RETRIGGER_BLOCK_S):
                 if on_ent: call_action(on_ent, True)
+                _last_on_ts = now
                 print(f"[cooling] AUTO request ON (~{alloc_kw:.2f} kW)", flush=True)
-            elif requested_off:
+
+            elif requested_off and _can_send("off", now, RETRIGGER_BLOCK_S):
                 if off_ent: call_action(off_ent, False)
+                _last_off_ts = now
                 print(f"[cooling] AUTO request OFF (~{alloc_kw:.2f} kW)", flush=True)
+
             else:
-                # kein Zustandswechsel -> nichts tun (keine Push-Spam)
+                # kein Zustandswechsel oder in Cooldown -> nichts tun
                 return
 
             # Safety NUR bei angefordertem ON, wenn HA explizit OFF meldet:
@@ -304,6 +333,7 @@ class CoolingConsumer(BaseConsumer):
                     print(f"[cooling] safety off miners error: {e}", flush=True)
         except Exception as e:
             print(f"[cooling] apply error (auto): {e}", flush=True)
+
 
 
 

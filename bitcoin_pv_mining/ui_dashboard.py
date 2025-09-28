@@ -368,20 +368,13 @@ def register_callbacks(app):
         cooling_pkw = 0.0
         if cooling_enabled:
             try:
+                # dashboard.collect_frame(...)
                 c = get_cooling() or {}
-                mode = str(c.get("mode") or "manual").lower()
-                desired_on = bool(c.get("on"))  # UI-Wunsch
-                ha_on = c.get("ha_on")  # True/False/None (Ready)
-                pkw = float(c.get("power_kw") or 0.0)
+                ha_on = c.get("ha_on")
+                desired_on = bool(c.get("on"))
+                cooling_running = (ha_on is True) or (ha_on is None and desired_on)
+                cooling_pkw = float(c.get("power_kw") or 0.0)
 
-                if mode != "auto":
-                    # MANUAL: nur der UI-Schalter zählt
-                    cooling_running = desired_on
-                else:
-                    # AUTO: Ready-Sensor maßgeblich; ohne Sensor fallback auf UI-Wunsch
-                    cooling_running = (ha_on is True) or (ha_on is None and desired_on)
-
-                cooling_pkw = pkw
             except Exception:
                 cooling_running = False
                 cooling_pkw = 0.0
