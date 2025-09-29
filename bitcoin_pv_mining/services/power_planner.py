@@ -13,7 +13,7 @@ from services.ha_sensors import get_sensor_value
 from services.settings_store import get_var as set_get
 from services.electricity_store import current_price as elec_price, get_var as elec_get
 from services.energy_mix import surplus_strict_kw as _surplus_strict_kw, incremental_mix_for
-
+from services.export_cap_boost import try_export_cap_boost
 
 # stdout logger -> Add-on-Log
 def _stdout_logger(msg: str):
@@ -296,6 +296,15 @@ def plan_and_allocate(
         log_fn(f"[plan:surplus_dbg] feed={_feed_id}:{_feed_v}  pv={_pv_id}:{_pv_v}  imp={_imp_id}:{_imp_v}")
     except Exception as _e:
         log_fn(f"[plan:surplus_dbg] failed: {_e}")
+
+    # --- Export-cap Booster (Try-&-Error) ---
+    if apply and not dry_run:
+        try:
+            feed_kw = max(float(_feed_v or 0.0), 0.0)  # Export (+)
+            import_kw = max(float(_imp_v or 0.0), 0.0)  # Import (+)
+            try_export_cap_boost(feed_kw=feed_kw, import_kw=import_kw)
+        except Exception as e:
+            log_fn(f"[cap_boost] error: {e}")
 
     # Durch die Prioritätsliste
     collected = []  # [(cid, cons, desire)]

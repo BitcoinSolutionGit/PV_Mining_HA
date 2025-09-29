@@ -373,6 +373,10 @@ def layout():
     eff_pv_cost = max((fi_val if mode == "fixed" else _num(get_sensor_value(fi_sens), 0.0)) - fee_up, 0.0) if policy == "feedin" else 0.0
     cooling_enabled = bool(set_get("cooling_feature_enabled", False))
 
+    # Defaults lesen
+    export_cap = _num(set_get("grid_export_cap_kw", 0.0), 0.0)
+    boost_cooldown = int(_num(set_get("boost_cooldown_s", 30), 30))
+
     return html.Div([
         html.H2("Settings"),
 
@@ -590,6 +594,21 @@ def layout():
                           style=_input_style(160)),
                 html.Span("  e.g. 0.03 = 3 %  (values >1 are interpreted as percent and divided by 100 on save)",
                           style={"marginLeft": "8px", "opacity": 0.7}),
+            ], style={"marginTop": "8px"}),
+        ]),
+
+        _section("Export cap boost", [
+            html.Div([
+                html.Label("Grid export cap (kW)"),
+                dcc.Input(id="set-export-cap", type="number", step=0.1, min=0, value=export_cap,
+                          style=_input_style(140)),
+                html.Span(" (z. B. 5.0)", style={"marginLeft": "8px", "opacity": 0.7}),
+            ], style={"marginTop": "6px"}),
+            html.Div([
+                html.Label("Boost cooldown (s)"),
+                dcc.Input(id="set-boost-cooldown", type="number", step=1, min=5, value=boost_cooldown,
+                          style=_input_style(140)),
+                html.Span(" (Beruhigungszeit nach Zuschalten)", style={"marginLeft": "8px", "opacity": 0.7}),
             ], style={"marginTop": "8px"}),
         ]),
 
@@ -844,13 +863,15 @@ def register_callbacks(app):
         State("ui-show-inactive-phone", "value"),
         State("ui-show-src-inactive", "value"),
         State("ui-show-sink-inactive", "value"),
+        State("set-export-cap", "value"),
+        State("set-boost-cooldown", "value"),
 
         prevent_initial_call=True
     )
     def _save(n, policy, mode, val, sens, cur, reward, tax, cool_enabled_val,
               guard_w, guard_pct,
               miner_on_margin, miner_off_margin, miner_min_run_s, miner_min_off_s,
-              show_desktop, show_tablet, show_phone, show_src, show_sink):
+              show_desktop, show_tablet, show_phone, show_src, show_sink, export_cap, boost_cooldown):
         if not n:
             return ""
         # Prozent robust interpretieren: 3 -> 0.03
@@ -883,6 +904,8 @@ def register_callbacks(app):
             ui_show_inactive_phone=ui_show_inactive_phone,
             ui_show_inactive_sources=ui_show_inactive_sources,
             ui_show_inactive_sinks=ui_show_inactive_sinks,
+            grid_export_cap_kw=_num(export_cap, 0.0),
+            boost_cooldown_s=int(_num(boost_cooldown, 30)),
         )
         shown_pct = g_pct * 100.0
         return (f"Saved. Planner guard = {guard_w or 0:.0f} W and {shown_pct:.2f} %. "
