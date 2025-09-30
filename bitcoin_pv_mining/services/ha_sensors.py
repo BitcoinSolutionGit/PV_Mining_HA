@@ -9,30 +9,37 @@ def get_ha_token():
     return os.getenv("SUPERVISOR_TOKEN")
 
 def get_sensor_value(entity_id):
-    """Liefert aktuellen Wert eines Sensors aus Home Assistant."""
+    """Return current HA state:
+       - float(...) if numeric
+       - lowercase string ('on','off','unknown','unavailable', ...) otherwise
+       - None if unreachable
+    """
     token = get_ha_token()
     if not token or not entity_id:
         return None
 
     url = f"http://supervisor/core/api/states/{entity_id}"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     try:
         r = requests.get(url, headers=headers, timeout=5)
         if r.status_code == 200:
-            state = r.json().get("state")
-            try:
-                return float(state)
-            except (TypeError, ValueError):
+            raw = r.json().get("state")
+            if raw is None:
                 return None
+            s = str(raw).strip()
+            # try numeric first
+            try:
+                return float(s)
+            except (TypeError, ValueError):
+                # return raw lowercased string for booleans/toggles etc.
+                return s.lower()
         else:
             print(f"[WARN] Error fetching {entity_id}: {r.status_code}")
     except Exception as e:
         print(f"[ERROR] sensor value {entity_id} unfetchable:", e)
     return None
+
 
 def _fallback_sensor_candidates():
     """Dev-Fallback: sammelt Kandidaten aus lokalen YAML-Mappings (ohne HA)."""
