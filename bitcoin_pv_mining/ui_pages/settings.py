@@ -376,6 +376,10 @@ def layout():
     # Defaults lesen
     export_cap = _num(set_get("grid_export_cap_kw", 0.0), 0.0)
     boost_cooldown = int(_num(set_get("boost_cooldown_s", 30), 30))
+    cool_on_frac = _num(set_get("cooling_on_fraction", 0.50), 0.50)
+    miner_on_frac = _num(set_get("miner_on_fraction", _num(set_get("discrete_on_fraction", 0.95), 0.95)), 0.95)
+    cool_min_run = int(_num(set_get("cooling_min_run_s", 20), 20))
+    cool_min_off = int(_num(set_get("cooling_min_off_s", 20), 20))
 
     return html.Div([
         html.H2("Settings"),
@@ -491,6 +495,40 @@ def layout():
                 "Miners with 'Cooling required' can only switch on when Cooling ready/state is TRUE.",
                 style={"opacity": 0.8, "marginTop": "6px"}
             ),
+
+            html.Div([
+                html.Label("Cooling start threshold (fraction)"),
+                dcc.Input(
+                    id="set-cooling-on-frac", type="number", step=0.01, min=0, max=1,
+                    value=cool_on_frac, style=_input_style(140)
+                ),
+                html.Span("  (0.50 = 50 %)", style={"opacity": 0.7, "marginLeft": "6px"}),
+            ], style={"marginTop": "8px"}),
+
+            html.Div([
+                html.Label("Miner start threshold (fraction)"),
+                dcc.Input(
+                    id="set-miner-on-frac", type="number", step=0.01, min=0, max=1,
+                    value=miner_on_frac, style=_input_style(140)
+                ),
+                html.Span("  (z. B. 0.10 = 10 %)", style={"opacity": 0.7, "marginLeft": "6px"}),
+            ], style={"marginTop": "8px"}),
+
+            html.Div([
+                html.Label("Cooling minimum runtime after ON (s)"),
+                dcc.Input(
+                    id="set-cooling-min-run-s", type="number", step=1, min=0,
+                    value=cool_min_run, style=_input_style(120)
+                ),
+            ], style={"marginTop": "8px"}),
+
+            html.Div([
+                html.Label("Cooling minimum OFF time after OFF (s)"),
+                dcc.Input(
+                    id="set-cooling-min-off-s", type="number", step=1, min=0,
+                    value=cool_min_off, style=_input_style(120)
+                ),
+            ], style={"marginTop": "8px"}),
 
             html.Hr(),
 
@@ -865,13 +903,18 @@ def register_callbacks(app):
         State("ui-show-sink-inactive", "value"),
         State("set-export-cap", "value"),
         State("set-boost-cooldown", "value"),
+        State("set-cooling-on-frac", "value"),
+        State("set-miner-on-frac", "value"),
+        State("set-cooling-min-run-s", "value"),
+        State("set-cooling-min-off-s", "value"),
 
         prevent_initial_call=True
     )
     def _save(n, policy, mode, val, sens, cur, reward, tax, cool_enabled_val,
               guard_w, guard_pct,
               miner_on_margin, miner_off_margin, miner_min_run_s, miner_min_off_s,
-              show_desktop, show_tablet, show_phone, show_src, show_sink, export_cap, boost_cooldown):
+              show_desktop, show_tablet, show_phone, show_src, show_sink, export_cap, boost_cooldown,
+              cool_on_frac, miner_on_frac, cool_min_run_s, cool_min_off_s):
         if not n:
             return ""
         # Prozent robust interpretieren: 3 -> 0.03
@@ -906,6 +949,10 @@ def register_callbacks(app):
             ui_show_inactive_sinks=ui_show_inactive_sinks,
             grid_export_cap_kw=_num(export_cap, 0.0),
             boost_cooldown_s=int(_num(boost_cooldown, 30)),
+            cooling_on_fraction=max(0.0, min(1.0, _num(cool_on_frac, 0.50))),
+            miner_on_fraction=max(0.0, min(1.0, _num(miner_on_frac, _num(set_get("discrete_on_fraction", 0.95), 0.95)))),
+            cooling_min_run_s=int(_num(cool_min_run_s, 20)),
+            cooling_min_off_s=int(_num(cool_min_off_s, 20)),
         )
         shown_pct = g_pct * 100.0
         return (f"Saved. Planner guard = {guard_w or 0:.0f} W and {shown_pct:.2f} %. "
@@ -914,7 +961,11 @@ def register_callbacks(app):
                 f"Miner tuning: on≥{_num(miner_on_margin, 0.05):.2f} €/h, "
                 f"off≤{_num(miner_off_margin, -0.01):.2f} €/h, "
                 f"minRun={int(_num(miner_min_run_s, 30))} s, "
-                f"minOff={int(_num(miner_min_off_s, 20))} s.")
+                f"minOff={int(_num(miner_min_off_s, 20))} s."
+                f" Cooling frac={_num(cool_on_frac, 0.5):.2f}, "
+                f" Miner frac={_num(miner_on_frac, 0.95):.2f}, "
+                f" CminRun={int(_num(cool_min_run_s, 20))} s, "
+                f" CminOff={int(_num(cool_min_off_s, 20))} s. ")
 
     # Store befüllen/aktualisieren, wenn Settings-Tab angezeigt wird
     @app.callback(

@@ -19,3 +19,12 @@ docs:
   readme_de_url: "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Readme_DE.md"
   readme_en_url: "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Readme_EN.md"
 
+# Globaler Default (gilt für alle diskreten Verbraucher, falls kein Override):
+discrete_on_fraction: 0.10   # = 10 %
+
+# Feiner je Consumer:
+cooling:
+  on_fraction: 0.10
+
+miner:
+  on_fraction: 0.10

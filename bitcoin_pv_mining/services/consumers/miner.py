@@ -84,6 +84,33 @@ def _pv_cost_per_kwh() -> float:
     fee_up = _num(elec_get("network_fee_up_value", 0.0), 0.0)
     return max(tarif - fee_up, 0.0)
 
+def _on_fraction_for_miner(miner_id: str, default: float = 0.95) -> float:
+    """
+    Startschwelle als Anteil der Nennleistung (0.0–1.0).
+    Reihenfolge:
+      1) miner.<ID>.on_fraction
+      2) miner.on_fraction
+      3) discrete_on_fraction
+      4) default (hier 0.95 für Backwards-Compat)
+    Werte >1 werden als Prozent interpretiert (z.B. 10 => 0.10).
+    """
+    for key in (f"miner.{miner_id}.on_fraction",
+                "miner.on_fraction",
+                "miner_on_fraction",  # <— neu: Settings-Tab
+                "discrete_on_fraction"):
+        try:
+            v = set_get(key, None)
+            if v is None or str(v).strip() == "":
+                continue
+            x = float(v)
+            if x > 1.0:
+                x = x / 100.0
+            return max(0.0, min(1.0, x))
+        except Exception:
+            pass
+    return default
+
+
 def _cooling_required(m: dict) -> bool:
     flags = [
         m.get("require_cooling"),
@@ -376,7 +403,21 @@ class MinerConsumer(BaseConsumer):
                     return
 
             # ---------- AUTO ----------
-            should_on = pkw > 0.0 and alloc_kw >= 0.95 * pkw
+            # statt: should_on = pkw > 0.0 and alloc_kw >= 0.95 * pkw
+            frac = _on_fraction_for_miner(self.miner_id, default=0.95)
+            should_on = pkw > 0.0 and alloc_kw >= frac * pkw
+            print(f"[miner {self.miner_id}] on_fraction={frac:.2f} alloc={alloc_kw:.3f} pkw={pkw:.3f}", flush=True)
+
+            # OPTIONAL: Safety – Miner nicht automatisch einschalten, wenn Cooling zwingend
+            # benötigt wird, aber 'strict' nicht läuft.
+            try:
+                need_cool = _cooling_required(m)
+                cool_strict = _cooling_running_strict()  # True/False/None
+                if should_on and need_cool and (cool_strict is False):
+                    print(f"[miner {self.miner_id}] AUTO wants ON but cooling not running -> skip", flush=True)
+                    should_on = False
+            except Exception:
+                pass
 
             if should_on and not prev_on:
                 if on_ent: call_action(on_ent, True)
