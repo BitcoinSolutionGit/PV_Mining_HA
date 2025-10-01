@@ -1,7 +1,7 @@
 # services/cooling_store.py
 import os, time
 from services.utils import load_yaml, save_yaml
-from services.ha_sensors import get_sensor_value
+from services.ha_entities import get_entity_state, is_on_like
 
 CONFIG_DIR = "/config/pv_mining_addon"
 COOL_DEF = os.path.join(CONFIG_DIR, "cooling.yaml")
@@ -48,8 +48,8 @@ def get_cooling() -> dict:
     try:
         rid = (out.get("ready_entity") or "").strip()
         if rid:
-            val = get_sensor_value(rid)
-            ha_on = _truthy(val)
+            state = get_entity_state(rid)  # "on" / "off" / "unavailable" / ...
+            ha_on = is_on_like(state)  # robustes Mapping
     except Exception:
         ha_on = None
 

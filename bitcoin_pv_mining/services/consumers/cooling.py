@@ -252,7 +252,7 @@ class CoolingConsumer(BaseConsumer):
         - AUTO: Nur bei Zustandswechsel schalten (kein periodisches retriggern).
         - Safety: nur wenn ON angefordert wurde, HA aber explizit OFF meldet.
         """
-        global _last_ui_on_state, _last_on_ts, _last_off_ts, _last_switch_ts, _last_ui_on_state
+        global _last_ui_on_state, _last_on_ts, _last_off_ts, _last_switch_ts, _last_cmd, _last_cmd_ts
 
         c = get_cooling() or {}
         power_kw = _num(c.get("power_kw"), 0.0)
@@ -275,14 +275,23 @@ class CoolingConsumer(BaseConsumer):
                     if ui_changed:
                         # Nur wenn der UI-Wunsch *jetzt* geändert wurde, setzen wir HA entsprechend.
                         if ui_on and not bool(ha_raw):
-                            if on_ent: call_action(on_ent, True)
-                            _last_on_ts = time.time()  # ⬅️ NEU
-                            _last_switch_ts = time.time()
+                            now = time.time()
+                            if on_ent and _can_send("on", now, 0.8):  # kleiner Cooldown gegen Doppel-Feuer
+                                call_action(on_ent, True)
+                            _last_on_ts = now
+                            _last_switch_ts = now
+                            _last_cmd = "on";
+                            _last_cmd_ts = now
                             print("[cooling] MANUAL: UI->ON (apply to HA)", flush=True)
+
                         elif (not ui_on) and bool(ha_raw):
-                            if off_ent: call_action(off_ent, False)
-                            _last_off_ts = time.time()  # ⬅️ NEU
-                            _last_switch_ts = time.time()
+                            now = time.time()
+                            if off_ent and _can_send("off", now, 0.8):
+                                call_action(off_ent, False)
+                            _last_off_ts = now
+                            _last_switch_ts = now
+                            _last_cmd = "off";
+                            _last_cmd_ts = now
                             print("[cooling] MANUAL: UI->OFF (apply to HA)", flush=True)
                     else:
                         # UI nicht geändert → HA hat wahrscheinlich manuell Vorrang -> nichts tun
@@ -309,6 +318,7 @@ class CoolingConsumer(BaseConsumer):
             return
 
         # ---------- AUTO ----------
+        # ---------- AUTO ----------
         frac = _cooling_on_fraction(default=0.50)
         should_on = power_kw > 0.0 and alloc_kw >= frac * power_kw
 
@@ -317,28 +327,64 @@ class CoolingConsumer(BaseConsumer):
             requested_on = should_on and (not running)
             requested_off = (not should_on) and running
 
-            # Debounce / Anti-Flattern:
-            if requested_on and (_last_switch_ts is not None) and (now_ts - _last_switch_ts < _cooling_min_off_s()):
-                print("[cooling] AUTO debounce: min OFF not elapsed -> suppress ON", flush=True)
+            # Debounce/Hysterese:
+            min_run_s = _cooling_min_run_s()
+            min_off_s = _cooling_min_off_s()
+
+            if requested_on and (_last_switch_ts is not None) and (now_ts - _last_switch_ts < min_off_s):
+                print(f"[cooling] AUTO debounce: {now_ts - _last_switch_ts:.1f}s < min_off {min_off_s}s -> suppress ON",
+                      flush=True)
                 requested_on = False
-            if requested_off and (_last_switch_ts is not None) and (now_ts - _last_switch_ts < _cooling_min_run_s()):
-                print("[cooling] AUTO debounce: min RUN not elapsed -> suppress OFF", flush=True)
+
+            if requested_off and (_last_switch_ts is not None) and (now_ts - _last_switch_ts < min_run_s):
+                print(f"[cooling] AUTO debounce: {now_ts - _last_switch_ts:.1f}s < min_run {min_run_s}s -> keep ON",
+                      flush=True)
                 requested_off = False
 
+            # Mini-Cooldown gegen doppelte Calls innerhalb eines Ticks
+            COOLDOWN = 0.8
+
             if requested_on:
-                if on_ent: call_action(on_ent, True)
+                if on_ent and _can_send("on", now_ts, COOLDOWN):
+                    call_action(on_ent, True)
                 _last_switch_ts = now_ts
+                _last_on_ts = now_ts
+                _last_cmd = "on";
+                _last_cmd_ts = now_ts
                 print(f"[cooling] AUTO request ON (~{alloc_kw:.2f} kW, frac={frac:.2f})", flush=True)
+
             elif requested_off:
-                if off_ent: call_action(off_ent, False)
+                if off_ent and _can_send("off", now_ts, COOLDOWN):
+                    call_action(off_ent, False)
                 _last_switch_ts = now_ts
+                _last_off_ts = now_ts
+                _last_cmd = "off";
+                _last_cmd_ts = now_ts
                 print(f"[cooling] AUTO request OFF (~{alloc_kw:.2f} kW, frac={frac:.2f})", flush=True)
-            else:
-                return  # kein Zustandswechsel
-            ...
+
+            # Safety: nach ON-Anforderung checken, ob HA wirklich „ready/on“ meldet; falls nicht, AUTO-Miner mit Cooling-Pflicht aus
+            if requested_on:
+                c2 = get_cooling() or {}
+                ha2_raw = c2.get("ha_on")
+                ha2 = (bool(ha2_raw) if ha2_raw is not None else _truthy(c2.get("on"), False))
+                if ha2 is False:
+                    try:
+                        for m in (list_miners() or []):
+                            if not _truthy(m.get("on"), False):  # nur laufende Miner
+                                continue
+                            if not _truthy(m.get("require_cooling"), False):
+                                continue
+                            if str(m.get("mode") or "manual").lower() != "auto":
+                                continue
+                            off_m = (m.get("action_off_entity") or "").strip()
+                            if off_m: call_action(off_m, False)
+                            update_miner(m.get("id"), on=False)
+                            print(f"[cooling] safety: AUTO miner OFF {m.get('name') or m.get('id')}", flush=True)
+                    except Exception as e:
+                        print(f"[cooling] safety off miners error: {e}", flush=True)
+
         except Exception as e:
             print(f"[cooling] apply error (auto): {e}", flush=True)
-
-
-
-
+        finally:
+            # wichtig: immer merken, was die UI zuletzt wollte (für UI-Change-Erkennung)
+            _last_ui_on_state = ui_on
