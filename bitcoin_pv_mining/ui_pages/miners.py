@@ -1018,23 +1018,6 @@ def register_callbacks(app):
             style={"opacity": 0.6, "marginLeft": "6px"}
         )
 
-        # parts = [
-        #     f"Revenue: {_money(after_tax)} {currency_symbol()}/h",
-        #     html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
-        #     f"{mix_txt}: {_money(cost_eur_h)} {currency_symbol()}/h",
-        #     mix_hint,
-        # ]
-        # if cool_share > 0.0:
-        #     parts += [
-        #         html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
-        #         f"(+ Cooling share: {_money(cool_share)} {currency_symbol()}/h)",
-        #     ]
-        # parts += [
-        #     html.Span("|", style={"padding": "0 14px", "opacity": 0.7}),
-        #     f"Δ = {_money(profit)} {currency_symbol()}/h",
-        # ]
-        # eur_txt = html.Span(parts)
-
         cs = currency_symbol()
 
         # Revenue mit €/kW nur für Miner (wenn pkw > 0)
@@ -1160,7 +1143,7 @@ def register_callbacks(app):
         if mode_auto:
             # Im Auto-Modus persistieren wir "on" nur, wenn aktuell ein cooling-pflichtiger Miner *läuft*.
             # Sonst bleibt "off" gespeichert – die Orchestrierung schaltet bei Profitabilität an.
-            desired_on = True if active_required else False
+            desired_on = bool((get_cooling() or {}).get("on"))
         else:
             # Im Manual-Modus honorieren wir den UI-Schalter
             desired_on = bool(on_val and "on" in on_val)

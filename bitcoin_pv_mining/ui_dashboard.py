@@ -380,16 +380,30 @@ def register_callbacks(app):
         cooling_pkw = 0.0
         if cooling_enabled:
             try:
-                # dashboard.collect_frame(...)
                 c = get_cooling() or {}
-                ha_on = c.get("ha_on")
-                desired_on = bool(c.get("on"))
-                cooling_running = (ha_on is True) or (ha_on is None and desired_on)
-                cooling_pkw = float(c.get("power_kw") or 0.0)
+                cooling_running = bool(c.get("effective_on", False))
+                cooling_pkw = float(c.get("power_kw") or 0.0) if cooling_running else 0.0
 
             except Exception:
                 cooling_running = False
                 cooling_pkw = 0.0
+
+        cooling_status = "" # fürs Label klar ermitteln
+        if cooling_enabled:
+            c = get_cooling() or {}
+            phase = (c.get("phase") or "").strip().lower()
+            if phase == "running":
+                cooling_status = "Cooling running"
+            elif phase == "starting":
+                cooling_status = "Cooling waiting for ready…"
+            elif phase == "stopping":
+                cooling_status = "Cooling stopping..."
+            elif phase == "running_no_ready":
+                cooling_status = "Cooling (no ready sensor) ON"
+            elif phase == "start_failed":
+                cooling_status = "Cooling start timeout"
+            else:
+                cooling_status = "Cooling off"
 
         # Miners (nur das Nötigste)
         try:
@@ -409,7 +423,7 @@ def register_callbacks(app):
             "bat_pwr": bat_pwr,
             "heater_kw": heater_kw,
             "wallbox_kw": wallbox_kw,
-            "cooling": {"enabled": cooling_enabled, "running": cooling_running, "pkw": cooling_pkw},
+            "cooling": {"enabled": cooling_enabled, "running": cooling_running, "pkw": cooling_pkw, "status": cooling_status},
             "miners": miners,
         }
 
