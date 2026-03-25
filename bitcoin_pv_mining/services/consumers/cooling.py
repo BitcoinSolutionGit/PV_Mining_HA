@@ -135,6 +135,15 @@ def _cooling_min_off_s(default: int = 20) -> int:
     except Exception:
         return default
 
+def _startup_grace_s(c: dict | None = None, default: int = 60) -> int:
+    try:
+        raw = (c or {}).get("ready_timeout_s")
+        if raw is None or str(raw).strip() == "":
+            raw = default
+        return max(int(float(raw)), default)
+    except Exception:
+        return default
+
 # --- deine CoolingConsumer.compute_desire() ersetzt durch diese Version ---
 class CoolingConsumer(BaseConsumer):
     id = "cooling"
@@ -152,7 +161,11 @@ class CoolingConsumer(BaseConsumer):
 
         is_on_desired = _truthy(c.get("on"), False)  # Wunsch (UI/Auto)
         ha_on_val = c.get("ha_on")
-        is_running = bool(ha_on_val) if ha_on_val is not None else is_on_desired
+        is_running = _truthy(c.get("effective_on"), False) if "effective_on" in c else (bool(ha_on_val) if ha_on_val is not None else is_on_desired)
+        pending_on = _truthy(c.get("pending_on"), False)
+        pending_off = _truthy(c.get("pending_off"), False)
+        startup_grace_until = _num(c.get("startup_grace_until"), 0.0)
+        startup_grace_active = pending_on and (startup_grace_until <= 0.0 or time.time() < startup_grace_until)
 
         if not enabled:
             return Desire(False, 0.0, 0.0, reason="disabled")
@@ -165,6 +178,9 @@ class CoolingConsumer(BaseConsumer):
                 return Desire(True, power_kw, power_kw, must_run=True, exact_kw=power_kw, reason="manual override")
             return Desire(False, 0.0, 0.0, reason="manual mode (off)")
 
+        if startup_grace_active and not pending_off:
+            return Desire(True, power_kw, power_kw, must_run=True, exact_kw=power_kw, reason="startup grace")
+
         # ---------- Auto-Logik ----------
         # Wenn schon ein Miner läuft, der Kühlung braucht -> anlassen
         try:
@@ -175,7 +191,7 @@ class CoolingConsumer(BaseConsumer):
         except Exception:
             active_need = False
         if active_need:
-            return Desire(True, 0.0, power_kw, exact_kw=power_kw, reason="serve active cooling miners")
+            return Desire(True, power_kw, power_kw, must_run=True, exact_kw=power_kw, reason="serve active cooling miners")
 
         # Kandidaten: auto+enabled Miner, die Cooling brauchen & sinnvolle Leistung haben
         try:
@@ -196,7 +212,7 @@ class CoolingConsumer(BaseConsumer):
         eff_grid_cost = _num(elec_price(), 0.0) + _num(elec_get("network_fee_down_value", 0.0), 0.0)
         if eff_grid_cost <= 0.0:
             # nur wenn Kandidaten existieren (oben bereits geprüft)
-            return Desire(True, 0.0, power_kw, exact_kw=power_kw, reason="neg grid price with candidates")
+            return Desire(True, power_kw, power_kw, must_run=True, exact_kw=power_kw, reason="neg grid price with candidates")
 
         # Kosten-Parameter
         pv_cost = _pv_cost_per_kwh()
@@ -239,7 +255,7 @@ class CoolingConsumer(BaseConsumer):
 
             if grid_share <= 1e-6 or after_tax >= total_cost:
                 return Desire(
-                    True, 0.0, power_kw, exact_kw=power_kw,
+                    True, power_kw, power_kw, must_run=True, exact_kw=power_kw,
                     reason=("pv_only_ok" if grid_share <= 1e-6 else f"profitable (Δ={after_tax - total_cost:.2f} €/h)")
                 )
 
@@ -264,7 +280,9 @@ class CoolingConsumer(BaseConsumer):
 
         ui_on = _truthy(c.get("on"), False)  # UI-Wunsch (unabhängig von HA)
         ha_raw = c.get("ha_on")  # True/False/None
-        running = bool(ha_raw) if ha_raw is not None else ui_on  # Istzustand
+        running = _truthy(c.get("effective_on"), False) if "effective_on" in c else (bool(ha_raw) if ha_raw is not None else ui_on)
+        pending_on = _truthy(c.get("pending_on"), False)
+        startup_grace_until = _num(c.get("startup_grace_until"), 0.0)
 
         # ---------- MANUAL ----------
         if is_manual:
@@ -278,6 +296,13 @@ class CoolingConsumer(BaseConsumer):
                             now = time.time()
                             if on_ent and _can_send("on", now, 0.8):  # kleiner Cooldown gegen Doppel-Feuer
                                 call_action(on_ent, True)
+                            set_cooling(
+                                on=True,
+                                pending_on=True,
+                                pending_off=False,
+                                startup_grace_until=now + _startup_grace_s(c),
+                                last_transition_ts=now,
+                            )
                             _last_on_ts = now
                             _last_switch_ts = now
                             _last_cmd = "on";
@@ -288,6 +313,13 @@ class CoolingConsumer(BaseConsumer):
                             now = time.time()
                             if off_ent and _can_send("off", now, 0.8):
                                 call_action(off_ent, False)
+                            set_cooling(
+                                on=False,
+                                pending_on=False,
+                                pending_off=True,
+                                startup_grace_until=0.0,
+                                last_transition_ts=now,
+                            )
                             _last_off_ts = now
                             _last_switch_ts = now
                             _last_cmd = "off";
@@ -302,11 +334,13 @@ class CoolingConsumer(BaseConsumer):
                         # Kein Ready-Sensor: wir treiben über UI-Wunsch
                         if ui_on and not running:
                             if on_ent: call_action(on_ent, True)
+                            set_cooling(on=True, pending_on=False, pending_off=False, startup_grace_until=0.0, last_transition_ts=time.time())
                             _last_on_ts = time.time()  # ⬅️ NEU
                             _last_switch_ts = time.time()
                             print("[cooling] MANUAL: no ha_on, switching ON", flush=True)
                         elif (not ui_on) and running:
                             if off_ent: call_action(off_ent, False)
+                            set_cooling(on=False, pending_on=False, pending_off=False, startup_grace_until=0.0, last_transition_ts=time.time())
                             _last_off_ts = time.time()  # ⬅️ NEU
                             _last_switch_ts = time.time()
                             print("[cooling] MANUAL: no ha_on, switching OFF", flush=True)
@@ -324,8 +358,9 @@ class CoolingConsumer(BaseConsumer):
 
         try:
             now_ts = time.time()
-            requested_on = should_on and (not running)
-            requested_off = (not should_on) and running
+            grace_active = pending_on and (startup_grace_until <= 0.0 or now_ts < startup_grace_until)
+            requested_on = should_on and (not running) and (not pending_on)
+            requested_off = (not should_on) and running and (not grace_active)
 
             # Debounce/Hysterese:
             min_run_s = _cooling_min_run_s()
@@ -347,6 +382,13 @@ class CoolingConsumer(BaseConsumer):
             if requested_on:
                 if on_ent and _can_send("on", now_ts, COOLDOWN):
                     call_action(on_ent, True)
+                set_cooling(
+                    on=True,
+                    pending_on=(ha_raw is not None),
+                    pending_off=False,
+                    startup_grace_until=(now_ts + _startup_grace_s(c)) if ha_raw is not None else 0.0,
+                    last_transition_ts=now_ts,
+                )
                 _last_switch_ts = now_ts
                 _last_on_ts = now_ts
                 _last_cmd = "on";
@@ -356,6 +398,13 @@ class CoolingConsumer(BaseConsumer):
             elif requested_off:
                 if off_ent and _can_send("off", now_ts, COOLDOWN):
                     call_action(off_ent, False)
+                set_cooling(
+                    on=False,
+                    pending_on=False,
+                    pending_off=(ha_raw is not None and running),
+                    startup_grace_until=0.0,
+                    last_transition_ts=now_ts,
+                )
                 _last_switch_ts = now_ts
                 _last_off_ts = now_ts
                 _last_cmd = "off";
@@ -363,7 +412,7 @@ class CoolingConsumer(BaseConsumer):
                 print(f"[cooling] AUTO request OFF (~{alloc_kw:.2f} kW, frac={frac:.2f})", flush=True)
 
             # Safety: nach ON-Anforderung checken, ob HA wirklich „ready/on“ meldet; falls nicht, AUTO-Miner mit Cooling-Pflicht aus
-            if requested_on:
+            if False and requested_on:  # startup grace prevents premature safety shutdowns
                 c2 = get_cooling() or {}
                 ha2_raw = c2.get("ha_on")
                 ha2 = (bool(ha2_raw) if ha2_raw is not None else _truthy(c2.get("on"), False))

@@ -13,6 +13,10 @@ _DEFAULT = {
     "enabled": True,
     "mode": "manual",  # "manual" | "auto"
     "on": False,
+    "pending_on": False,
+    "pending_off": False,
+    "startup_grace_until": 0.0,
+    "last_transition_ts": 0.0,
     "power_kw": 0.5,
     "action_on_entity": "",
     "action_off_entity": "",
@@ -34,6 +38,12 @@ def _truthy(x) -> bool:
     except Exception:
         return False
 
+def _num(x, default=0.0) -> float:
+    try:
+        return float(x)
+    except Exception:
+        return default
+
 def get_cooling() -> dict:
     base = load_yaml(COOL_DEF, {}) or {}
     ovr  = load_yaml(COOL_OVR, {}) or {}
@@ -53,8 +63,43 @@ def get_cooling() -> dict:
     except Exception:
         ha_on = None
 
-    out["on"]    = desired_on   # Wunsch bleibt Wunsch
-    out["ha_on"] = ha_on        # Istwert aus HA
+    now_ts = time.time()
+    pending_on = _truthy(out.get("pending_on"))
+    pending_off = _truthy(out.get("pending_off"))
+    startup_grace_until = _num(out.get("startup_grace_until"), 0.0)
+
+    if ha_on is True:
+        pending_on = False
+        pending_off = False
+        startup_grace_until = 0.0
+    elif ha_on is False:
+        if pending_off:
+            pending_off = False
+        if pending_on and startup_grace_until > 0.0 and now_ts >= startup_grace_until:
+            pending_on = False
+            startup_grace_until = 0.0
+
+    effective_on = False
+    phase = "off"
+    if ha_on is True:
+        effective_on = True
+        phase = "running"
+    elif pending_on:
+        effective_on = True
+        phase = "starting" if (startup_grace_until <= 0.0 or now_ts < startup_grace_until) else "start_failed"
+    elif pending_off:
+        phase = "stopping"
+    elif ha_on is None and desired_on:
+        effective_on = True
+        phase = "running_no_ready"
+
+    out["on"] = desired_on
+    out["ha_on"] = ha_on
+    out["pending_on"] = pending_on
+    out["pending_off"] = pending_off
+    out["startup_grace_until"] = startup_grace_until
+    out["effective_on"] = effective_on
+    out["phase"] = phase
     return out
 
 
@@ -64,4 +109,6 @@ def set_cooling(**changes):
     cur.update({k: v for k, v in (changes or {}).items() if v is not None})
     # dynamische Felder nicht persistieren
     cur.pop("ha_on", None)
+    cur.pop("effective_on", None)
+    cur.pop("phase", None)
     save_yaml(COOL_OVR, {"cooling": cur})
