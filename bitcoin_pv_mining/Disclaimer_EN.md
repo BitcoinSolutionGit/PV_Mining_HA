@@ -1,5 +1,5 @@
 ---
-version: 1.3
+version: 1.2
 date: 2026-04-02
 ---
 # Disclaimer
