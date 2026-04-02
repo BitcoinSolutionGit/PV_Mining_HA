@@ -210,4 +210,27 @@ def footer_license():
         style={"display": "inline-block"},
     )
 
-    return html.Div([license_btn, disclaimer_btn, readme_btn], className="footer-license", style=_container_style())
+    title_chip = html.Div("PV-Mining Dashboard", className="footer-title-chip")
+    powered_by = html.Div(
+        [
+            "Powered by ",
+            html.A(
+                "BitcoinSolution.at",
+                href="https://www.bitcoinsolution.at",
+                target="_blank",
+                rel="noopener noreferrer",
+                style={"textDecoration": "none"},
+            ),
+        ],
+        className="footer-powered-by",
+    )
+
+    return html.Div(
+        [
+            title_chip,
+            html.Div([license_btn, disclaimer_btn, readme_btn], className="footer-license-links"),
+            powered_by,
+        ],
+        className="footer-license",
+        style=_container_style(),
+    )

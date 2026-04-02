@@ -957,24 +957,17 @@ def register_callbacks(app):
 # ------------------------------
 def layout():
     return page_wrap([
-        html.H1([
-            "PV-mining dashboard by ",
-            html.A(
-                "BitcoinSolution.at",
-                href="https://www.bitcoinsolution.at",
-                target="_blank",
-                rel="noopener noreferrer",
-                style={"textDecoration": "none"}
-            )
-        ], className="page-title"),
-
         dcc.Store(id="frame", storage_type="memory"),
         dcc.Store(id="viewport", storage_type="memory"),
-        dcc.Graph(
-            id="sankey-diagram",
-            figure=go.Figure(),
-            className="dashboard-graph dashboard-sankey",
-            config={"displayModeBar": False},
+        html.H2("Current Power Allocation", className="dashboard-heading"),
+        html.Div(
+            dcc.Graph(
+                id="sankey-diagram",
+                figure=go.Figure(),
+                className="dashboard-graph dashboard-sankey",
+                config={"displayModeBar": False},
+            ),
+            className="dashboard-sankey-zone",
         ),
 
         html.Div([

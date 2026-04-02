@@ -31,7 +31,7 @@ def layout():
     fee_up   = float(elec_get_var("network_fee_up_value", 0.0) or 0.0)    # Einspeisung
 
     return html.Div([
-        html.H2("Configure your electricity values"),
+        html.H2("Configure your electricity values", className="page-title"),
 
         html.Div([
             html.Label("Pricing mode"),

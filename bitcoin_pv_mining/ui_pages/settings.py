@@ -384,7 +384,7 @@ def layout():
     cool_min_off = int(_num(set_get("cooling_min_off_s", 20), 20))
 
     return html.Div([
-        html.H2("Settings", className="settings-title"),
+        html.H2("Settings", className="page-title"),
 
     # --- NEW: SENSORS (top) ---
     _section("Sensors", [

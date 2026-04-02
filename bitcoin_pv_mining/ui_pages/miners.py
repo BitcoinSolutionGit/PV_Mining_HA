@@ -376,7 +376,7 @@ def layout():
     cooling = get_cooling() if cooling_feature else None
 
     return html.Div([
-        html.H2("Consumers"),
+        html.H2("Consumers", className="page-title"),
 
         # --- Global economics box ---
         html.Details([

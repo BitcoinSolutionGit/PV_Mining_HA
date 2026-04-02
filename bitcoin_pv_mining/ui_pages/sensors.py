@@ -37,7 +37,7 @@ def layout():
     sensor_options = [{"label": s, "value": s} for s in list_all_sensors()]
 
     return html.Div([
-        html.H2("Select your HA Sensors"),
+        html.H2("Select your HA Sensors", className="page-title"),
 
         html.Label("PV production"),
         dcc.Dropdown(

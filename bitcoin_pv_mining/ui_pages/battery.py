@@ -38,7 +38,7 @@ def layout():
     return html.Div(
         id="battery-page",
         children=[
-            html.H2("Battery settings"),
+            html.H2("Battery settings", className="page-title"),
 
             html.Div([
                 html.Label("General"),

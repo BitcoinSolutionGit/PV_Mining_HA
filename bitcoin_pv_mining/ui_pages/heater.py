@@ -77,7 +77,7 @@ def layout():
     slider_disabled_initial = (not enabled) or (not override_active)  # auto_on = not manual
 
     return html.Div([
-        html.H2("Water heater settings"),
+        html.H2("Water heater settings", className="page-title"),
 
         html.H4("Entity mapping (input_number)"),
         html.Div([

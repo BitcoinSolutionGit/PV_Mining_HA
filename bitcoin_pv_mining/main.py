@@ -945,9 +945,7 @@ def _show_dev_tab() -> bool:
     prevent_initial_call=False
 )
 def _pad_content(active_tab):
-    base = "content-area"
-    # Auf dem Dashboard kein Extra-Pad, sonst schon
-    return base if active_tab == "dashboard" else f"{base} extra-pad"
+    return "content-area"
 
 
 @server.route("/debug/clear_token")
@@ -1127,17 +1125,14 @@ app.index_string = '''
                 }
                             
               .page-title{
-                margin: 2px 0 0;                /* direkt unter die Tabs */
-                line-height: 1.2;
-                font-size: clamp(26px, 2.4vw, 36px);
+                margin: 10px 0 0;
+                line-height: 1.15;
+                font-size: clamp(1.25rem, 2vw, 1.65rem);
                 text-align: center;
+                background: var(--bg-color, #1b2230);
+                padding: 8px 0 14px;
               }
               
-              /* Nur Desktop: Nicht-Dashboard etwas weiter nach unten schieben,
-               damit das große Icon nichts überlappt */
-            @media (min-width: 900px) {
-              .content-area.extra-pad { padding-top: 64px; } /* bei Bedarf 56–80px feinjustieren */
-            }
             }
 
 
@@ -1194,7 +1189,10 @@ app.index_string = '''
                 flex:0 0 auto;
               }
   
-              .page-title{ margin: 4px 0 0; }
+              .page-title{
+                margin: 10px 0 0;
+                padding: 8px 0 14px;
+              }
             }
 
 

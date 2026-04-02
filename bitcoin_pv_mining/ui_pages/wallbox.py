@@ -24,7 +24,7 @@ def layout():
     ]}
 
     return html.Div([
-        html.H2("Wallbox"),
+        html.H2("Wallbox", className="page-title"),
 
         html.Div([
             html.Div([

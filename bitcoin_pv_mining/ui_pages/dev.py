@@ -139,7 +139,7 @@ def layout():
     ins = _install_id()
     return html.Div(
         [
-            html.H2("Developer tools", className="settings-title", style={"marginBottom": "18px"}),
+            html.H2("Developer tools", className="page-title"),
 
             html.Div(
                 [
