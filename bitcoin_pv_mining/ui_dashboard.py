@@ -15,6 +15,7 @@ from services.miners_store import list_miners
 from services.cooling_store import get_cooling
 from services.settings_store import get_var as set_get
 from services.wallbox_store import get_var as wb_get
+from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_id
 try:
     from services.dev_mock import (
         get_virtual_value,
@@ -228,17 +229,7 @@ def _device_from_width(w):
 # Sensor-Resolver
 # ------------------------------
 def resolve_sensor_id(kind: str) -> str:
-    # Minimalvariante: nur neue Keys (kein Legacy)
-    def _mget(path, key):
-        m = (load_yaml(path, {}).get("mapping", {}) or {})
-        return (m.get(key) or "").strip()
-    real = _mget(DASHB_OVR, kind) or _mget(DASHB_DEF, kind)
-    fallback = {
-        "pv_production": DEV_PV_PRODUCTION,
-        "grid_consumption": DEV_GRID_CONSUMPTION,
-        "grid_feed_in": DEV_GRID_FEED_IN,
-    }.get(kind, "")
-    return effective_entity_key(real, fallback)
+    return resolve_runtime_sensor_id(kind, allow_mock=True)
 
 def _dot(color, size="1em"):
     return html.Span(

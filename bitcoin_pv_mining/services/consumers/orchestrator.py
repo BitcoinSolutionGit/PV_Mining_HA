@@ -2,7 +2,6 @@
 from __future__ import annotations
 from typing import List, Dict, Any
 import os
-from services.utils import load_yaml
 from services.settings_store import get_var as set_get
 from services.cooling_store import get_cooling
 from services.ha_sensors import get_sensor_value
@@ -10,16 +9,10 @@ from services.electricity_store import current_price as elec_price, get_var as e
 from services.consumers.base import Ctx, now
 from services.consumers.registry import get_consumer_for_id
 from services.log import dry
-
-CONFIG_DIR = "/config/pv_mining_addon"
-SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
-SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
+from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_id
 
 def _map_id(kind: str) -> str:
-    def _mget(path, key):
-        m = (load_yaml(path, {}).get("mapping", {}) or {})
-        return (m.get(key) or "").strip()
-    return _mget(SENS_OVR, kind) or _mget(SENS_DEF, kind)
+    return resolve_runtime_sensor_id(kind, allow_mock=True)
 
 def _load_prio_ids() -> List[str]:
     raw = set_get("priority_order", None)

@@ -3,12 +3,8 @@ from __future__ import annotations
 
 import os
 from services.consumers.base import BaseConsumer, Desire, Ctx
-from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
-
-CONFIG_DIR = "/config/pv_mining_addon"
-SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
-SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
+from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_id
 
 
 def _num(x, d=0.0):
@@ -28,10 +24,7 @@ def _kw(v: float) -> float:
 
 
 def _map(key: str) -> str:
-    def _m(path, k):
-        m = (load_yaml(path, {}).get("mapping", {}) or {})
-        return (m.get(k) or "").strip()
-    return _m(SENS_OVR, key) or _m(SENS_DEF, key)
+    return resolve_runtime_sensor_id(key, allow_mock=True)
 
 
 class HouseLoadConsumer(BaseConsumer):

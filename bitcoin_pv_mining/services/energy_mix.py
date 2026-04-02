@@ -3,14 +3,10 @@ from __future__ import annotations
 from typing import Optional, Tuple
 import os
 
-from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 from services.settings_store import get_var as set_get
 from services.battery_store import get_var as bat_get
-
-CONFIG_DIR = "/config/pv_mining_addon"
-SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
-SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
+from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_id
 
 def _f(x, d=0.0):
     try:
@@ -27,10 +23,7 @@ def _kw(val: float) -> float:
     return v / 1000.0 if abs(v) > 2000 else v
 
 def _map(key: str) -> str:
-    def _mget(path, k):
-        m = (load_yaml(path, {}).get("mapping", {}) or {})
-        return (m.get(k) or "").strip()
-    return _mget(SENS_OVR, key) or _mget(SENS_DEF, key)
+    return resolve_runtime_sensor_id(key, allow_mock=True)
 
 def _read_opt_kw(map_key: str) -> Optional[float]:
     sid = _map(map_key)

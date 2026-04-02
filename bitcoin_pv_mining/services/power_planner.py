@@ -14,6 +14,7 @@ from services.settings_store import get_var as set_get
 from services.electricity_store import current_price as elec_price, get_var as elec_get
 from services.energy_mix import surplus_strict_kw as _surplus_strict_kw, incremental_mix_for
 from services.export_cap_boost import try_export_cap_boost
+from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_id
 
 # stdout logger -> Add-on-Log
 def _stdout_logger(msg: str):
@@ -48,10 +49,7 @@ def _truthy(x, default=False) -> bool:
 
 
 def _map(key: str) -> str:
-    def _mget(path, k):
-        m = (load_yaml(path, {}).get("mapping", {}) or {})
-        return (m.get(k) or "").strip()
-    return _mget(SENS_OVR, key) or _mget(SENS_DEF, key)
+    return resolve_runtime_sensor_id(key, allow_mock=True)
 
 
 def _kw(val: float) -> float:
