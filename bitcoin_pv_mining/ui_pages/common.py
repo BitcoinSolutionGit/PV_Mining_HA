@@ -15,8 +15,8 @@ ADDON_CONFIG = os.path.join(ADDON_ROOT, "config.yaml")
 DEFAULT_README_DE = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Readme_DE.md"
 DEFAULT_README_EN = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Readme_EN.md"
 DEFAULT_LICENSE_URL = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/LICENSE"
-DEFAULT_DISCLAIMER_DE = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Disclaimer_DE.md"
-DEFAULT_DISCLAIMER_EN = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Disclaimer_EN.md"
+DEFAULT_DISCLAIMER_DE = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/bitcoin_pv_mining/Disclaimer_DE.md"
+DEFAULT_DISCLAIMER_EN = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/bitcoin_pv_mining/Disclaimer_EN.md"
 
 
 def ui_background_color() -> str:

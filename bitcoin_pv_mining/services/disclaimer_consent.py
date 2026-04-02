@@ -9,13 +9,11 @@ ADDON_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DISCLAIMER_DE_CANDIDATES = [
     "/config/pv_mining_addon/Disclaimer_DE.md",
     os.path.join(ADDON_ROOT, "Disclaimer_DE.md"),
-    os.path.join(ADDON_ROOT, "..", "Disclaimer_DE.md"),
 ]
 
 DISCLAIMER_EN_CANDIDATES = [
     "/config/pv_mining_addon/Disclaimer_EN.md",
     os.path.join(ADDON_ROOT, "Disclaimer_EN.md"),
-    os.path.join(ADDON_ROOT, "..", "Disclaimer_EN.md"),
 ]
 
 
@@ -114,4 +112,3 @@ def save_user_consent(*, accepted: bool, language: str):
         "language": "de" if str(language).lower().startswith("de") else "en",
     }
     save_state(st)
-
