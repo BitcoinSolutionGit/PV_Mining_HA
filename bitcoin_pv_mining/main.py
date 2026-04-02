@@ -29,7 +29,7 @@ from ui_pages.wallbox import layout as wallbox_layout, register_callbacks as reg
 from ui_pages.heater import layout as heater_layout, register_callbacks as reg_heater
 from ui_pages.settings import layout as settings_layout, register_callbacks as reg_settings
 from ui_pages.dev import layout as dev_layout, register_callbacks as reg_dev
-from ui_pages.common import footer_license, page_wrap, ui_background_color, _readme_urls
+from ui_pages.common import footer_license, page_wrap, ui_background_color, _readme_urls, _license_url, _disclaimer_urls
 
 # beim Start
 verify_license()
@@ -132,9 +132,11 @@ def _first_run_modal():
     consent = get_consent_status()
     lang = _consent_lang(consent.get("language", "de"))
     text = CONSENT_TEXTS[lang]
-    disclaimer_href = dash.get_relative_path("/disclaimer/de" if lang == "de" else "/disclaimer/en")
+    disclaimer_de_url, disclaimer_en_url = _disclaimer_urls()
+    disclaimer_href = disclaimer_de_url if lang == "de" else disclaimer_en_url
     readme_de, readme_en = _readme_urls()
     readme_href = readme_de if lang == "de" else readme_en
+    license_href = _license_url()
     overlay_style = {"display": "flex"} if consent.get("required") else {"display": "none"}
 
     return html.Div(
@@ -213,7 +215,7 @@ def _first_run_modal():
                             html.A(
                                 text["open"],
                                 id="consent-open-license",
-                                href=dash.get_relative_path("/license"),
+                                href=license_href,
                                 target="_blank",
                                 rel="noopener noreferrer",
                                 className="custom-tab first-run-open-link",
@@ -1477,7 +1479,9 @@ def _update_first_run_modal(consent_state, language, req_read, req_license, req_
     text = CONSENT_TEXTS[lang]
     readme_de, readme_en = _readme_urls()
     readme_href = readme_de if lang == "de" else readme_en
-    disclaimer_href = dash.get_relative_path("/disclaimer/de" if lang == "de" else "/disclaimer/en")
+    disclaimer_de_url, disclaimer_en_url = _disclaimer_urls()
+    disclaimer_href = disclaimer_de_url if lang == "de" else disclaimer_en_url
+    license_href = _license_url()
     current_version = str(state.get("current_version", "unknown") or "unknown")
     current_date = str(state.get("current_date", "") or "")
     stored_version = str(state.get("stored_version", "") or "")
@@ -1511,7 +1515,7 @@ def _update_first_run_modal(consent_state, language, req_read, req_license, req_
         disclaimer_href,
         [{"label": text["required_license"], "value": "on"}],
         text["open"],
-        dash.get_relative_path("/license"),
+        license_href,
         [{"label": text["required_installation"], "value": "on"}],
         [{"label": text["optional_readme"], "value": "on"}],
         text["open"],

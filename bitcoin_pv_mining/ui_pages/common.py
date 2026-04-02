@@ -14,6 +14,9 @@ ADDON_CONFIG = os.path.join(ADDON_ROOT, "config.yaml")
 
 DEFAULT_README_DE = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Readme_DE.md"
 DEFAULT_README_EN = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Readme_EN.md"
+DEFAULT_LICENSE_URL = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/LICENSE"
+DEFAULT_DISCLAIMER_DE = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Disclaimer_DE.md"
+DEFAULT_DISCLAIMER_EN = "https://github.com/BitcoinSolutionGit/PV_Mining_HA/blob/master/Disclaimer_EN.md"
 
 
 def ui_background_color() -> str:
@@ -150,10 +153,23 @@ def _readme_urls():
     return de, en
 
 
+def _license_url():
+    cfg = load_yaml(MAIN_CFG, {}) or {}
+    docs = cfg.get("docs", {}) if isinstance(cfg, dict) else {}
+    return (docs.get("license_url") or os.getenv("LICENSE_URL") or DEFAULT_LICENSE_URL).strip()
+
+
+def _disclaimer_urls():
+    cfg = load_yaml(MAIN_CFG, {}) or {}
+    docs = cfg.get("docs", {}) if isinstance(cfg, dict) else {}
+    de = (docs.get("disclaimer_de_url") or os.getenv("DISCLAIMER_URL_DE") or DEFAULT_DISCLAIMER_DE).strip()
+    en = (docs.get("disclaimer_en_url") or os.getenv("DISCLAIMER_URL_EN") or DEFAULT_DISCLAIMER_EN).strip()
+    return de, en
+
+
 def footer_license():
-    license_href = dash.get_relative_path("/license")
-    disclaimer_de_href = dash.get_relative_path("/disclaimer/de")
-    disclaimer_en_href = dash.get_relative_path("/disclaimer/en")
+    license_href = _license_url()
+    disclaimer_de_href, disclaimer_en_href = _disclaimer_urls()
     de_url, en_url = _readme_urls()
 
     license_btn = html.A(
