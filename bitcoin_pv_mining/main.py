@@ -18,6 +18,7 @@ from services.license import set_token, verify_license, start_heartbeat_loop, is
 from services.utils import get_addon_version, load_state, save_state, iso_now, load_yaml
 from services.power_planner import plan_and_allocate_auto
 from services.settings_store import get_var as settings_get
+from services.disclaimer_consent import get_consent_status, needs_consent, save_user_consent
 from urllib.parse import urlparse, parse_qs
 
 #from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
@@ -28,7 +29,7 @@ from ui_pages.wallbox import layout as wallbox_layout, register_callbacks as reg
 from ui_pages.heater import layout as heater_layout, register_callbacks as reg_heater
 from ui_pages.settings import layout as settings_layout, register_callbacks as reg_settings
 from ui_pages.dev import layout as dev_layout, register_callbacks as reg_dev
-from ui_pages.common import footer_license, page_wrap, ui_background_color
+from ui_pages.common import footer_license, page_wrap, ui_background_color, _readme_urls
 
 # beim Start
 verify_license()
@@ -39,11 +40,228 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
 LICENSE_BASE_URL = os.getenv("LICENSE_BASE_URL", "https://license.bitcoinsolution.at")
 ENABLE_MOBILE_POLLING = os.getenv("ENABLE_MOBILE_POLLING", "0") == "1"
 
+CONSENT_TEXTS = {
+    "de": {
+        "title": "Bevor Sie fortfahren",
+        "language_label": "Language / Sprache",
+        "warning": [
+            "Diese Software steuert elektrische Verbraucher automatisiert.",
+            "Unsachgemäße Nutzung kann zu Schäden oder Gefahren führen.",
+            "Die Nutzung erfolgt auf eigene Verantwortung.",
+        ],
+        "required_read": "Ich habe den Haftungsausschluss gelesen und stimme zu",
+        "required_license": "Ich habe die Lizenz gelesen",
+        "required_installation": "Ich verstehe, dass ich für meine elektrische Installation selbst verantwortlich bin",
+        "optional_readme": "Ich habe die Dokumentation gelesen",
+        "open": "Öffnen",
+        "confirm": "Mit Klick auf 'Akzeptieren' bestätige ich, dass ich den Haftungsausschluss gelesen habe und die Nutzung auf eigene Gefahr erfolgt.",
+        "decline": "Ablehnen",
+        "accept": "Akzeptieren & Fortfahren",
+        "accepted": "Zustimmung gespeichert. Das Add-on ist jetzt freigeschaltet.",
+        "declined": "Ohne aktive Zustimmung bleibt das Add-on gesperrt.",
+        "missing_required": "Bitte beide Pflichtbestätigungen aktiv anhaken.",
+        "version": "Disclaimer-Version",
+        "previous": "bisher akzeptiert",
+    },
+    "en": {
+        "title": "Before You Continue",
+        "language_label": "Language / Sprache",
+        "warning": [
+            "This software controls electrical loads automatically.",
+            "Improper use may result in damage or safety risks.",
+            "Use at your own responsibility.",
+        ],
+        "required_read": "I have read and agree to the disclaimer",
+        "required_license": "I have read the license",
+        "required_installation": "I understand that I am responsible for my electrical installation",
+        "optional_readme": "I have read the documentation",
+        "open": "Open",
+        "confirm": "By clicking 'Accept', I confirm that I have read the disclaimer and accept full responsibility for using this software.",
+        "decline": "Decline",
+        "accept": "Accept & Continue",
+        "accepted": "Consent stored. The add-on is now unlocked.",
+        "declined": "Without active consent, the add-on remains blocked.",
+        "missing_required": "Please actively check both required confirmations.",
+        "version": "Disclaimer version",
+        "previous": "previously accepted",
+    },
+}
+
 from ui_pages.settings import (
     _prio_available_items as prio_available_items,
     _load_prio_ids as prio_load_ids,
     _prio_merge_with_stored as prio_merge,
 )
+
+
+def _consent_lang(value) -> str:
+    return "de" if str(value or "de").lower().startswith("de") else "en"
+
+
+def _consent_link_style():
+    return {
+        "display": "inline-flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "textDecoration": "none",
+        "minWidth": "104px",
+    }
+
+
+def _consent_checklist_style():
+    return {"color": "#f4f7ff", "opacity": 1}
+
+
+def _consent_label_style():
+    return {
+        "display": "inline-flex",
+        "alignItems": "flex-start",
+        "gap": "10px",
+        "lineHeight": "1.45",
+        "color": "#f4f7ff",
+        "fontWeight": "500",
+        "opacity": 1,
+    }
+
+
+def _consent_input_style():
+    return {"marginTop": "4px"}
+
+
+def _first_run_modal():
+    consent = get_consent_status()
+    lang = _consent_lang(consent.get("language", "de"))
+    text = CONSENT_TEXTS[lang]
+    disclaimer_href = dash.get_relative_path("/disclaimer/de" if lang == "de" else "/disclaimer/en")
+    readme_de, readme_en = _readme_urls()
+    readme_href = readme_de if lang == "de" else readme_en
+    overlay_style = {"display": "flex"} if consent.get("required") else {"display": "none"}
+
+    return html.Div(
+        [
+            html.Div(className="first-run-backdrop"),
+            html.Div(
+                [
+                    html.H2(text["title"], id="first-run-title", className="first-run-title"),
+                    html.Div(id="first-run-version", className="first-run-version"),
+                    html.Div(
+                        [
+                            html.Label(text["language_label"], id="first-run-language-label", htmlFor="consent-language"),
+                            dcc.Dropdown(
+                                id="consent-language",
+                                options=[
+                                    {"label": "Deutsch", "value": "de"},
+                                    {"label": "English", "value": "en"},
+                                ],
+                                value=lang,
+                                clearable=False,
+                                searchable=False,
+                                className="first-run-language",
+                            ),
+                        ],
+                        className="first-run-language-row",
+                    ),
+                    html.Div(id="first-run-warning", className="first-run-warning"),
+                    html.Div(
+                        [
+                            dcc.Checklist(
+                                id="consent-required-read",
+                                options=[{"label": text["required_read"], "value": "on"}],
+                                value=[],
+                                className="first-run-checklist",
+                                style=_consent_checklist_style(),
+                                labelStyle=_consent_label_style(),
+                                inputStyle=_consent_input_style(),
+                            ),
+                            html.A(
+                                text["open"],
+                                id="consent-open-disclaimer",
+                                href=disclaimer_href,
+                                target="_blank",
+                                rel="noopener noreferrer",
+                                className="custom-tab first-run-open-link",
+                                style=_consent_link_style(),
+                            ),
+                        ],
+                        className="first-run-checkbox-row",
+                    ),
+                    html.Div(
+                        [
+                            dcc.Checklist(
+                                id="consent-required-installation",
+                                options=[{"label": text["required_installation"], "value": "on"}],
+                                value=[],
+                                className="first-run-checklist",
+                                style=_consent_checklist_style(),
+                                labelStyle=_consent_label_style(),
+                                inputStyle=_consent_input_style(),
+                            ),
+                        ],
+                        className="first-run-checkbox-row",
+                    ),
+                    html.Div(
+                        [
+                            dcc.Checklist(
+                                id="consent-required-license",
+                                options=[{"label": text["required_license"], "value": "on"}],
+                                value=[],
+                                className="first-run-checklist",
+                                style=_consent_checklist_style(),
+                                labelStyle=_consent_label_style(),
+                                inputStyle=_consent_input_style(),
+                            ),
+                            html.A(
+                                text["open"],
+                                id="consent-open-license",
+                                href=dash.get_relative_path("/license"),
+                                target="_blank",
+                                rel="noopener noreferrer",
+                                className="custom-tab first-run-open-link",
+                                style=_consent_link_style(),
+                            ),
+                        ],
+                        className="first-run-checkbox-row",
+                    ),
+                    html.Div(
+                        [
+                            dcc.Checklist(
+                                id="consent-optional-readme",
+                                options=[{"label": text["optional_readme"], "value": "on"}],
+                                value=[],
+                                className="first-run-checklist",
+                                style=_consent_checklist_style(),
+                                labelStyle=_consent_label_style(),
+                                inputStyle=_consent_input_style(),
+                            ),
+                            html.A(
+                                text["open"],
+                                id="consent-open-readme",
+                                href=readme_href,
+                                target="_blank",
+                                rel="noopener noreferrer",
+                                className="custom-tab first-run-open-link",
+                                style=_consent_link_style(),
+                            ),
+                        ],
+                        className="first-run-checkbox-row",
+                    ),
+                    html.Div(text["confirm"], id="first-run-confirm-text", className="first-run-confirm"),
+                    html.Div(id="first-run-status", className="first-run-status"),
+                    html.Div(
+                        [
+                            html.Button(text["decline"], id="first-run-decline", n_clicks=0, className="custom-tab first-run-decline"),
+                            html.Button(text["accept"], id="first-run-accept", n_clicks=0, className="custom-tab first-run-accept is-disabled", disabled=True),
+                        ],
+                        className="first-run-actions",
+                    ),
+                ],
+                className="first-run-modal",
+            ),
+        ],
+        id="first-run-overlay",
+        className="first-run-overlay",
+        style=overlay_style,
+    )
 
 def _abs_url(path: str) -> str:
     base = request.host_url.rstrip('/')
@@ -187,17 +405,68 @@ def _merge_qs_and_hash(search: str | None, hash_: str | None) -> dict:
     return params
 
 
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
 LICENSE_CANDIDATES = [
-    "/config/pv_mining_addon/LICENSE",                         # im HA-Config
-    os.path.join(os.path.dirname(__file__), "..", "LICENSE"),  # im Add-on/Repo
+    "/config/pv_mining_addon/LICENSE",                           # im HA-Config
+    "/config/pv_mining_addon/LICENSE.md",
+    os.path.join(APP_DIR, "LICENSE"),                            # im Add-on-Container
+    os.path.join(APP_DIR, "LICENSE.md"),
+    os.path.join(APP_DIR, "..", "LICENSE"),                      # lokale Repo-Struktur
+    os.path.join(APP_DIR, "..", "LICENSE.md"),
 ]
 
-@server.route("/license")
+DISCLAIMER_DE_CANDIDATES = [
+    "/config/pv_mining_addon/Disclaimer_DE.md",
+    os.path.join(APP_DIR, "Disclaimer_DE.md"),
+    os.path.join(APP_DIR, "..", "Disclaimer_DE.md"),
+]
+
+DISCLAIMER_EN_CANDIDATES = [
+    "/config/pv_mining_addon/Disclaimer_EN.md",
+    os.path.join(APP_DIR, "Disclaimer_EN.md"),
+    os.path.join(APP_DIR, "..", "Disclaimer_EN.md"),
+]
+
 def _serve_license():
     for p in LICENSE_CANDIDATES:
         if os.path.exists(p):
             return send_file(p, mimetype="text/plain")
     return "LICENSE not found", 404
+
+
+def _serve_first_existing(paths, not_found_message):
+    for p in paths:
+        if os.path.exists(p):
+            return send_file(p, mimetype="text/plain")
+    return not_found_message, 404
+
+@server.route("/license")
+def _serve_license_root():
+    return _serve_license()
+
+@server.route(f"{prefix}license")
+def _serve_license_prefixed():
+    return _serve_license()
+
+
+@server.route("/disclaimer/de")
+def _serve_disclaimer_de_root():
+    return _serve_first_existing(DISCLAIMER_DE_CANDIDATES, "Disclaimer_DE.md not found")
+
+
+@server.route(f"{prefix}disclaimer/de")
+def _serve_disclaimer_de_prefixed():
+    return _serve_first_existing(DISCLAIMER_DE_CANDIDATES, "Disclaimer_DE.md not found")
+
+
+@server.route("/disclaimer/en")
+def _serve_disclaimer_en_root():
+    return _serve_first_existing(DISCLAIMER_EN_CANDIDATES, "Disclaimer_EN.md not found")
+
+
+@server.route(f"{prefix}disclaimer/en")
+def _serve_disclaimer_en_prefixed():
+    return _serve_first_existing(DISCLAIMER_EN_CANDIDATES, "Disclaimer_EN.md not found")
 
 
 # --- tiny formatter for engine logs ---
@@ -1108,6 +1377,7 @@ app.index_string = '''
 app.layout = page_wrap([
     dcc.Store(id="active-tab", data="dashboard"),
     dcc.Store(id="premium-enabled", data={"enabled": is_premium_enabled()}),
+    dcc.Store(id="consent-state", data=get_consent_status()),
     dcc.Store(id="prio-order", storage_type="local"),
     dcc.Store(id="flash-visible-until", data=0),
     dcc.Interval(id="flash-poll", interval=2000, n_intervals=0),
@@ -1122,6 +1392,7 @@ app.layout = page_wrap([
             "zIndex": 10,
         },
     ),
+    _first_run_modal(),
 
 
     # NEU: globaler Engine-Timer (unabhängig vom Tab)
@@ -1174,12 +1445,127 @@ app.layout = page_wrap([
 ])
 
 @app.callback(
+    Output("first-run-overlay", "style"),
+    Output("first-run-title", "children"),
+    Output("first-run-version", "children"),
+    Output("first-run-language-label", "children"),
+    Output("first-run-warning", "children"),
+    Output("consent-required-read", "options"),
+    Output("consent-open-disclaimer", "children"),
+    Output("consent-open-disclaimer", "href"),
+    Output("consent-required-license", "options"),
+    Output("consent-open-license", "children"),
+    Output("consent-open-license", "href"),
+    Output("consent-required-installation", "options"),
+    Output("consent-optional-readme", "options"),
+    Output("consent-open-readme", "children"),
+    Output("consent-open-readme", "href"),
+    Output("first-run-confirm-text", "children"),
+    Output("first-run-decline", "children"),
+    Output("first-run-accept", "children"),
+    Output("first-run-accept", "disabled"),
+    Output("first-run-accept", "className"),
+    Input("consent-state", "data"),
+    Input("consent-language", "value"),
+    Input("consent-required-read", "value"),
+    Input("consent-required-license", "value"),
+    Input("consent-required-installation", "value"),
+)
+def _update_first_run_modal(consent_state, language, req_read, req_license, req_installation):
+    state = consent_state or get_consent_status()
+    lang = _consent_lang(language or state.get("language", "de"))
+    text = CONSENT_TEXTS[lang]
+    readme_de, readme_en = _readme_urls()
+    readme_href = readme_de if lang == "de" else readme_en
+    disclaimer_href = dash.get_relative_path("/disclaimer/de" if lang == "de" else "/disclaimer/en")
+    current_version = str(state.get("current_version", "unknown") or "unknown")
+    current_date = str(state.get("current_date", "") or "")
+    stored_version = str(state.get("stored_version", "") or "")
+
+    version_parts = [f"{text['version']}: {current_version}"]
+    if current_date:
+        version_parts.append(current_date)
+    if stored_version and stored_version != current_version:
+        version_parts.append(f"{text['previous']}: {stored_version}")
+
+    warning_children = [
+        text["warning"][0],
+        html.Br(),
+        text["warning"][1],
+        html.Br(),
+        text["warning"][2],
+    ]
+
+    req_ok = ("on" in (req_read or [])) and ("on" in (req_license or [])) and ("on" in (req_installation or []))
+    accept_class = "custom-tab first-run-accept" if req_ok else "custom-tab first-run-accept is-disabled"
+    overlay_style = {"display": "flex"} if bool(state.get("required")) else {"display": "none"}
+
+    return (
+        overlay_style,
+        text["title"],
+        " • ".join(version_parts),
+        text["language_label"],
+        warning_children,
+        [{"label": text["required_read"], "value": "on"}],
+        text["open"],
+        disclaimer_href,
+        [{"label": text["required_license"], "value": "on"}],
+        text["open"],
+        dash.get_relative_path("/license"),
+        [{"label": text["required_installation"], "value": "on"}],
+        [{"label": text["optional_readme"], "value": "on"}],
+        text["open"],
+        readme_href,
+        text["confirm"],
+        text["decline"],
+        text["accept"],
+        not req_ok,
+        accept_class,
+    )
+
+
+@app.callback(
+    Output("consent-state", "data"),
+    Output("first-run-status", "children"),
+    Output("first-run-status", "className"),
+    Input("first-run-decline", "n_clicks"),
+    Input("first-run-accept", "n_clicks"),
+    State("consent-language", "value"),
+    State("consent-required-read", "value"),
+    State("consent-required-license", "value"),
+    State("consent-required-installation", "value"),
+    prevent_initial_call=True,
+)
+def _persist_first_run_consent(n_decline, n_accept, language, req_read, req_license, req_installation):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise dash.exceptions.PreventUpdate
+
+    lang = _consent_lang(language)
+    text = CONSENT_TEXTS[lang]
+    triggered = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    if triggered == "first-run-decline":
+        save_user_consent(accepted=False, language=lang)
+        return get_consent_status(), text["declined"], "first-run-status is-error"
+
+    req_ok = ("on" in (req_read or [])) and ("on" in (req_license or [])) and ("on" in (req_installation or []))
+    if not req_ok:
+        return dash.no_update, text["missing_required"], "first-run-status is-error"
+
+    save_user_consent(accepted=True, language=lang)
+    return get_consent_status(), text["accepted"], "first-run-status is-success"
+
+
+@app.callback(
     Output("planner-heartbeat", "children"),
     Input("planner-engine", "n_intervals"),
     State("premium-enabled", "data"),
     prevent_initial_call=False
 )
 def _global_engine_tick(n, premium_data):
+    if needs_consent():
+        return ""
     # nur wenn Premium aktiv ist (bei dir ja), sonst still
     enabled = bool((premium_data or {}).get("enabled"))
     if not enabled:

@@ -152,6 +152,8 @@ def _readme_urls():
 
 def footer_license():
     license_href = dash.get_relative_path("/license")
+    disclaimer_de_href = dash.get_relative_path("/disclaimer/de")
+    disclaimer_en_href = dash.get_relative_path("/disclaimer/en")
     de_url, en_url = _readme_urls()
 
     license_btn = html.A(
@@ -177,4 +179,19 @@ def footer_license():
         style={"display": "inline-block"},
     )
 
-    return html.Div([license_btn, readme_btn], className="footer-license", style=_container_style())
+    disclaimer_btn = html.Details(
+        [
+            html.Summary("Disclaimer", style={**_btn_style(), "listStyle": "none"}),
+            html.Div(
+                [
+                    html.A("DE", href=disclaimer_de_href, target="_blank", rel="noopener noreferrer", style=_chip_style()),
+                    html.A("EN", href=disclaimer_en_href, target="_blank", rel="noopener noreferrer", style=_chip_style()),
+                ],
+                className="footer-popup",
+                style=_popup_style(),
+            ),
+        ],
+        style={"display": "inline-block"},
+    )
+
+    return html.Div([license_btn, disclaimer_btn, readme_btn], className="footer-license", style=_container_style())

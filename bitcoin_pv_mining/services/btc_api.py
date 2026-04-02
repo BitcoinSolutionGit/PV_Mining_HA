@@ -30,16 +30,20 @@ LAST_UPDATE = {
 
 def load_config(CONFIG_PATH):
     try:
-        with open(CONFIG_PATH, "r") as f:
-            return yaml.safe_load(f)
-    except:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
         return {}
 
 def save_entities(CONFIG_PATH, entities):
     config = load_config(CONFIG_PATH)
-    config["entities"] = entities
-    with open(CONFIG_PATH, "w") as f:
-        yaml.dump(config, f)
+    if not isinstance(config, dict):
+        config = {}
+    config["entities"] = entities if isinstance(entities, dict) else {}
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        yaml.safe_dump(config, f, allow_unicode=True, sort_keys=False)
 
 def convert_blockchain_info_hashrate_to_th(raw_hashrate):
     try:
@@ -59,7 +63,11 @@ def update_btc_data_periodically(CONFIG_PATH):
     def updater():
         while True:
             config = load_config(CONFIG_PATH)
+            if not isinstance(config, dict):
+                config = {}
             entities = config.get("entities", {})
+            if not isinstance(entities, dict):
+                entities = {}
             now = time.time()
             updated = False
 

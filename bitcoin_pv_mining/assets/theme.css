@@ -241,6 +241,7 @@ div[class$="-menu"],
 .VirtualizedSelectFocusedOption,
 div[class$="-option"] {
   background: transparent !important;
+  color: var(--app-text) !important;
 }
 
 .dash-dropdown,
@@ -649,6 +650,56 @@ div[class$="-option--is-selected"] {
   box-shadow: var(--app-shadow-soft);
 }
 
+#app-root div[class*="-menu"],
+#app-root div[class*="-Menu"],
+#app-root div[class*="-menuList"],
+#app-root div[class*="-MenuList"],
+#app-root div[class*="-option"],
+#app-root div[class*="-Option"],
+div[class*="-menu"],
+div[class*="-Menu"],
+div[class*="-menuList"],
+div[class*="-MenuList"],
+div[class*="-option"],
+div[class*="-Option"],
+div[role="listbox"],
+div[role="option"] {
+  color: var(--app-text) !important;
+}
+
+#app-root div[class*="-menu"],
+#app-root div[class*="-Menu"],
+#app-root div[class*="-menuList"],
+#app-root div[class*="-MenuList"],
+div[class*="-menu"],
+div[class*="-Menu"],
+div[class*="-menuList"],
+div[class*="-MenuList"],
+div[role="listbox"] {
+  background: rgba(16, 22, 34, 0.98) !important;
+  background-color: rgba(16, 22, 34, 0.98) !important;
+  border-color: var(--app-border) !important;
+}
+
+#app-root div[class*="-option"],
+#app-root div[class*="-Option"],
+div[class*="-option"],
+div[class*="-Option"],
+div[role="option"] {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+#app-root div[class*="-option"]:hover,
+#app-root div[class*="-Option"]:hover,
+#app-root div[role="option"]:hover,
+div[class*="-option"]:hover,
+div[class*="-Option"]:hover,
+div[role="option"]:hover {
+  background: rgba(95, 224, 216, 0.16) !important;
+  background-color: rgba(95, 224, 216, 0.16) !important;
+}
+
 @media (max-width: 899px) {
   .page-title {
     font-size: clamp(1.8rem, 8vw, 2.5rem);
@@ -657,5 +708,235 @@ div[class$="-option--is-selected"] {
 
   .footer-stats {
     grid-template-columns: 1fr;
+  }
+}
+
+.first-run-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 18px;
+}
+
+.first-run-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(7, 10, 18, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.first-run-modal {
+  position: relative;
+  z-index: 1;
+  width: min(760px, 100%);
+  max-height: calc(100vh - 56px);
+  overflow-y: auto;
+  border: 1px solid var(--app-border-strong);
+  border-radius: 24px;
+  padding: 24px 24px 22px;
+  background: linear-gradient(180deg, rgba(20, 28, 42, 0.98), rgba(14, 20, 31, 0.98));
+  box-shadow: 0 36px 90px rgba(0, 0, 0, 0.42);
+}
+
+.first-run-title {
+  margin: 0 0 8px;
+  font-size: clamp(28px, 3vw, 38px);
+}
+
+.first-run-version {
+  margin-bottom: 18px;
+  color: var(--app-text-muted);
+  font-size: 14px;
+}
+
+.first-run-language-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.first-run-warning {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 141, 141, 0.28);
+  border-radius: 16px;
+  background: rgba(255, 141, 141, 0.08);
+  color: #ffd8d8;
+  line-height: 1.55;
+  font-weight: 600;
+}
+
+.first-run-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.first-run-checkbox-row:first-of-type {
+  border-top: 0;
+}
+
+.first-run-checklist {
+  flex: 1 1 auto;
+}
+
+.first-run-checklist label {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 10px;
+  line-height: 1.45;
+  color: var(--app-text);
+  font-weight: 500;
+}
+
+.first-run-checklist label,
+.first-run-checklist label *,
+.first-run-checklist span,
+.first-run-checklist div {
+  color: var(--app-text) !important;
+  opacity: 1 !important;
+}
+
+#consent-required-read label,
+#consent-required-read label *,
+#consent-required-read span,
+#consent-required-read div,
+#consent-required-installation label,
+#consent-required-installation label *,
+#consent-required-installation span,
+#consent-required-installation div,
+#consent-required-license label,
+#consent-required-license label *,
+#consent-required-license span,
+#consent-required-license div,
+#consent-optional-readme label,
+#consent-optional-readme label *,
+#consent-optional-readme span,
+#consent-optional-readme div {
+  color: #f4f7ff !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+body.first-run-active .Select-menu-outer,
+body.first-run-active .Select-menu,
+body.first-run-active .VirtualizedSelectOption,
+body.first-run-active .VirtualizedSelectFocusedOption,
+body.first-run-active div[class$="-menu"],
+body.first-run-active div[class$="-menu-list"],
+body.first-run-active div[class$="-Menu"],
+body.first-run-active div[class$="-MenuList"],
+body.first-run-active div[class*="menu-portal"],
+body.first-run-active div[class*="MenuPortal"],
+body.first-run-active div[role="listbox"] {
+  border: 1px solid var(--app-border) !important;
+  border-radius: var(--app-radius-sm) !important;
+  background: #eef2f7 !important;
+  background-color: #eef2f7 !important;
+  box-shadow: var(--app-shadow-soft) !important;
+}
+
+body.first-run-active .Select-option,
+body.first-run-active .VirtualizedSelectOption,
+body.first-run-active .VirtualizedSelectFocusedOption,
+body.first-run-active div[class$="-option"],
+body.first-run-active div[class$="-Option"],
+body.first-run-active div[role="option"],
+body.first-run-active div[role="listbox"],
+body.first-run-active div[role="listbox"] * {
+  color: #1f2937 !important;
+}
+
+body.first-run-active .Select-option,
+body.first-run-active .VirtualizedSelectOption,
+body.first-run-active .VirtualizedSelectFocusedOption,
+body.first-run-active div[class$="-option"],
+body.first-run-active div[class$="-Option"],
+body.first-run-active div[role="option"] {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+body.first-run-active .Select-option.is-focused,
+body.first-run-active .Select-option:hover,
+body.first-run-active .VirtualizedSelectFocusedOption,
+body.first-run-active div[class$="-option--is-focused"],
+body.first-run-active div[role="option"]:hover {
+  background: rgba(95, 224, 216, 0.16) !important;
+  background-color: rgba(95, 224, 216, 0.16) !important;
+  color: #111827 !important;
+}
+
+body.first-run-active .Select-option.is-selected,
+body.first-run-active div[class$="-option--is-selected"],
+body.first-run-active div[aria-selected="true"] {
+  background: rgba(95, 224, 216, 0.22) !important;
+  background-color: rgba(95, 224, 216, 0.22) !important;
+  color: #111827 !important;
+}
+
+.first-run-checklist input {
+  margin-top: 4px;
+}
+
+.first-run-open-link {
+  flex: 0 0 auto;
+}
+
+.first-run-confirm {
+  margin-top: 18px;
+  color: var(--app-text-soft);
+  line-height: 1.55;
+}
+
+.first-run-status {
+  min-height: 22px;
+  margin-top: 12px;
+  font-weight: 600;
+}
+
+.first-run-status.is-error {
+  color: #ffb3b3;
+}
+
+.first-run-status.is-success {
+  color: #9bf0b8;
+}
+
+.first-run-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.first-run-accept.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 680px) {
+  .first-run-modal {
+    padding: 18px 16px 16px;
+  }
+
+  .first-run-checkbox-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .first-run-actions {
+    flex-direction: column-reverse;
+  }
+
+  .first-run-actions .custom-tab,
+  .first-run-open-link {
+    width: 100%;
   }
 }
