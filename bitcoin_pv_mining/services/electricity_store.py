@@ -2,7 +2,13 @@
 import os
 from services.utils import load_yaml, save_yaml
 from services.ha_sensors import get_sensor_value
-from services.dev_mock import effective_entity_key, DEV_ELECTRICITY_PRICE
+try:
+    from services.dev_mock import effective_entity_key, DEV_ELECTRICITY_PRICE
+except Exception:
+    DEV_ELECTRICITY_PRICE = "mock:electricity_price"
+
+    def effective_entity_key(entity_id, _mock_key):
+        return (entity_id or "").strip()
 
 CONFIG_DIR = "/config/pv_mining_addon"
 ELEC_DEF = os.path.join(CONFIG_DIR, "electricity.yaml")

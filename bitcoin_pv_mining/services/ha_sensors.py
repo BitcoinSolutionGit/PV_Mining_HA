@@ -2,7 +2,11 @@
 import os
 import requests
 from .utils import load_yaml
-from .dev_mock import get_mock_sensor_value
+try:
+    from .dev_mock import get_mock_sensor_value
+except Exception:
+    def get_mock_sensor_value(_entity_id):
+        return None
 
 CONFIG_DIR = "/config/pv_mining_addon"
 

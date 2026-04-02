@@ -7,7 +7,23 @@ from dash.exceptions import PreventUpdate
 
 from services.utils import load_state
 from services.license import set_token, verify_license, is_premium_enabled
-from services.dev_mock import collect_specs, get_values, is_enabled as mock_is_enabled, set_config as set_mock_config
+try:
+    from services.dev_mock import collect_specs, get_values, is_enabled as mock_is_enabled, set_config as set_mock_config
+    MOCK_AVAILABLE = True
+except Exception:
+    MOCK_AVAILABLE = False
+
+    def collect_specs():
+        return []
+
+    def get_values():
+        return {}
+
+    def mock_is_enabled():
+        return False
+
+    def set_mock_config(enabled, values):
+        return None
 
 LICENSE_BASE_URL = os.getenv("LICENSE_BASE_URL", "https://license.bitcoinsolution.at")
 
@@ -23,6 +39,12 @@ def _install_id() -> str:
 def _mock_table():
     specs = collect_specs()
     values = get_values()
+
+    if not MOCK_AVAILABLE:
+        return html.Div(
+            "Mock data support is not installed in this build. The addon runs with real Home Assistant data only.",
+            className="settings-subtle-text",
+        )
 
     rows = []
     for spec in specs:
@@ -236,6 +258,8 @@ def register_callbacks(app):
     def _save_mock(n, enabled, ids, values):
         if not n:
             raise PreventUpdate
+        if not MOCK_AVAILABLE:
+            return "Mock data support is not installed in this build."
 
         payload = {}
         for ident, value in zip(ids or [], values or []):

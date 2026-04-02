@@ -15,22 +15,42 @@ from services.miners_store import list_miners
 from services.cooling_store import get_cooling
 from services.settings_store import get_var as set_get
 from services.wallbox_store import get_var as wb_get
-from services.dev_mock import (
-    get_virtual_value,
-    effective_entity_key,
-    DEV_PV_PRODUCTION,
-    DEV_GRID_CONSUMPTION,
-    DEV_GRID_FEED_IN,
-    DEV_BATTERY_SOC,
-    DEV_BATTERY_VOLTAGE,
-    DEV_BATTERY_CURRENT,
-    DEV_BATTERY_POWER,
-    DEV_HEATER_WATER_TEMP,
-    DEV_HEATER_PERCENT,
-    DEV_WALLBOX_POWER,
-    VIRTUAL_BTC_PRICE,
-    VIRTUAL_BTC_HASHRATE,
-)
+try:
+    from services.dev_mock import (
+        get_virtual_value,
+        effective_entity_key,
+        DEV_PV_PRODUCTION,
+        DEV_GRID_CONSUMPTION,
+        DEV_GRID_FEED_IN,
+        DEV_BATTERY_SOC,
+        DEV_BATTERY_VOLTAGE,
+        DEV_BATTERY_CURRENT,
+        DEV_BATTERY_POWER,
+        DEV_HEATER_WATER_TEMP,
+        DEV_HEATER_PERCENT,
+        DEV_WALLBOX_POWER,
+        VIRTUAL_BTC_PRICE,
+        VIRTUAL_BTC_HASHRATE,
+    )
+except Exception:
+    def get_virtual_value(_key, default=None):
+        return default
+
+    def effective_entity_key(entity_id, _mock_key):
+        return (entity_id or "").strip()
+
+    DEV_PV_PRODUCTION = "mock:pv_production"
+    DEV_GRID_CONSUMPTION = "mock:grid_consumption"
+    DEV_GRID_FEED_IN = "mock:grid_feed_in"
+    DEV_BATTERY_SOC = "mock:battery_soc"
+    DEV_BATTERY_VOLTAGE = "mock:battery_voltage"
+    DEV_BATTERY_CURRENT = "mock:battery_current"
+    DEV_BATTERY_POWER = "mock:battery_power"
+    DEV_HEATER_WATER_TEMP = "mock:heater_water_temp"
+    DEV_HEATER_PERCENT = "mock:heater_percent"
+    DEV_WALLBOX_POWER = "mock:wallbox_power"
+    VIRTUAL_BTC_PRICE = "mock:btc_price"
+    VIRTUAL_BTC_HASHRATE = "mock:btc_hashrate"
 from ui_pages.common import footer_license, page_wrap
 
 
