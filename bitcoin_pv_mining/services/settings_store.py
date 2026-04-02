@@ -11,9 +11,13 @@ os.makedirs(CONFIG_DIR, exist_ok=True)
 
 def _get(data: dict, path: str, default=None):
     cur = data or {}
-    for k in path.split("."):
+    parts = path.split(".")
+    for idx, k in enumerate(parts):
         if not isinstance(cur, dict):
             return default
+        remaining = ".".join(parts[idx:])
+        if remaining in cur:
+            return cur.get(remaining, default)
         cur = cur.get(k)
         if cur is None:
             return default

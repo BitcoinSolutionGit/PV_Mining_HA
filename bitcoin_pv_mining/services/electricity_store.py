@@ -2,6 +2,7 @@
 import os
 from services.utils import load_yaml, save_yaml
 from services.ha_sensors import get_sensor_value
+from services.dev_mock import effective_entity_key, DEV_ELECTRICITY_PRICE
 
 CONFIG_DIR = "/config/pv_mining_addon"
 ELEC_DEF = os.path.join(CONFIG_DIR, "electricity.yaml")
@@ -105,7 +106,7 @@ def _normalize_to_eur_per_kwh(value):
 
 def current_price() -> float | None:
     mode = str(get_var("pricing_mode", "") or "").lower()
-    sensor_id = resolve_sensor_id("current_electricity_price")
+    sensor_id = effective_entity_key(resolve_sensor_id("current_electricity_price"), DEV_ELECTRICITY_PRICE)
     if mode not in ("fixed", "dynamic"):
         mode = "dynamic" if sensor_id else "fixed"
 

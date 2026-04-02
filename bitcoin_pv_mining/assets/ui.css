@@ -1,38 +1,118 @@
-/* === Einheitliche Input-Höhe / Rahmen === */
-:root {
-  --ui-border: #3a3a3a; /* dunkles Grau wie unter dem Save-Button */
-  --ui-height: 32px;    /* Zielhöhe für Inputs & Dropdown */
-  --ui-radius: 6px;
+html,
+body {
+  margin: 0;
+  padding: 0;
 }
 
-/* dcc.Input, dcc.RadioItems etc. bleiben wie sie sind – hier nur Dropdown: */
-#set-btc-currency { width: 120px; }          /* gleiche Breite wie Block reward */
-#set-btc-currency .Select-control,
-#set-btc-currency div[class$="-control"] {   /* reagiert auf react-select v1 & v2 */
-  min-height: var(--ui-height);
-  height: var(--ui-height);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius);
-  box-shadow: none;
+.header-bar {
+  border-bottom: 0 !important;
+  box-shadow: none !important;
 }
 
-/* Inhalt vertikal mittig */
-#set-btc-currency .Select-placeholder,
-#set-btc-currency .Select-value-label {      /* v1 */
-  line-height: calc(var(--ui-height) - 2px);
+#flash-area {
+  max-width: var(--app-content-max);
+  margin: 0 auto;
 }
-#set-btc-currency div[class$="-singleValue"], /* v2 */
-#set-btc-currency div[class$="-placeholder"] {
+
+#flash-area > div {
+  margin: 0 auto;
+  max-width: 720px;
+}
+
+#tabs-content > div {
+  width: 100%;
+}
+
+#prio-list button {
+  min-width: 34px;
+  min-height: 34px;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: var(--app-text) !important;
+}
+
+#prio-list button:disabled {
+  opacity: 0.45;
+}
+
+#set-btc-currency {
+  width: 120px;
+}
+
+.dashboard-graph .js-plotly-plot,
+.dashboard-graph .plot-container,
+.dashboard-graph .svg-container {
+  background: transparent !important;
+}
+
+.dashboard-graph .modebar {
+  background: rgba(12, 18, 30, 0.74) !important;
+  border-radius: 12px;
+}
+
+.settings-card .dash-dropdown,
+.settings-card .Select,
+.settings-card .Select-control,
+.settings-card div[class$="-control"] {
+  width: 100%;
+}
+
+.settings-card .Select-value-label,
+.settings-card .Select-placeholder,
+.settings-card div[class$="-singleValue"],
+.settings-card div[class$="-placeholder"] {
+  line-height: 38px;
+}
+
+.settings-card .Select-input > input {
+  color: var(--app-text) !important;
+}
+
+.settings-card .dash-checklist,
+.settings-card .dash-radioitems {
+  color: var(--app-text-soft);
+}
+
+.settings-card .dash-checklist label,
+.settings-card .dash-radioitems label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 18px;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--app-text-soft);
+}
+
+.settings-card .dash-checklist input,
+.settings-card .dash-radioitems input {
   margin: 0;
 }
 
-/* Pfeil-Container passend hoch */
-#set-btc-currency div[class$="-indicators"] {
-  height: var(--ui-height);
+.footer-license details summary::-webkit-details-marker {
+  display: none;
 }
 
-/* Fokus ohne Blauschimmer, gleiche Rahmenfarbe */
-#set-btc-currency .is-focused:not(.is-open) > .Select-control {
-  border-color: var(--ui-border);
-  box-shadow: none;
+.footer-license details summary {
+  list-style: none;
+}
+
+@media (max-width: 680px) {
+  .settings-card {
+    padding: 16px 14px 14px;
+  }
+
+  .settings-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .settings-page-actions {
+    align-items: stretch;
+  }
+
+  .settings-page-actions .custom-tab {
+    width: 100%;
+  }
 }

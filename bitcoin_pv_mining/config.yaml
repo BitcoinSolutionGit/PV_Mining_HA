@@ -1,5 +1,5 @@
 name: "Bitcoin PV-mining"
-version: "0.6.75"
+version: "0.7.01"
 slug: "bitcoin_pv_mining"
 description: "PV-based Bitcoin mining control with web UI"
 ingress: true
@@ -30,7 +30,7 @@ environment:
 
 pv_mining_addon:
   ui:
-    background_color: "#B0CCF7"    # aktuell das hellblau
+    background_color: "#1b2230"    # dark-first base, theme.css adds the glow/gradient layers
 
   # input_boolean.bitcoin_miner1_toggle switchen zum einschalten
   # oder direkt das script: bitcoin_miner1_ein:

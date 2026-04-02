@@ -2,6 +2,7 @@
 import os
 import requests
 from .utils import load_yaml
+from .dev_mock import get_mock_sensor_value
 
 CONFIG_DIR = "/config/pv_mining_addon"
 
@@ -14,6 +15,10 @@ def get_sensor_value(entity_id):
        - lowercase string ('on','off','unknown','unavailable', ...) otherwise
        - None if unreachable
     """
+    mock = get_mock_sensor_value(entity_id)
+    if mock is not None:
+        return mock
+
     token = get_ha_token()
     if not token or not entity_id:
         return None

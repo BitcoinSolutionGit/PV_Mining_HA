@@ -17,7 +17,7 @@ from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 from services.cooling_store import get_cooling, set_cooling
 from services.ha_entities import list_actions, call_action, get_entity_state, is_on_like, list_ready_entities
-from ui_pages.common import footer_license
+from ui_pages.common import footer_license, number_stepper
 from services.power_planner import incremental_mix_for
 
 
@@ -29,6 +29,10 @@ from services.power_planner import plan_and_allocate_auto
 CONFIG_DIR = "/config/pv_mining_addon"
 SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
 SENS_OVR = os.path.join(CONFIG_DIR, "sensors.local.yaml")
+UI_BORDER = "rgba(191, 205, 229, 0.18)"
+UI_CARD_BG = "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))"
+UI_TEXT = "#f4f7ff"
+UI_TEXT_SOFT = "#c9d4e8"
 
 def _ha_headers():
     tok = os.getenv("SUPERVISOR_TOKEN") or ""
@@ -302,36 +306,45 @@ def _cool_card(c: dict, sym: str, ha_actions: list[dict], ready_options: list[di
         ], style={"flex": "1"}),
         html.Div([
             html.Label("Timeout (s)"),
-            dcc.Input(id="cool-ready-timeout", type="number", step=1, min=5,
-                      value=int(c.get("ready_timeout_s", 60) or 60),
-                      style={"width": "120px"})
+            number_stepper("cool-ready-timeout", int(c.get("ready_timeout_s", 60) or 60), step=1, min=5, width_px=140)
         ], style={"marginLeft": "10px"}),
 
         # Leistung
         html.Div([
             html.Div([ html.Label("Cooling power (kW)"),
-                dcc.Input(id="cool-pwr", type="number", step=0.01,
-                          value=float(c.get("power_kw",0.0) or 0.0),
-                          style={"width":"160px"},
-                          persistence=True, persistence_type="memory") ], style={"flex":"1"}),
+                number_stepper("cool-pwr", float(c.get("power_kw",0.0) or 0.0), step=0.01, width_px=160, persistence=True, persistence_type="memory") ], style={"flex":"1"}),
         ], style={"display":"flex","gap":"10px","marginTop":"8px"}),
 
         html.Div(id="cool-kpi", style={"marginTop":"8px", "fontWeight":"bold"}),
         html.Div(id="cool-ampel", style={"marginTop": "6px"}),
 
         html.Button("Save", id="cool-save", className="custom-tab", style={"marginTop":"8px"}),
-        html.Span("  (Cooling must run before any miner switches on)", style={"marginLeft":"8px","opacity":0.7}),
+        html.Span("  (Cooling must run before any miner switches on)", style={"marginLeft":"8px","opacity":0.7, "color": UI_TEXT_SOFT}),
 
         html.Div(id="cool-lock-note", style={"marginTop": "6px", "opacity": 0.75})
-    ], style={"border":"2px solid #888","borderRadius":"8px","padding":"10px","background":"#fafafa"})
+    ], style={
+        "border": f"1px solid {UI_BORDER}",
+        "borderRadius": "18px",
+        "padding": "16px 18px",
+        "background": UI_CARD_BG,
+        "boxShadow": "0 24px 60px rgba(5, 10, 20, 0.32)",
+        "color": UI_TEXT,
+    })
 
 
 
 def _miner_card_style(idx: int, premium_on: bool) -> dict:
-    base = {"borderRadius": "8px", "padding": "10px", "background": "#fafafa", "border": "2px solid"}
+    base = {
+        "borderRadius": "18px",
+        "padding": "16px 18px",
+        "background": UI_CARD_BG,
+        "border": "1px solid",
+        "boxShadow": "0 24px 60px rgba(5, 10, 20, 0.32)",
+        "color": UI_TEXT,
+    }
     if idx == 0:
         # Miner 1: neutral wie Cooling
-        return {**base, "borderColor": "#888"}
+        return {**base, "borderColor": UI_BORDER}
     # Miner 2..n: bunt wie die Premium-Buttons (grün = ok, rot = locked)
     return {**base, "borderColor": ("#27ae60" if premium_on else "#e74c3c")}
 
@@ -370,20 +383,20 @@ def layout():
             html.Summary("Global mining economics"),
             html.Div([
                 html.Label("BTC price"),
-                dcc.Input(id="miners-btc-eur", type="number", step=0.01, value=btc_eur, style={"width":"160px"}),
+                number_stepper("miners-btc-eur", btc_eur, step=0.01, width_px=160),
                 html.Span(" €"),
 
                 html.Span("   "),
                 html.Label("Network hashrate (TH/s)", style={"marginLeft":"16px"}),
-                dcc.Input(id="miners-net-ths", type="number", step=1e6, value=net_ths, style={"width":"180px"}),
+                number_stepper("miners-net-ths", net_ths, step=1e6, width_px=180),
 
                 html.Span("   "),
                 html.Label("Block reward (BTC)", style={"marginLeft":"16px"}),
-                dcc.Input(id="miners-reward-btc", type="number", step=0.0001, value=reward, style={"width":"120px"}),
+                number_stepper("miners-reward-btc", reward, step=0.0001, width_px=140),
 
                 html.Span("   "),
                 html.Label("Sell tax % (KESt)", style={"marginLeft":"16px"}),
-                dcc.Input(id="miners-tax", type="number", step=0.1, value=tax_pct, style={"width":"100px"}),
+                number_stepper("miners-tax", tax_pct, step=0.1, width_px=140),
 
                 html.Button("Save", id="miners-settings-save", className="custom-tab", style={"marginLeft":"16px"}),
                 html.Span(f"   SAT/TH/h: {sat_th_h:,.2f}".replace(",", "X").replace(".", ",").replace("X","."), id="miners-satthh", style={"marginLeft":"16px","fontWeight":"bold"})
@@ -488,15 +501,11 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
         html.Div([
             html.Div([
                 html.Label("Hashrate (TH/s)"),
-                dcc.Input(id={"type": "m-hash", "mid": mid}, type="number", step=0.01,
-                          value=_num(m.get("hashrate_ths", 0)), style={"width": "100%"},
-                          persistence=True, persistence_type="memory"),
+                number_stepper({"type": "m-hash", "mid": mid}, _num(m.get("hashrate_ths", 0)), step=0.01, width_px=220, persistence=True, persistence_type="memory"),
             ], style={"flex":"1"}),
             html.Div([
                 html.Label("Power (kW)"),
-                dcc.Input(id={"type": "m-pwr", "mid": mid}, type="number", step=0.01,
-                          value=_num(m.get("power_kw", 0)), style={"width": "100%"},
-                          persistence=True, persistence_type="memory"),
+                number_stepper({"type": "m-pwr", "mid": mid}, _num(m.get("power_kw", 0)), step=0.01, width_px=220, persistence=True, persistence_type="memory"),
             ], style={"flex":"1","marginLeft":"10px"}),
         ], style={"display":"flex","gap":"10px","marginTop":"8px","flexWrap":"wrap"}),
 
@@ -504,13 +513,7 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
         html.Div([
             html.Div([
                 html.Label("Minimum runtime (min)"),
-                dcc.Input(
-                    id={"type": "m-minrun", "mid": mid},
-                    type="number", step=1, min=0,
-                    value=_minrun_val,
-                    style={"width": "160px"},
-                    persistence=True, persistence_type="memory",
-                ),
+                number_stepper({"type": "m-minrun", "mid": mid}, _minrun_val, step=1, min=0, width_px=160, persistence=True, persistence_type="memory"),
                 html.Span("  (Default 1; 0 = no lock)", style={"marginLeft":"8px","opacity":0.7}),
             ], style={"flex":"1"}),
         ], style={"display":"flex","gap":"10px","marginTop":"8px"}),

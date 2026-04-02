@@ -138,6 +138,8 @@ server = app.server  # Dash-Server
 
 def _show_dev_tab() -> bool:
     try:
+        if not os.getenv("SUPERVISOR_TOKEN"):
+            return True
         cfg = load_yaml(CONFIG_PATH, {}) or {}
         ff  = cfg.get("feature_flags") or {}
         return bool(ff.get("show_dev_tab", False))
@@ -146,6 +148,8 @@ def _show_dev_tab() -> bool:
 
 def _show_battery_tab() -> bool:
     try:
+        if not os.getenv("SUPERVISOR_TOKEN"):
+            return True
         from services.utils import load_yaml
         cfg = load_yaml(CONFIG_PATH, {}) or {}
         ff  = cfg.get("feature_flags") or {}
@@ -155,6 +159,8 @@ def _show_battery_tab() -> bool:
 
 def _show_wallbox_tab() -> bool:
     try:
+        if not os.getenv("SUPERVISOR_TOKEN"):
+            return True
         from services.utils import load_yaml
         cfg = load_yaml(CONFIG_PATH, {}) or {}
         ff  = cfg.get("feature_flags") or {}
@@ -563,6 +569,7 @@ def toggle_premium_button(data):
 #def switch_tabs(n1, n2, n3, n4, n5, n6, n7, n8, n9, premium_data):
 def switch_tabs(n1, n2, n3, n4, n5, n6, n7, premium_data):
     enabled = bool((premium_data or {}).get("enabled"))
+    local_preview = not os.getenv("SUPERVISOR_TOKEN")
     ctx = dash.callback_context
     if not ctx.triggered:
         raise dash.exceptions.PreventUpdate
@@ -576,11 +583,11 @@ def switch_tabs(n1, n2, n3, n4, n5, n6, n7, premium_data):
     #elif btn == "btn-electricity":
     #    target = "electricity"
     elif btn == "btn-battery":
-        target = "battery" if (SHOW_BATTERY_TAB and enabled) else "dashboard"  # Premium required
+        target = "battery" if (SHOW_BATTERY_TAB and (enabled or local_preview)) else "dashboard"
     elif btn == "btn-heater":
-        target = "heater" if enabled else "dashboard"   # Premium required
+        target = "heater" if (enabled or local_preview) else "dashboard"
     elif btn == "btn-wallbox":
-        target = "wallbox" if (SHOW_WALLBOX_TAB and enabled) else "dashboard"  # Premium required
+        target = "wallbox" if (SHOW_WALLBOX_TAB and (enabled or local_preview)) else "dashboard"
     elif btn == "btn-settings":
         target = "settings"
     elif btn == "btn-dev":
@@ -652,6 +659,8 @@ def style_miners_button(premium_data, active_tab):
 
 def _show_dev_tab() -> bool:
     try:
+        if not os.getenv("SUPERVISOR_TOKEN"):
+            return True
         from services.utils import load_yaml
         cfg = load_yaml(CONFIG_PATH, {}) or {}
         ff  = cfg.get("feature_flags") or {}
@@ -1109,7 +1118,7 @@ app.layout = page_wrap([
         style={
             "margin": "0",                         # keine top-margin (verhindert weißen Balken)
             "padding": "8px 0",                    # optischer Abstand statt margin
-            "backgroundColor": ui_background_color(),  # nimmt deine Config-Farbe
+            "backgroundColor": "transparent",
             "zIndex": 10,
         },
     ),
@@ -1151,7 +1160,7 @@ app.layout = page_wrap([
         html.Button("Activate Premium", id="btn-premium",
                     n_clicks=0, className="custom-tab premium-btn premium-right"),
     ], id="tab-buttons", className="header-bar",
-        style={"backgroundColor": ui_background_color(), "padding": "6px 10px"}),
+        style={"backgroundColor": "transparent", "padding": "6px 10px"}),
 
     html.Div(
         id="tabs-content",

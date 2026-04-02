@@ -15,6 +15,22 @@ from services.miners_store import list_miners
 from services.cooling_store import get_cooling
 from services.settings_store import get_var as set_get
 from services.wallbox_store import get_var as wb_get
+from services.dev_mock import (
+    get_virtual_value,
+    effective_entity_key,
+    DEV_PV_PRODUCTION,
+    DEV_GRID_CONSUMPTION,
+    DEV_GRID_FEED_IN,
+    DEV_BATTERY_SOC,
+    DEV_BATTERY_VOLTAGE,
+    DEV_BATTERY_CURRENT,
+    DEV_BATTERY_POWER,
+    DEV_HEATER_WATER_TEMP,
+    DEV_HEATER_PERCENT,
+    DEV_WALLBOX_POWER,
+    VIRTUAL_BTC_PRICE,
+    VIRTUAL_BTC_HASHRATE,
+)
 from ui_pages.common import footer_license, page_wrap
 
 
@@ -26,13 +42,28 @@ CONFIG_PATH = MAIN_CFG  # für load_config()
 
 GHOST_KW = 0.001                 # 1 Watt in kW
 
+TEXT_PRIMARY = "#f4f7ff"
+TEXT_MUTED = "#98a7c4"
+PLOT_LINE = "rgba(191, 205, 229, 0.18)"
+
+PV_GREEN = "#29c36a"
+GRID_RED = "#ef5350"
+GRID_FEED_RED = "#ff6b6b"
+HOUSE_GREY = "#94a3b8"
+HEATER_BLUE = "#4da3ff"
+BATTERY_PURPLE = "#9b59d0"
+COOLING_BLUE = "#7dd3fc"
+CONSUMER_ORANGE = "#ff9f1c"
+WALLBOX_GREEN = "#33d1c6"
+INACTIVE_GREY = "#58657a"
+
 GAUGE_DOMAIN = {"x": [0.06, 0.94], "y": [0.00, 1.00]}
 GAUGE_LAYOUT = dict(paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     margin=dict(l=20, r=20, t=28, b=0))
-GAUGE_NUMBER_FONT = {"font": {"size": 56}}
-GAUGE_TITLE_FONT  = {"font": {"size": 18}}
-GAUGE_TICK_FONT   = {"size": 12}
+GAUGE_NUMBER_FONT = {"font": {"size": 56, "color": TEXT_PRIMARY}}
+GAUGE_TITLE_FONT  = {"font": {"size": 18, "color": TEXT_MUTED}}
+GAUGE_TICK_FONT   = {"size": 12, "color": TEXT_MUTED}
 
 def _num(x, d=0.0):
     try: return float(x)
@@ -40,7 +71,7 @@ def _num(x, d=0.0):
 
 def _heater_power_kw():
     try:
-        eid = heater_resolve_entity("input_heizstab_cache")  # Prozent (0–100) aus HA input_number
+        eid = effective_entity_key(heater_resolve_entity("input_heizstab_cache"), DEV_HEATER_PERCENT)
         pct = float(get_sensor_value(eid) or 0.0)
         max_kw = float(heat_get_var("max_power_heater", 0.0) or 0.0)
         return max(0.0, (pct/100.0) * max_kw)
@@ -48,8 +79,11 @@ def _heater_power_kw():
         return 0.0
 
 def _wallbox_power_kw():
-    # bei dir später aus Store/Sensor – vorerst 0 = inaktiv → Ghost
-    return 0.0
+    try:
+        eid = effective_entity_key(wb_get("power_entity", ""), DEV_WALLBOX_POWER)
+        return max(float(get_sensor_value(eid) or 0.0), 0.0) if eid else 0.0
+    except Exception:
+        return 0.0
 
 def _battery_power_kw():
     # bei dir später aus Store/Sensor – vorerst 0 = inaktiv → Ghost
@@ -58,7 +92,7 @@ def _battery_power_kw():
 def _battery_soc_percent():
     """SoC in % aus battery_store (None, falls nicht konfiguriert/lesbar)."""
     try:
-        eid = bat_get("soc_entity", "") or ""
+        eid = effective_entity_key(bat_get("soc_entity", ""), DEV_BATTERY_SOC)
         if not eid:
             return None
         v = get_sensor_value(eid)
@@ -98,7 +132,7 @@ def _battery_power_kw_live():
       - sonst: aus Voltage*Current berechnen (A*V/1000), inkl. Vorzeichen (I<0 = Entladen)
     """
     # 1) direkter Power-Sensor?
-    pwr_eid = bat_get("power_entity", "") or ""
+    pwr_eid = effective_entity_key(bat_get("power_entity", ""), DEV_BATTERY_POWER)
     if pwr_eid:
         try:
             val = float(get_sensor_value(pwr_eid))
@@ -110,8 +144,8 @@ def _battery_power_kw_live():
             pass
 
     # 2) aus V * I
-    v_eid = bat_get("voltage_entity", "") or ""
-    i_eid = bat_get("current_entity", "") or ""
+    v_eid = effective_entity_key(bat_get("voltage_entity", ""), DEV_BATTERY_VOLTAGE)
+    i_eid = effective_entity_key(bat_get("current_entity", ""), DEV_BATTERY_CURRENT)
     try:
         v = float(get_sensor_value(v_eid)) if v_eid else None
         i = float(get_sensor_value(i_eid)) if i_eid else None
@@ -178,7 +212,13 @@ def resolve_sensor_id(kind: str) -> str:
     def _mget(path, key):
         m = (load_yaml(path, {}).get("mapping", {}) or {})
         return (m.get(key) or "").strip()
-    return _mget(DASHB_OVR, kind) or _mget(DASHB_DEF, kind)
+    real = _mget(DASHB_OVR, kind) or _mget(DASHB_DEF, kind)
+    fallback = {
+        "pv_production": DEV_PV_PRODUCTION,
+        "grid_consumption": DEV_GRID_CONSUMPTION,
+        "grid_feed_in": DEV_GRID_FEED_IN,
+    }.get(kind, "")
+    return effective_entity_key(real, fallback)
 
 def _dot(color, size="1em"):
     return html.Span(
@@ -322,21 +362,31 @@ def _price_color_blended(v: float) -> str:
     return "#27ae60" if v <= g else ("#f39c12" if v <= y else "#e74c3c")
 
 
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    color = (hex_color or "").lstrip("#")
+    if len(color) != 6:
+        return hex_color
+    r = int(color[0:2], 16)
+    g = int(color[2:4], 16)
+    b = int(color[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
 # ------------------------------
 # Farben
 # ------------------------------
 COLORS = {
     "inflow": "#FFD700",
-    "pv": "#27ae60",
-    "grid": "#e74c3c",
-    "cooling": "#5DADE2",
-    "miners":  "#FF9900",
-    "battery": "#8E44AD",
-    "heater": "#3399FF",
-    "wallbox": "#33CC66",
-    "grid_feed": "#FF3333",
-    "load": "#A0A0A0",
-    "inactive": "#DDDDDD"
+    "pv": PV_GREEN,
+    "grid": GRID_RED,
+    "cooling": COOLING_BLUE,
+    "miners": CONSUMER_ORANGE,
+    "battery": BATTERY_PURPLE,
+    "heater": HEATER_BLUE,
+    "wallbox": WALLBOX_GREEN,
+    "grid_feed": GRID_FEED_RED,
+    "load": HOUSE_GREY,
+    "inactive": INACTIVE_GREY,
 }
 
 # ------------------------------
@@ -558,7 +608,7 @@ def register_callbacks(app):
             link_source.append(s)
             link_target.append(t)
             link_value.append(max(float(v or 0.0), 0.0))
-            link_color.append(color)
+            link_color.append(_hex_to_rgba(color, 0.92) if color != COLORS["inactive"] else _hex_to_rgba(color, 0.45))
 
         # Node-Label leer lassen; Text zeigen wir als Annotation oben mittig.
         inflow_line1 = f"Energy Inflow — {_fmt_kw(inflow_eff)}"
@@ -648,7 +698,7 @@ def register_callbacks(app):
             node=dict(
                 label=node_labels,
                 pad=30, thickness=25,
-                line=dict(color="black", width=0.5),
+                line=dict(color=PLOT_LINE, width=0.6),
                 color=node_colors
             ),
             link=dict(
@@ -660,12 +710,12 @@ def register_callbacks(app):
         )])
 
         fig.update_layout(
-            font=dict(size=14, color="black"),
+            font=dict(size=14, color=TEXT_PRIMARY),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             margin=dict(l=20, r=20, t=100, b=20) #Top Margin ist der abstand darüber!
         )
-        fig.update_traces(hoverlabel=dict(bgcolor="white"))
+        fig.update_traces(hoverlabel=dict(bgcolor="#111724", font=dict(color=TEXT_PRIMARY)))
 
         # 1. Zeile: Energy Inflow — kW
         fig.add_annotation(
@@ -674,7 +724,7 @@ def register_callbacks(app):
             # text=f"<b>{inflow_line1}</b>",
             text=inflow_line1,
             showarrow=False, align="center",
-            font=dict(size=13, color="black"),
+            font=dict(size=13, color=TEXT_PRIMARY),
             bgcolor="rgba(0,0,0,0)"
         )
 
@@ -684,7 +734,7 @@ def register_callbacks(app):
             xanchor="center", yanchor="bottom",
             text=inflow_line2,
             showarrow=False, align="center",
-            font=dict(size=13, color="black"),
+            font=dict(size=13, color=TEXT_MUTED),
             bgcolor="rgba(0,0,0,0)"
         )
 
@@ -728,18 +778,19 @@ def register_callbacks(app):
                     },
                     "bar": {"color": color},
                     "steps": [
-                        {"range": [0, axis_max / 2], "color": "#e0f7e0"},
-                        {"range": [axis_max / 2, axis_max], "color": "#c0e0c0"},
+                        {"range": [0, axis_max / 2], "color": _hex_to_rgba(color, 0.14)},
+                        {"range": [axis_max / 2, axis_max], "color": _hex_to_rgba(color, 0.24)},
                     ],
+                    "borderwidth": 0,
                 }
             ))
             fig.update_layout(**GAUGE_LAYOUT)
             return fig
 
         return (
-            build_gauge(pv_val, "PV production (kW)", "green"),
-            build_gauge(grid_val, "Grid consumption (kW)", "red"),
-            build_gauge(feed_val, "Grid feed-in (kW)", "red"),
+            build_gauge(pv_val, "PV production (kW)", PV_GREEN),
+            build_gauge(grid_val, "Grid consumption (kW)", GRID_RED),
+            build_gauge(feed_val, "Grid feed-in (kW)", GRID_FEED_RED),
         )
 
     @app.callback(
@@ -761,14 +812,7 @@ def register_callbacks(app):
         else:
             value_kwh = max(0.0, min(cap * (float(soc) / 100.0), cap))
 
-        # Balkenfarbe nach Lade-/Entladerichtung
-        eps = 0.02
-        if pkw > eps:
-            bar_color = "#27ae60"  # laden
-        elif pkw < -eps:
-            bar_color = "#e74c3c"  # entladen
-        else:
-            bar_color = "#999999"  # idle
+        bar_color = BATTERY_PURPLE
 
         # Ticks 0 – ½ – max
         ticks = [0.0, axis_max / 2.0, axis_max]
@@ -788,9 +832,10 @@ def register_callbacks(app):
                 },
                 "bar": {"color": bar_color},
                 "steps": [
-                    {"range": [0, axis_max / 2], "color": "#e0f7e0"},
-                    {"range": [axis_max / 2, axis_max], "color": "#c0e0c0"},
+                    {"range": [0, axis_max / 2], "color": _hex_to_rgba(BATTERY_PURPLE, 0.14)},
+                    {"range": [axis_max / 2, axis_max], "color": _hex_to_rgba(BATTERY_PURPLE, 0.24)},
                 ],
+                "borderwidth": 0,
             },
         ))
         fig.update_layout(**GAUGE_LAYOUT)
@@ -804,8 +849,8 @@ def register_callbacks(app):
     def update_btc_display(_):
         config = load_yaml(os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml"), {})
         entities = config.get("entities", {})
-        price = entities.get("sensor_btc_price")
-        hashrate = entities.get("sensor_btc_hashrate")
+        price = get_virtual_value(VIRTUAL_BTC_PRICE, entities.get("sensor_btc_price"))
+        hashrate = get_virtual_value(VIRTUAL_BTC_HASHRATE, entities.get("sensor_btc_hashrate"))
 
         if isinstance(price, (int, float)):
             price_str = f"BTC Price: ${price:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -875,7 +920,7 @@ def register_callbacks(app):
         Input("pv-update", "n_intervals")  # alle 10s
     )
     def update_dashboard_water_temp(_):
-        entity_id = heater_resolve_entity("input_warmwasser_cache")
+        entity_id = effective_entity_key(heater_resolve_entity("input_warmwasser_cache"), DEV_HEATER_WATER_TEMP)
         if not entity_id:
             return html.Span([_icon("temp"), "Water Temp: –"])
         val = get_sensor_value(entity_id)
@@ -914,19 +959,23 @@ def layout():
 
         dcc.Store(id="frame", storage_type="memory"),
         dcc.Store(id="viewport", storage_type="memory"),
-        dcc.Graph(id="sankey-diagram", figure=go.Figure()),
+        dcc.Graph(id="sankey-diagram", figure=go.Figure(), className="dashboard-graph dashboard-sankey"),
 
         html.Div([
             dcc.Graph(id="pv-gauge",
-                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+                      className="dashboard-graph dashboard-gauge",
+                      style={"minWidth": "300px", "height": "300px"}),
             dcc.Graph(id="grid-gauge",
-                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+                      className="dashboard-graph dashboard-gauge",
+                      style={"minWidth": "300px", "height": "300px"}),
             dcc.Graph(id="feed-gauge",
-                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"}),
+                      className="dashboard-graph dashboard-gauge",
+                      style={"minWidth": "300px", "height": "300px"}),
             dcc.Graph(id="battery-gauge",
-                      style={"flex": "1 1 300px", "minWidth": "300px", "maxWidth": "500px", "height": "300px"},
+                      className="dashboard-graph dashboard-gauge",
+                      style={"minWidth": "300px", "height": "300px"},
                       config={"displayModeBar": False}),
-        ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "center", "gap": "20px"}),
+        ], className="dashboard-gauge-grid"),
 
         dcc.Interval(id="pv-update", interval=10_000, n_intervals=0),
 

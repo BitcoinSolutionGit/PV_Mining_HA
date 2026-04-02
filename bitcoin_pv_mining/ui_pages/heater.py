@@ -8,7 +8,7 @@ from dash.dependencies import Input, Output, State
 
 from services.ha_sensors import list_all_input_numbers, get_sensor_value
 from services.heater_store import resolve_entity_id, set_mapping, get_var as heat_get_var, set_vars as heat_set_vars
-from ui_pages.common import footer_license
+from ui_pages.common import footer_license, number_stepper
 
 def _num(value, default=None):
     try:
@@ -111,11 +111,7 @@ def layout():
         ], style={"marginBottom": "10px"}),
         html.Div([
             html.Label("Target water temperature"),
-            dcc.Input(
-                id="heater-wanted-temp",
-                type="number", step="0.001", min=0, max=95,
-                value=wanted_temp, style={"width": "140px"}
-            ),
+            number_stepper("heater-wanted-temp", wanted_temp, step=0.001, min=0, max=95, width_px=140),
             html.Span(" "),
             dcc.Dropdown(
                 id="heater-heat-unit",
@@ -127,11 +123,7 @@ def layout():
 
         html.Div([
             html.Label("Max heater power"),
-            dcc.Input(
-                id="heater-max-power",
-                type="number", step="0.001", min=0, max=50,
-                value=max_power, style={"width": "140px"}
-            ),
+            number_stepper("heater-max-power", max_power, step=0.001, min=0, max=50, width_px=140),
             html.Span(" "),
             dcc.Dropdown(
                 id="heater-power-unit",
@@ -152,18 +144,10 @@ def layout():
             ),
             html.Div([
                 html.Label("Kick power (kW)"),
-                dcc.Input(
-                    id="heater-kick-kw",
-                    type="number", step="0.01", min=0, max=5,
-                    value=kick_kw, style={"width": "140px"}
-                ),
+                number_stepper("heater-kick-kw", kick_kw, step=0.01, min=0, max=5, width_px=140),
                 html.Span("  "),
                 html.Label("Cooldown (s)"),
-                dcc.Input(
-                    id="heater-kick-cooldown",
-                    type="number", step=1, min=0, max=3600,
-                    value=kick_cooldown, style={"width": "120px"}
-                ),
+                number_stepper("heater-kick-cooldown", kick_cooldown, step=1, min=0, max=3600, width_px=140),
             ]),
             html.Div("Gives a short start impulse so the inverter begins producing under zero feed-in limits.",
                      style={"opacity": 0.8, "marginTop": "6px"})

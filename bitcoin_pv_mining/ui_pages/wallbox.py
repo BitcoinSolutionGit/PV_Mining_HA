@@ -7,7 +7,7 @@ from services.wallbox_store import get_var as wb_get, set_vars as wb_set
 from services.ha_sensors import get_sensor_value
 from services.ha_entities import list_actions
 from services.electricity_store import currency_symbol
-from ui_pages.common import footer_license
+from ui_pages.common import footer_license, number_stepper
 
 def _num(x, d=0.0):
     try: return float(x)
@@ -45,7 +45,7 @@ def layout():
         html.Div([
             html.Div([
                 html.Label("Max charge power (kW)"),
-                dcc.Input(id="wb-maxkw", type="number", step=0.5, value=_num(data["max_charge_kw"], 11.0), style={"width":"160px"})
+                number_stepper("wb-maxkw", _num(data["max_charge_kw"], 11.0), step=0.5, width_px=160)
             ]),
             html.Div([
                 html.Label("Phases"),
@@ -54,7 +54,7 @@ def layout():
             ], style={"marginLeft":"10px"}),
             html.Div([
                 html.Label("Max current (A)"),
-                dcc.Input(id="wb-maxa", type="number", step=1, value=_num(data["max_current_a"], 16), style={"width":"140px"})
+                number_stepper("wb-maxa", _num(data["max_current_a"], 16), step=1, width_px=140)
             ], style={"marginLeft":"10px"}),
         ], style={"display":"flex","flexWrap":"wrap","gap":"10px"}),
 
@@ -91,7 +91,7 @@ def layout():
         html.Div([
             html.Div([
                 html.Label("Target energy this session (kWh)"),
-                dcc.Input(id="wb-target-kwh", type="number", step=0.5, value=_num(data["target_energy_kwh"], 10.0), style={"width":"200px"})
+                number_stepper("wb-target-kwh", _num(data["target_energy_kwh"], 10.0), step=0.5, width_px=200)
             ]),
             html.Div([
                 html.Label("Solar-only"),
@@ -100,7 +100,7 @@ def layout():
             ], style={"marginLeft":"10px"}),
             html.Div([
                 html.Label("Min PV surplus to start (kW)"),
-                dcc.Input(id="wb-min-surplus", type="number", step=0.1, value=_num(data["min_surplus_kw"], 1.0), style={"width":"180px"})
+                number_stepper("wb-min-surplus", _num(data["min_surplus_kw"], 1.0), step=0.1, width_px=180)
             ], style={"marginLeft":"10px"}),
         ], style={"display":"flex","alignItems":"center","gap":"10px","marginTop":"8px"}),
 

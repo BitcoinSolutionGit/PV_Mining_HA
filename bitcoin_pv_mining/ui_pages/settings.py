@@ -15,7 +15,7 @@ from services.cooling_store import get_cooling
 from services.battery_store import get_var as bat_get
 from services.wallbox_store import get_var as wb_get
 from services.heater_store import resolve_entity_id as heat_resolve, get_var as heat_get
-from ui_pages.common import footer_license
+from ui_pages.common import footer_license, number_stepper
 from services.utils import load_yaml, save_yaml
 
 PRIO_KEY = "priority_order"
@@ -33,14 +33,14 @@ PRIO_COLORS = {
     "miners":    "#FF9900",
     "battery":   "#8E44AD",
     "heater":    "#3399FF",
-    "wallbox":   "#33CC66",
+    "wallbox":   "#33d1c6",
     "grid_feed": "#FF3333",
     "load":      "#A0A0A0",
     "inactive":  "#DDDDDD",
 }
 
-# Einheitliche Rahmenfarbe (dunkles Grau wie unter dem Save-Button)
-UI_BORDER = "#3a3a3a"
+# Theme-aligned dark border
+UI_BORDER = "rgba(191, 205, 229, 0.18)"
 
 # ------------------------
 # Helpers
@@ -49,28 +49,30 @@ UI_BORDER = "#3a3a3a"
 def _fieldset_style():
     return {
         "border": f"1px solid {UI_BORDER}",
-        "borderRadius": "8px",
-        "padding": "10px",
+        "borderRadius": "18px",
+        "padding": "18px 18px 16px",
         "marginBottom": "14px",
-        "background": "#fafafa",
+        "background": "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
+        "boxShadow": "0 24px 60px rgba(5, 10, 20, 0.32)",
     }
 
 def _input_style(width_px: int):
     return {
         "width": f"{width_px}px",
-        "height": "32px",
-        "lineHeight": "32px",
+        "height": "40px",
+        "lineHeight": "40px",
         "border": f"1px solid {UI_BORDER}",
-        "borderRadius": "6px",
-        "padding": "0 8px",
-        "background": "white",
+        "borderRadius": "12px",
+        "padding": "0 12px",
+        "background": "rgba(10, 16, 28, 0.86)",
+        "color": "#f4f7ff",
     }
 
 def _section(title: str, body_children):
     return html.Div([
-        html.H3(title, style={"margin": "0 0 6px 0", "fontWeight": "700"}),
-        html.Div(body_children, style=_fieldset_style()),
-    ], style={"marginBottom": "16px"})
+        html.H3(title, className="settings-section-title"),
+        html.Div(body_children, className="settings-card", style=_fieldset_style()),
+    ], className="settings-section")
 
 def _num(x, d=0.0):
     try:
@@ -299,11 +301,11 @@ def _row_styles():
         "alignItems": "center",
         "justifyContent": "space-between",
         "gap": "12px",
-        "padding": "10px 12px",
-        "marginBottom": "8px",
+        "padding": "12px 14px",
+        "marginBottom": "10px",
         "border": f"1px solid {UI_BORDER}",   # <— einheitlich
-        "borderRadius": "10px",
-        "background": "#fafafa",
+        "borderRadius": "18px",
+        "background": "rgba(255, 255, 255, 0.05)",
         "fontSize": "16px",
         "fontWeight": "600",
     }
@@ -311,7 +313,7 @@ def _row_styles():
 def _color_dot(color):
     return html.Span("", style={
         "display": "inline-block", "width": "12px", "height": "12px",
-        "borderRadius": "50%", "backgroundColor": color, "marginRight": "10px"
+        "borderRadius": "50%", "backgroundColor": color
     })
 
 def _prio_row(item, idx, order):
@@ -382,7 +384,7 @@ def layout():
     cool_min_off = int(_num(set_get("cooling_min_off_s", 20), 20))
 
     return html.Div([
-        html.H2("Settings"),
+        html.H2("Settings", className="settings-title"),
 
     # --- NEW: SENSORS (top) ---
     _section("Sensors", [
@@ -407,8 +409,10 @@ def layout():
             value=_resolve_sensor_id("grid_feed_in") or None,
             placeholder="Select sensor..."
         ),
-        html.Button("Save sensors", id="set-sens-save", className="custom-tab", style={"marginTop": "12px"}),
-        html.Span(id="set-sens-status", style={"marginLeft": "10px", "color": "green"}),
+        html.Div([
+            html.Button("Save sensors", id="set-sens-save", className="custom-tab", style={"marginTop": "12px"}),
+            html.Span(id="set-sens-status", className="settings-status", style={"marginLeft": "10px"}),
+        ], className="settings-page-actions"),
     ]),
 
     # --- NEW: ELECTRICITY (second) ---
@@ -445,42 +449,23 @@ def layout():
         # fixed row
         html.Div([
             html.Label("Fixed price value (per kWh)"),
-            dcc.Input(
-                id="elec-fixed-value",
-                type="number",
-                step="0.0001",
-                min=0, max=2,
-                value=float(elec_get("fixed_price_value", 0.0) or 0.0),
-                style={"width": "180px"}
-            ),
+            number_stepper("elec-fixed-value", float(elec_get("fixed_price_value", 0.0) or 0.0), step=0.0001, min=0, max=2, width_px=140),
         ], id="set-elec-row-fixed", style={"marginTop": "6px"}),
 
         html.Hr(),
 
         html.Div([
             html.Label("Network fee (down / import)"),
-            dcc.Input(
-                id="elec-fee-down",
-                type="number",
-                step="0.0001",
-                min=0, max=2,
-                value=float(elec_get("network_fee_down_value", 0.0) or 0.0),
-                style={"width": "160px"}
-            ),
+            number_stepper("elec-fee-down", float(elec_get("network_fee_down_value", 0.0) or 0.0), step=0.0001, min=0, max=2, width_px=140),
             html.Span(" "),
             html.Label("Network fee (up / export)", style={"marginLeft": "16px"}),
-            dcc.Input(
-                id="elec-fee-up",
-                type="number",
-                step="0.0001",
-                min=0, max=2,
-                value=float(elec_get("network_fee_up_value", 0.0) or 0.0),
-                style={"width": "160px"}
-            ),
+            number_stepper("elec-fee-up", float(elec_get("network_fee_up_value", 0.0) or 0.0), step=0.0001, min=0, max=2, width_px=140),
         ], style={"marginTop": "6px"}),
 
-        html.Button("Save electricity", id="set-elec-save", className="custom-tab", style={"marginTop": "12px"}),
-        html.Span(id="set-elec-status", style={"marginLeft": "10px", "color": "green"}),
+        html.Div([
+            html.Button("Save electricity", id="set-elec-save", className="custom-tab", style={"marginTop": "12px"}),
+            html.Span(id="set-elec-status", className="settings-status", style={"marginLeft": "10px"}),
+        ], className="settings-page-actions"),
     ]),
 
 
@@ -498,73 +483,49 @@ def layout():
 
             html.Div([
                 html.Label("Cooling start threshold (fraction)"),
-                dcc.Input(
-                    id="set-cooling-on-frac", type="number", step=0.01, min=0, max=1,
-                    value=cool_on_frac, style=_input_style(140)
-                ),
+                number_stepper("set-cooling-on-frac", cool_on_frac, step=0.01, min=0, max=1, width_px=140),
                 html.Span("  (0.50 = 50 %)", style={"opacity": 0.7, "marginLeft": "6px"}),
             ], style={"marginTop": "8px"}),
 
             html.Div([
                 html.Label("Miner start threshold (fraction)"),
-                dcc.Input(
-                    id="set-miner-on-frac", type="number", step=0.01, min=0, max=1,
-                    value=miner_on_frac, style=_input_style(140)
-                ),
+                number_stepper("set-miner-on-frac", miner_on_frac, step=0.01, min=0, max=1, width_px=140),
                 html.Span("  (z. B. 0.10 = 10 %)", style={"opacity": 0.7, "marginLeft": "6px"}),
             ], style={"marginTop": "8px"}),
 
             html.Div([
                 html.Label("Cooling minimum runtime after ON (s)"),
-                dcc.Input(
-                    id="set-cooling-min-run-s", type="number", step=1, min=0,
-                    value=cool_min_run, style=_input_style(120)
-                ),
+                number_stepper("set-cooling-min-run-s", cool_min_run, step=1, min=0, width_px=140),
             ], style={"marginTop": "8px"}),
 
             html.Div([
                 html.Label("Cooling minimum OFF time after OFF (s)"),
-                dcc.Input(
-                    id="set-cooling-min-off-s", type="number", step=1, min=0,
-                    value=cool_min_off, style=_input_style(120)
-                ),
+                number_stepper("set-cooling-min-off-s", cool_min_off, step=1, min=0, width_px=140),
             ], style={"marginTop": "8px"}),
 
             html.Hr(),
 
             html.Div([
                 html.Label("Miner profit ON threshold (€/h)"),
-                dcc.Input(
-                    id="set-miner-on-margin", type="number", step=0.01,
-                    value=miner_on_margin, style=_input_style(140)
-                ),
+                number_stepper("set-miner-on-margin", miner_on_margin, step=0.01, width_px=140),
                 html.Span("  (≥ this to switch ON)", style={"opacity": 0.7, "marginLeft": "6px"}),
             ], style={"marginTop": "6px"}),
 
             html.Div([
                 html.Label("Miner profit OFF threshold (€/h)"),
-                dcc.Input(
-                    id="set-miner-off-margin", type="number", step=0.01,
-                    value=miner_off_margin, style=_input_style(140)
-                ),
+                number_stepper("set-miner-off-margin", miner_off_margin, step=0.01, width_px=140),
                 html.Span("  (≤ this to switch OFF; can be negative)", style={"opacity": 0.7, "marginLeft": "6px"}),
             ], style={"marginTop": "8px"}),
 
             html.Div([
                 html.Label("Minimum runtime after ON (s)"),
-                dcc.Input(
-                    id="set-miner-min-run-s", type="number", step=1, min=0,
-                    value=miner_min_run_s, style=_input_style(120)
-                ),
+                number_stepper("set-miner-min-run-s", miner_min_run_s, step=1, min=0, width_px=140),
                 html.Span("  (debounce to avoid flapping)", style={"opacity": 0.7, "marginLeft": "6px"}),
             ], style={"marginTop": "8px"}),
 
             html.Div([
                 html.Label("Minimum OFF time after OFF (s)"),
-                dcc.Input(
-                    id="set-miner-min-off-s", type="number", step=1, min=0,
-                    value=miner_min_off_s, style=_input_style(120)
-                ),
+                number_stepper("set-miner-min-off-s", miner_min_off_s, step=1, min=0, width_px=140),
             ], style={"marginTop": "8px"}),
         ]),
 
@@ -622,14 +583,13 @@ def layout():
         _section("Planner guard (anti-overdraw)", [
             html.Div([
                 html.Label("Fixed safety margin (W)"),
-                dcc.Input(id="set-guard-w", type="number", step=1, min=0, value=guard_w, style=_input_style(160)),
+                number_stepper("set-guard-w", guard_w, step=1, min=0, width_px=160),
                 html.Span("  (subtracts this from measured PV surplus)", style={"marginLeft": "8px", "opacity": 0.7}),
             ], style={"marginTop": "6px"}),
 
             html.Div([
                 html.Label("Relative safety margin (fraction)"),
-                dcc.Input(id="set-guard-pct", type="number", step=0.001, min=0, max=0.2, value=guard_pct,
-                          style=_input_style(160)),
+                number_stepper("set-guard-pct", guard_pct, step=0.001, min=0, max=0.2, width_px=160),
                 html.Span("  e.g. 0.03 = 3 %  (values >1 are interpreted as percent and divided by 100 on save)",
                           style={"marginLeft": "8px", "opacity": 0.7}),
             ], style={"marginTop": "8px"}),
@@ -638,38 +598,38 @@ def layout():
         _section("Export cap boost", [
             html.Div([
                 html.Label("Grid export cap (kW)"),
-                dcc.Input(id="set-export-cap", type="number", step=0.1, min=0, value=export_cap,
-                          style=_input_style(140)),
+                number_stepper("set-export-cap", export_cap, step=0.1, min=0, width_px=140),
                 html.Span(" (z. B. 5.0)", style={"marginLeft": "8px", "opacity": 0.7}),
             ], style={"marginTop": "6px"}),
             html.Div([
                 html.Label("Boost cooldown (s)"),
-                dcc.Input(id="set-boost-cooldown", type="number", step=1, min=5, value=boost_cooldown,
-                          style=_input_style(140)),
+                number_stepper("set-boost-cooldown", boost_cooldown, step=1, min=5, width_px=140),
                 html.Span(" (Beruhigungszeit nach Zuschalten)", style={"marginLeft": "8px", "opacity": 0.7}),
             ], style={"marginTop": "8px"}),
         ]),
 
         _section("Bitcoin-economics", [
             html.Div([
-                html.Label("BTC-Price-Currency"),
-                dcc.Dropdown(
-                    id="set-btc-currency",
-                    options=[{"label": "EUR", "value": "EUR"}, {"label": "USD", "value": "USD"}],
-                    value=currency,
-                    clearable=False,
-                    style={"width": "120px"}
-                ),
-                html.Span(id="set-fx-read", style={"marginLeft": "14px"}),
-
-                html.Span("  "),
-                html.Label("Block reward (BTC)", style={"marginLeft": "16px"}),
-                dcc.Input(id="set-reward", type="number", step=0.0001, value=reward, style=_input_style(120)),
-
-                html.Span("  "),
-                html.Label("Tax rate %", style={"marginLeft": "16px"}),
-                dcc.Input(id="set-tax", type="number", step=0.1, value=tax_pct, style=_input_style(100)),
-            ], style={"display": "flex", "flexWrap": "wrap", "gap": "10px", "alignItems": "center"})
+                html.Div([
+                    html.Label("BTC-Price-Currency"),
+                    dcc.Dropdown(
+                        id="set-btc-currency",
+                        options=[{"label": "EUR", "value": "EUR"}, {"label": "USD", "value": "USD"}],
+                        value=currency,
+                        clearable=False,
+                        style={"width": "120px"}
+                    ),
+                    html.Span(id="set-fx-read", style={"marginLeft": "14px"}),
+                ], style={"display": "flex", "flexWrap": "wrap", "gap": "10px", "alignItems": "center"}),
+                html.Div([
+                    html.Label("Block reward (BTC)"),
+                    number_stepper("set-reward", reward, step=0.0001, width_px=140),
+                ], style={"display": "flex", "flexDirection": "column", "gap": "6px", "marginTop": "12px"}),
+                html.Div([
+                    html.Label("Tax rate %"),
+                    number_stepper("set-tax", tax_pct, step=0.1, width_px=140),
+                ], style={"display": "flex", "flexDirection": "column", "gap": "6px", "marginTop": "12px"}),
+            ], style={"display": "flex", "flexDirection": "column"})
         ]),
 
         _section("Dashboard / Sankey", [
@@ -710,18 +670,21 @@ def layout():
             ),
         ]),
 
-        html.Button("Save", id="set-save", className="custom-tab", style={"marginTop": "12px"}),
-        html.Span(id="set-status", style={"marginLeft": "10px", "color": "green"}),
+        html.Div([
+            html.Button("Save", id="set-save", className="custom-tab", style={"marginTop": "12px"}),
+            html.Span(id="set-status", className="settings-status", style={"marginLeft": "10px"}),
+        ], className="settings-page-actions"),
 
-        html.Hr(),
-        html.H3("Power draw priority"),
-        html.P(
-            "Only consumers in Auto mode are prioritized (Miners, Cooling). Use ↑/↓ to reorder — it’s saved automatically."),
-
-        html.Div(id="prio-list", className="prio-list"),
-        html.Div(id="prio-status", style={"marginTop": "6px", "color": "green"}),
+        _section("Power draw priority", [
+            html.P(
+                "Only consumers in Auto mode are prioritized (Miners, Cooling). Use ↑/↓ to reorder — it’s saved automatically.",
+                className="settings-subtle-text",
+            ),
+            html.Div(id="prio-list", className="prio-list"),
+            html.Div(id="prio-status", className="settings-status", style={"marginTop": "6px"}),
+        ]),
         footer_license(),
-    ])
+    ], className="settings-page")
 
 
 # --------------------------------
