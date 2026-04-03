@@ -1562,10 +1562,11 @@ def _persist_first_run_consent(n_decline, n_accept, language, req_read, req_lice
 @app.callback(
     Output("planner-heartbeat", "children"),
     Input("planner-engine", "n_intervals"),
+    Input("consent-state", "data"),
     State("premium-enabled", "data"),
     prevent_initial_call=False
 )
-def _global_engine_tick(n, premium_data):
+def _global_engine_tick(n, _consent_state, premium_data):
     consent_required = needs_consent()
     backend_enabled = is_premium_enabled()
     client_enabled = bool((premium_data or {}).get("enabled"))

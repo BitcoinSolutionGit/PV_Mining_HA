@@ -426,17 +426,6 @@ def register_callbacks(app):
         # Cooling (einmal!) – Feature-Flag respektieren
         cooling_enabled = bool(set_get("cooling_feature_enabled", False))
 
-        # temporeres Debuggin Start
-        try:
-            cdbg = get_cooling() or {}
-            print("[dbg cooling] feature=", cooling_enabled,
-                  " desired_on=", cdbg.get("on"),
-                  " ha_on=", cdbg.get("ha_on"),
-                  " pkw=", cdbg.get("power_kw"), flush=True)
-        except Exception:
-            pass
-        # temporeres Debuggin Ende
-
         cooling_running = False
         cooling_pkw = 0.0
         if cooling_enabled:
