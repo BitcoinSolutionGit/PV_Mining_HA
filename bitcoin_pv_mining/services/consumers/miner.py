@@ -7,12 +7,15 @@ from services.consumers.base import BaseConsumer, Desire, Ctx
 from services.license import is_premium_enabled
 from services.miners_store import list_miners, update_miner
 from services.settings_store import get_var as set_get
+from services.battery_store import get_var as bat_get
 from services.electricity_store import get_var as elec_get
 from services.electricity_store import current_price as elec_price
 from services.ha_entities import call_action
 from services.btc_metrics import get_live_btc_price_eur, get_live_network_hashrate_ths, sats_per_th_per_hour
-from services.energy_mix import incremental_mix_for
+from services.energy_mix import incremental_mix_for, read_energy_flows
 from services.ha_sensors import get_sensor_value
+
+_non_pv_guard_since: dict[str, float] = {}
 
 
 def _truthy(x, default=False) -> bool:
@@ -37,6 +40,46 @@ def _cfg_num(path: str, default: float) -> float:
         return float(set_get(path, default) or default)
     except Exception:
         return default
+
+
+def _battery_soc_percent() -> Optional[float]:
+    try:
+        ent = (bat_get("soc_entity", "") or "").strip()
+        if not ent:
+            return None
+        return _num(get_sensor_value(ent), None)
+    except Exception:
+        return None
+
+
+def _non_pv_shutdown_reason() -> str:
+    try:
+        _pv_kw, imp_kw, _feed_kw, bat_kw, _surplus_direct = read_energy_flows()
+    except Exception:
+        return ""
+
+    imp = max(0.0, _num(imp_kw, 0.0))
+    bat_discharge = max(0.0, _num(bat_kw, 0.0))
+
+    # Kleine feste Totzone gegen Sensorflattern.
+    import_thr = 0.05
+    battery_thr = 0.05
+
+    if imp > import_thr:
+        return f"grid import {imp:.2f} kW"
+
+    if bat_discharge > battery_thr:
+        soc = _battery_soc_percent()
+        if soc is None:
+            return f"battery discharge {bat_discharge:.2f} kW"
+        reserve = _num(bat_get("reserve_soc", 20.0), 20.0)
+        return f"battery discharge {bat_discharge:.2f} kW (SoC {soc:.1f}% / reserve {reserve:.1f}%)"
+
+    return ""
+
+
+def _clear_non_pv_guard(mid: str) -> None:
+    _non_pv_guard_since.pop(mid, None)
 
 def _min_run_seconds_for(mid: str) -> int:
     """
@@ -245,6 +288,7 @@ class MinerConsumer(BaseConsumer):
 
         # ---------- MANUAL OVERRIDE ----------
         if mode != "auto":
+            _clear_non_pv_guard(self.miner_id)
             want_on = _truthy(m.get("on"), False)
             need_cool = _cooling_required(m)
             cool_ok = _cooling_running_strict()
@@ -258,13 +302,38 @@ class MinerConsumer(BaseConsumer):
 
         # ---------- AUTO-Modus ----------
         if pkw <= 0.0 or (is_miner and ths <= 0.0):
+            _clear_non_pv_guard(self.miner_id)
             return Desire(False, 0.0, 0.0, reason="no hashrate/power")
 
         # Sicherheitsregel: Cooling muss laufen, wenn benötigt
         if _cooling_required(m) and not _cooling_running_now():
+            _clear_non_pv_guard(self.miner_id)
             if is_on_now:
                 return Desire(False, 0.0, 0.0, reason="cooling lost")
             return Desire(False, 0.0, 0.0, reason="cooling not ready")
+
+        if is_on_now:
+            shutdown_reason = _non_pv_shutdown_reason()
+            if shutdown_reason:
+                since_ts = _non_pv_guard_since.get(self.miner_id)
+                if since_ts is None:
+                    since_ts = now_ts
+                    _non_pv_guard_since[self.miner_id] = since_ts
+                elapsed = max(0.0, now_ts - since_ts)
+                if elapsed >= max(0, min_run_s):
+                    return Desire(False, 0.0, 0.0, reason=f"force off after {int(elapsed)}s: {shutdown_reason}")
+                remaining = max(0, int(min_run_s - elapsed))
+                return Desire(
+                    True,
+                    pkw,
+                    pkw,
+                    must_run=True,
+                    exact_kw=pkw,
+                    reason=f"shutdown grace {remaining}s: {shutdown_reason}",
+                )
+            _clear_non_pv_guard(self.miner_id)
+        else:
+            _clear_non_pv_guard(self.miner_id)
 
         # Sperrzeiten gegen Flattern (nur Auto)
         if is_on_now and (now_ts - last_flip) < max(0, min_run_s):
