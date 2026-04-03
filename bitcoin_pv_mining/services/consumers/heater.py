@@ -6,6 +6,14 @@ from typing import Optional
 from services.consumers.base import BaseConsumer, Desire, Ctx
 from services.ha_sensors import get_sensor_value
 from services.heater_store import resolve_entity_id as heat_resolve, get_var as heat_get
+try:
+    from services.dev_mock import effective_entity_key, DEV_HEATER_WATER_TEMP, DEV_HEATER_PERCENT
+except Exception:
+    DEV_HEATER_WATER_TEMP = "mock:heater_water_temp"
+    DEV_HEATER_PERCENT = "mock:heater_percent"
+
+    def effective_entity_key(entity_id, _mock_key):
+        return (entity_id or "").strip()
 
 # simple cooldown memory for kick
 _last_kick_ts: float = 0.0
@@ -75,6 +83,12 @@ class HeaterConsumer(BaseConsumer):
                     or "").strip()
         return enabled, auto, max_kw, t_target, t_sens, pct_tgt
 
+    def _temp_sensor_id(self, raw_sensor_id: str) -> str:
+        return effective_entity_key(raw_sensor_id, DEV_HEATER_WATER_TEMP)
+
+    def _percent_sensor_id(self, raw_sensor_id: str) -> str:
+        return effective_entity_key(raw_sensor_id, DEV_HEATER_PERCENT)
+
     def compute_desire(self, ctx: Ctx) -> Desire:
         enabled, auto, max_kw, t_target, t_sens, pct_tgt = self._read_cfg()
         if not enabled:
@@ -84,7 +98,8 @@ class HeaterConsumer(BaseConsumer):
         if max_kw is None or max_kw <= 0.0 or not pct_tgt:
             return Desire(False, 0.0, 0.0, None, False, "not configured")
 
-        t_now = _num(get_sensor_value(t_sens), None) if t_sens else None
+        temp_sensor_id = self._temp_sensor_id(t_sens)
+        t_now = _num(get_sensor_value(temp_sensor_id), None) if temp_sensor_id else None
         if t_now is None:
             return Desire(False, 0.0, 0.0, None, False, "no water temp")
 
@@ -106,7 +121,8 @@ class HeaterConsumer(BaseConsumer):
         if kick_on and kick_kw and kick_kw > 0.0:
             # don't gate the kick only by cached %, that can be stale after manual mode
             try:
-                pct_now = _num(get_sensor_value(pct_tgt), 0.0)
+                pct_sensor_id = self._percent_sensor_id(pct_tgt)
+                pct_now = _num(get_sensor_value(pct_sensor_id), 0.0) if pct_sensor_id else 0.0
             except Exception:
                 pct_now = 0.0
             enough_cooldown = (time.time() - _last_kick_ts) > float(cooldown or 0)

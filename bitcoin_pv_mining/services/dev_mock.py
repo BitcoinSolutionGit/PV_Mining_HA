@@ -90,6 +90,12 @@ def get_mock_sensor_value(entity_id: str):
     return _parse_mock_value(get_values().get(entity_id))
 
 
+def has_mock_value(key: str) -> bool:
+    if not is_enabled() or not key:
+        return False
+    return _parse_mock_value(get_values().get(key)) is not None
+
+
 def get_virtual_value(key: str, default=None):
     if not is_enabled():
         return default
@@ -99,6 +105,8 @@ def get_virtual_value(key: str, default=None):
 
 def effective_entity_key(entity_id: str | None, mock_key: str) -> str:
     entity_id = (entity_id or "").strip()
+    if has_mock_value(mock_key):
+        return mock_key
     if entity_id:
         return entity_id
     if is_enabled():

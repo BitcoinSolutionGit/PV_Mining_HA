@@ -7,6 +7,20 @@ from services.ha_sensors import get_sensor_value
 from services.settings_store import get_var as set_get
 from services.battery_store import get_var as bat_get
 from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_id
+try:
+    from services.dev_mock import (
+        effective_entity_key,
+        DEV_BATTERY_VOLTAGE,
+        DEV_BATTERY_CURRENT,
+        DEV_HEATER_PERCENT,
+    )
+except Exception:
+    DEV_BATTERY_VOLTAGE = "mock:battery_voltage"
+    DEV_BATTERY_CURRENT = "mock:battery_current"
+    DEV_HEATER_PERCENT = "mock:heater_percent"
+
+    def effective_entity_key(entity_id, _mock_key):
+        return (entity_id or "").strip()
 
 def _f(x, d=0.0):
     try:
@@ -44,8 +58,8 @@ def _battery_power_kw_from_config() -> Optional[float]:
     Wir drehen das Vorzeichen, damit ENTLADUNG positiv ist.
     """
     try:
-        v_ent = (bat_get("voltage_entity", "") or "").strip()
-        i_ent = (bat_get("current_entity", "") or "").strip()
+        v_ent = effective_entity_key((bat_get("voltage_entity", "") or "").strip(), DEV_BATTERY_VOLTAGE)
+        i_ent = effective_entity_key((bat_get("current_entity", "") or "").strip(), DEV_BATTERY_CURRENT)
         if v_ent and i_ent:
             v = _f(get_sensor_value(v_ent), None)
             i = _f(get_sensor_value(i_ent), None)
@@ -62,7 +76,7 @@ def _controllable_now_kw() -> float:
     # Heater (aus Prozent × Max-Leistung)
     try:
         from services.heater_store import resolve_entity_id as heat_resolve, get_var as heat_get
-        he_id = (heat_resolve("input_heizstab_cache") or "").strip()
+        he_id = effective_entity_key((heat_resolve("input_heizstab_cache") or "").strip(), DEV_HEATER_PERCENT)
         maxp = _f(heat_get("max_power_heater", 0.0), 0.0)
         if he_id and maxp > 0.0:
             pct = _f(get_sensor_value(he_id), 0.0)

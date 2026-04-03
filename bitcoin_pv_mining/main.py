@@ -1566,16 +1566,29 @@ def _persist_first_run_consent(n_decline, n_accept, language, req_read, req_lice
     prevent_initial_call=False
 )
 def _global_engine_tick(n, premium_data):
-    if needs_consent():
+    consent_required = needs_consent()
+    backend_enabled = is_premium_enabled()
+    client_enabled = bool((premium_data or {}).get("enabled"))
+
+    print(
+        f"[engine] tick n={n} consent_required={consent_required} "
+        f"premium_backend={backend_enabled} premium_client={client_enabled}",
+        flush=True,
+    )
+
+    if consent_required:
+        print("[engine] skip: consent required", flush=True)
         return ""
-    # nur wenn Premium aktiv ist (bei dir ja), sonst still
-    enabled = bool((premium_data or {}).get("enabled"))
-    if not enabled:
+
+    # Engine-Gating nur gegen den Backend-Status, nicht gegen Browser-Store.
+    if not backend_enabled:
+        print("[engine] skip: premium disabled in backend state", flush=True)
         return ""
 
     try:
         # schreibt direkt ins Add-on-Log (stdout)
         plan_and_allocate_auto(apply=True, dry_run=False, logger=lambda m: print(m, flush=True))
+        print(f"[engine] tick n={n} done", flush=True)
         return f"ok:{n}"
     except Exception as e:
         print(f"[engine] error: {e}", flush=True)
