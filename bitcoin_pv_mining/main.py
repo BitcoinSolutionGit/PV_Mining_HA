@@ -5,6 +5,7 @@ import flask
 import urllib.parse
 import time
 import json
+import threading
 
 from dash import html, dcc, no_update
 from dash.dependencies import Input, Output, State
@@ -38,6 +39,7 @@ start_heartbeat_loop(addon_version=get_addon_version())
 CONFIG_DIR = "/config/pv_mining_addon"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "pv_mining_local_config.yaml")
 LICENSE_BASE_URL = os.getenv("LICENSE_BASE_URL", "https://license.bitcoinsolution.at")
+PLANNER_TICK_LOCK = threading.Lock()
 ENABLE_MOBILE_POLLING = os.getenv("ENABLE_MOBILE_POLLING", "0") == "1"
 
 CONSENT_TEXTS = {
@@ -1587,6 +1589,10 @@ def _global_engine_tick(n, _consent_state, premium_data):
         print("[engine] skip: premium disabled in backend state", flush=True)
         return ""
 
+    if not PLANNER_TICK_LOCK.acquire(blocking=False):
+        print(f"[engine] skip: planner tick n={n} already running", flush=True)
+        return f"busy:{n}"
+
     try:
         # schreibt direkt ins Add-on-Log (stdout)
         plan_and_allocate_auto(apply=True, dry_run=False, logger=lambda m: print(m, flush=True))
@@ -1595,6 +1601,8 @@ def _global_engine_tick(n, _consent_state, premium_data):
     except Exception as e:
         print(f"[engine] error: {e}", flush=True)
         return f"err:{n}"
+    finally:
+        PLANNER_TICK_LOCK.release()
 
 
 if __name__ == "__main__":

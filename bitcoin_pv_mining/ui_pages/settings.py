@@ -210,19 +210,19 @@ def _is_miner_auto(m: dict) -> bool:
 
 def _prio_available_items():
     """
-    Welche Verbraucher sind grundsätzlich verfügbar?
-    Cooling + Miner nur bei Automatik!
+    Welche Verbraucher sind aktuell durch den Planner steuerbar?
+    Manual-Devices gehören nicht in die Priorisierungsliste.
     """
     items = []
 
-    # Cooling sichtbar, wenn enabled (gesteuert wird nur im Auto-Modus)
-    if _is_cooling_enabled():
+    if _is_cooling_auto_enabled():
         items.append({"id": "cooling", "label": "Cooling circuit", "color": PRIO_COLORS["cooling"]})
 
-    # Miner: sichtbar, wenn enabled (gesteuert wird nur im Auto-Modus)
     try:
         for m in list_miners() or []:
             if not _is_miner_enabled(m):
+                continue
+            if not _is_miner_auto(m):
                 continue
             items.append({
                 "id": f"miner:{m['id']}",
@@ -232,12 +232,11 @@ def _prio_available_items():
     except Exception:
         pass
 
-    # Sichtbar nur, wenn aktiv/installiert
     if _is_battery_active():
         items.append({"id": "battery", "label": "Battery", "color": PRIO_COLORS["battery"]})
-    if _is_wallbox_active():
+    if _is_wallbox_active() and _is_wallbox_auto():
         items.append({"id": "wallbox", "label": "Wallbox", "color": PRIO_COLORS["wallbox"]})
-    if _is_heater_active():
+    if _is_heater_active() and _is_heater_auto():
         items.append({"id": "heater", "label": "Water Heater", "color": PRIO_COLORS["heater"]})
 
     # House & Grid Feed immer sichtbar

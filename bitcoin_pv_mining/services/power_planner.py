@@ -5,14 +5,13 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from services.consumers.base import Ctx, Desire, BaseConsumer, now
 from services.consumers.registry import get_consumer_for_id
-from services.battery_store import get_var as bat_get
 
 import os
 from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 from services.settings_store import get_var as set_get
 from services.electricity_store import current_price as elec_price, get_var as elec_get
-from services.energy_mix import surplus_strict_kw as _surplus_strict_kw, incremental_mix_for
+from services.energy_mix import surplus_strict_kw as _surplus_strict_kw, incremental_mix_for, read_energy_flows
 from services.export_cap_boost import try_export_cap_boost
 from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_id
 
@@ -79,32 +78,6 @@ def _read_opt_kw(map_key: str) -> Optional[float]:
     except Exception:
         return None
 
-def _battery_power_kw_from_config() -> Optional[float]:
-    """
-    Liefert Batterie-Leistung in kW:
-      >0 = ENTLAEDUNG (liefert Energie ins Haus)
-      <0 = LADUNG     (verbraucht Energie)
-    """
-    try:
-        v_ent = (bat_get("voltage_entity", "") or "").strip()    # optional
-        i_ent = (bat_get("current_entity", "") or "").strip()    # optional
-
-        # P aus V * I berechnen
-        if v_ent and i_ent:
-            v = _f(get_sensor_value(v_ent), None)
-            i = _f(get_sensor_value(i_ent), None)
-            if v is None or i is None:
-                return None
-            # ACHTUNG: Dein Kommentar: "+laden / -entladen"
-            # bedeutet: i > 0 heißt LADUNG; i < 0 heißt ENTLADUNG.
-            # Wir wollen: ENTLADUNG > 0 → deshalb Vorzeichen drehen.
-            p_kw = -(v * i) / 1000.0
-            return float(p_kw)
-    except Exception:
-        pass
-    return None
-
-
 def _config_selfcheck(log_fn: Callable[[str], None]) -> None:
     """Loggt, ob die YAMLs vorhanden sind und welche Keys/IDs gefunden werden."""
     try:
@@ -147,30 +120,6 @@ def _read_pv_import_feed() -> Tuple[Optional[float], Optional[float], Optional[f
         feed = abs(feed)
     return pv, imp, feed
 
-def _read_energy_flows() -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]:
-    """
-    Liefert: (pv_kw, imp_kw, feed_kw, bat_kw, surplus_direct_kw)
-      - bat_kw   >0 = Batterie ENTLAEDT; <0 = LAEDT
-      - surplus_direct_kw: direkter Überschuss-Sensor (>=0), falls gemappt (optional)
-    """
-    pv_id   = _map("pv_production")
-    imp_id  = _map("grid_consumption")
-    feed_id = _map("grid_feed_in")
-
-    pv   = _kw(_f(get_sensor_value(pv_id), 0.0))   if pv_id   else None
-    imp  = _kw(_f(get_sensor_value(imp_id), 0.0))  if imp_id  else None
-    feed = _kw(_f(get_sensor_value(feed_id), 0.0)) if feed_id else None
-    if feed is not None and feed < 0:
-        feed = abs(feed)
-
-    bat  = _battery_power_kw_from_config()         # ← aus battery.yaml
-    surplus_direct = _read_opt_kw("pv_surplus")    # ← optionaler Mapping-Key; wenn vorhanden, wird er bevorzugt
-    if surplus_direct is not None:
-        surplus_direct = max(0.0, surplus_direct)
-
-    return pv, imp, feed, bat, surplus_direct
-
-
 def _controllable_now_kw() -> float:
     """Schätzt aktuell laufende, von uns kontrollierbare Last (kW)."""
     now_kw = 0.0
@@ -208,6 +157,119 @@ def _controllable_now_kw() -> float:
 
     # Wallbox/Battery könntest du später ergänzen
     return max(0.0, now_kw)
+
+
+def _battery_discharge_kw_now() -> float:
+    try:
+        _pv_kw, _imp_kw, _feed_kw, bat_kw, _surplus_direct = read_energy_flows()
+        return max(0.0, _f(bat_kw, 0.0))
+    except Exception:
+        return 0.0
+
+
+def _miner_min_run_s(mid: str, default: int = 60) -> int:
+    raw = set_get(f"miner.{mid}.min_run_min", None)
+    if raw is not None:
+        try:
+            return max(0, int(float(raw) * 60.0))
+        except Exception:
+            return default
+    return int(_f(set_get("miner_min_run_s", default), default))
+
+
+def _discrete_runtime_meta(cid: str) -> Optional[dict]:
+    if cid == "cooling":
+        try:
+            from services.cooling_store import get_cooling
+
+            c = get_cooling() or {}
+            return {
+                "kind": "cooling",
+                "actual_on": bool(c.get("effective_on")) or bool(c.get("pending_on")) or bool(c.get("on")),
+                "last_flip_ts": _f(c.get("last_transition_ts"), 0.0),
+                "nominal_kw": _f(c.get("power_kw"), 0.0),
+                "min_run_s": int(_f(set_get("cooling_min_run_s", 20), 20)),
+                "min_off_s": int(_f(set_get("cooling_min_off_s", 20), 20)),
+            }
+        except Exception:
+            return None
+
+    if cid.startswith("miner:"):
+        try:
+            from services.miners_store import list_miners
+
+            mid = cid.split(":", 1)[1]
+            miner = next((m for m in (list_miners() or []) if m.get("id") == mid), None)
+            if not miner:
+                return None
+            return {
+                "kind": "miner",
+                "actual_on": bool(miner.get("on")),
+                "last_flip_ts": _f(miner.get("last_flip_ts"), 0.0),
+                "nominal_kw": _f(miner.get("power_kw"), 0.0),
+                "min_run_s": _miner_min_run_s(mid),
+                "min_off_s": int(_f(set_get("miner_min_off_s", 20), 20)),
+            }
+        except Exception:
+            return None
+
+    return None
+
+
+def _allocate_discrete_load(
+    *,
+    cid: str,
+    desire: Desire,
+    pv_left: float,
+    grid_free: bool,
+    battery_block: bool,
+    now_ts: float,
+) -> tuple[float, float, float, str]:
+    meta = _discrete_runtime_meta(cid) or {}
+    req = desire.exact_kw if desire.exact_kw is not None else max(desire.min_kw or 0.0, desire.max_kw or 0.0)
+    req = max(0.0, float(req or 0.0))
+
+    actual_on = bool(meta.get("actual_on"))
+    last_flip_ts = _f(meta.get("last_flip_ts"), 0.0)
+    nominal_kw = max(0.0, _f(meta.get("nominal_kw"), 0.0))
+    min_run_s = int(_f(meta.get("min_run_s"), 0.0))
+    min_off_s = int(_f(meta.get("min_off_s"), 0.0))
+    elapsed = max(0.0, now_ts - last_flip_ts) if last_flip_ts > 0.0 else 0.0
+
+    locked_on = actual_on and (last_flip_ts > 0.0) and (elapsed < max(0, min_run_s))
+    locked_off = (not actual_on) and (last_flip_ts > 0.0) and (elapsed < max(0, min_off_s))
+    wants_on = bool(desire.wants) and req > 0.0
+
+    decision_reason = ""
+    if battery_block:
+        if locked_on:
+            decision_reason = f"battery grace {max(0, int(min_run_s - elapsed))}s"
+            alloc_total = max(req, nominal_kw)
+        else:
+            decision_reason = "battery discharge block"
+            alloc_total = 0.0
+    elif locked_on:
+        decision_reason = f"min-run lock {max(0, int(min_run_s - elapsed))}s"
+        alloc_total = max(req, nominal_kw)
+    elif locked_off:
+        decision_reason = f"min-off lock {max(0, int(min_off_s - elapsed))}s"
+        alloc_total = 0.0
+    elif not wants_on:
+        decision_reason = "desire off"
+        alloc_total = 0.0
+    elif grid_free:
+        decision_reason = "negative grid price"
+        alloc_total = req
+    elif pv_left + 1e-9 >= req:
+        decision_reason = "pv budget available"
+        alloc_total = req
+    else:
+        decision_reason = "insufficient pv budget"
+        alloc_total = 0.0
+
+    pv_alloc = min(pv_left, alloc_total)
+    grid_alloc = max(0.0, alloc_total - pv_alloc)
+    return alloc_total, pv_alloc, grid_alloc, decision_reason
 
 
 
@@ -332,13 +394,15 @@ def plan_and_allocate(
         log_fn(f"[plan:desire] {cid}: wants={wants} min={min_kw:.2f} max={max_kw:.2f} must={must} reason={reason}")
         collected.append((cid, cons, desire))
 
-    # Aufteilen
-    must_runs = [(cid, cons, de) for (cid, cons, de) in collected if bool(getattr(de, "must_run", False))]
-    normals = [(cid, cons, de) for (cid, cons, de) in collected if not bool(getattr(de, "must_run", False))]
+    now_ts = _f(getattr(ctx, "ts", 0.0), 0.0) or now()
+    battery_block_kw = _battery_discharge_kw_now()
+    battery_block = battery_block_kw > 0.05
+    log_fn(f"[plan] battery_discharge={battery_block_kw:.3f} kW -> battery_block={battery_block}")
+    hard_must_runs = [(cid, cons, de) for (cid, cons, de) in collected if cid == "house" and bool(getattr(de, "must_run", False))]
+    remaining = [(cid, cons, de) for (cid, cons, de) in collected if not (cid == "house" and bool(getattr(de, "must_run", False)))]
 
-    # ---------- 1) MUST-RUNS ZUERST (Grid erlaubt) ----------
-    for cid, cons, de in must_runs:
-        # geforderte Leistung: exact_kw vor min/max
+    # ---------- 1) HARTE MUST-RUNS (nur Hauslast) ----------
+    for cid, cons, de in hard_must_runs:
         req = de.exact_kw if (getattr(de, "exact_kw", None) is not None) else max(de.min_kw or 0.0, de.max_kw or 0.0)
         req = max(0.0, float(req or 0.0))
 
@@ -352,30 +416,26 @@ def plan_and_allocate(
                     log_fn(f"[plan] must_run apply 0.0 error for {cid}: {e}")
             continue
 
-        # PV-Anteil bestimmen, Rest ist Grid (immer erlaubt für must_run)
-        pv_share, grid_share, pv_kw_for_req = incremental_mix_for(req)
-        alloc_kw = req  # diskrete Lasten erwarten volle Leistung
-
-        # PV-Budget reduzieren, Grid summieren
-        pv_left = max(0.0, pv_left - pv_kw_for_req)
-        grid_part = max(0.0, alloc_kw - pv_kw_for_req)
+        pv_alloc = min(pv_left, req)
+        pv_left = max(0.0, pv_left - pv_alloc)
+        grid_part = max(0.0, req - pv_alloc)
         if grid_part > 0.0:
             grid_draw += grid_part
 
-        allocations.append((cid, cons, alloc_kw))
-        log_fn(f"[plan:must] {cid}: req={req:.3f} -> pv={pv_kw_for_req:.3f} grid={grid_part:.3f} pv_left={pv_left:.3f}")
+        allocations.append((cid, cons, req))
+        log_fn(f"[plan:must] {cid}: req={req:.3f} -> pv={pv_alloc:.3f} grid={grid_part:.3f} pv_left={pv_left:.3f}")
 
         if apply and not dry_run:
             try:
-                cons.apply_allocation(ctx, alloc_kw)
+                cons.apply_allocation(ctx, req)
             except Exception as e:
                 log_fn(f"[plan] must_run apply error for {cid}: {e}")
 
         log_fn(
-            f"[DRY] {cid:12s} wants={bool(de.wants)} min={_fmt(de.min_kw)} max={_fmt(de.max_kw)} exact={_fmt(getattr(de, 'exact_kw', None))} must=True -> alloc={alloc_kw:.3f} (pv={pv_kw_for_req:.3f}, grid={grid_part:.3f}) | {getattr(de, 'reason', '')}")
+            f"[DRY] {cid:12s} wants={bool(de.wants)} min={_fmt(de.min_kw)} max={_fmt(de.max_kw)} exact={_fmt(getattr(de, 'exact_kw', None))} must=True -> alloc={req:.3f} (pv={pv_alloc:.3f}, grid={grid_part:.3f}) | {getattr(de, 'reason', '')}")
 
-    # ---------- 2) NORMALE LOADS wie bisher ----------
-    for cid, cons, de in normals:
+    # ---------- 2) ÜBRIGE LASTEN PRIORISIERT ----------
+    for cid, cons, de in remaining:
         wants = bool(de.wants)
         min_kw = max(de.min_kw or 0.0, 0.0)
         max_kw = max(de.max_kw or 0.0, 0.0)
@@ -386,6 +446,9 @@ def plan_and_allocate(
         pv_alloc = 0.0
         grid_alloc = 0.0
         alloc_total = 0.0
+
+        if cid in ("grid_feed", "inflow"):
+            continue
 
         if not wants or (min_kw <= 0.0 and max_kw <= 0.0):
             allocations.append((cid, cons, 0.0))
@@ -399,32 +462,42 @@ def plan_and_allocate(
                     log_fn(f"[plan] error: apply_allocation({cid}, 0.000) -> {e}")
             continue
 
-        if grid_free:
-            # Negative Preise: volle Max-Leistung gestatten
-            desired = max_kw
-            pv_alloc = min(pv_left, desired)
-            grid_alloc = max(0.0, desired - pv_alloc)
-            pv_left -= pv_alloc
-            alloc_total = pv_alloc + grid_alloc
+        discrete_meta = _discrete_runtime_meta(cid)
+
+        if discrete_meta:
+            alloc_total, pv_alloc, grid_alloc, policy_reason = _allocate_discrete_load(
+                cid=cid,
+                desire=de,
+                pv_left=pv_left,
+                grid_free=grid_free,
+                battery_block=battery_block and cid != "house",
+                now_ts=now_ts,
+            )
+            pv_left = max(0.0, pv_left - pv_alloc)
             if grid_alloc > 0.0:
                 grid_draw += grid_alloc
+            reason = f"{reason} | {policy_reason}" if reason else policy_reason
         else:
-            # Deine bisherige PV-first-Logik
-            need_from_pv = min(max_kw, pv_left)
-            pv_alloc = max(0.0, need_from_pv)
-            pv_left -= pv_alloc
-
-            if must and pv_alloc < min_kw:
-                if cid == "heater":  # bestehende Ausnahme
-                    grid_alloc = 0.0
-                else:
-                    grid_alloc = max(0.0, min_kw - pv_alloc)
+            if battery_block and cid != "house":
+                alloc_total = 0.0
+                reason = f"{reason} | battery discharge block" if reason else "battery discharge block"
             else:
-                grid_alloc = 0.0
-
-            alloc_total = pv_alloc + grid_alloc
-            if grid_alloc > 0.0:
-                grid_draw += grid_alloc
+                if grid_free:
+                    desired = max_kw
+                    pv_alloc = min(pv_left, desired)
+                    grid_alloc = max(0.0, desired - pv_alloc)
+                    pv_left -= pv_alloc
+                    alloc_total = pv_alloc + grid_alloc
+                    if grid_alloc > 0.0:
+                        grid_draw += grid_alloc
+                else:
+                    desired = min(max_kw, pv_left)
+                    pv_alloc = max(0.0, desired)
+                    if pv_alloc + 1e-9 < min_kw:
+                        pv_alloc = 0.0
+                    pv_left -= pv_alloc
+                    grid_alloc = 0.0
+                    alloc_total = pv_alloc
 
         log_fn(
             f"[plan:alloc]  {cid}: pv={pv_alloc:.2f} grid={grid_alloc:.2f} total={alloc_total:.2f} pv_left={pv_left:.2f}")

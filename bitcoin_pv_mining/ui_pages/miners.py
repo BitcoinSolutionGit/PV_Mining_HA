@@ -2,8 +2,7 @@ import math
 import dash
 import os
 import time
-import logging, pathlib, datetime
-import requests
+import logging
 
 from dash import html, dcc, callback_context
 from dash.dependencies import Input, Output, State, MATCH, ALL
@@ -16,7 +15,7 @@ from services.license import is_premium_enabled
 from services.utils import load_yaml
 from services.ha_sensors import get_sensor_value
 from services.cooling_store import get_cooling, set_cooling
-from services.ha_entities import list_actions, call_action, get_entity_state, is_on_like, list_ready_entities
+from services.ha_entities import list_actions, call_action, list_ready_entities
 from ui_pages.common import footer_license, number_stepper
 from services.power_planner import incremental_mix_for
 
@@ -24,7 +23,6 @@ from services.power_planner import incremental_mix_for
 # SMOKE-TEST für Orchestrator: in _engine_tick ganz am Ende (nach Ampel-Berechnung), zusätzlich:
 from services.consumers.orchestrator import log_dry_run_plan
 from services.log import dry
-from services.power_planner import plan_and_allocate_auto
 
 CONFIG_DIR = "/config/pv_mining_addon"
 SENS_DEF = os.path.join(CONFIG_DIR, "sensors.yaml")
@@ -33,20 +31,6 @@ UI_BORDER = "rgba(191, 205, 229, 0.18)"
 UI_CARD_BG = "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))"
 UI_TEXT = "#f4f7ff"
 UI_TEXT_SOFT = "#c9d4e8"
-
-def _ha_headers():
-    tok = os.getenv("SUPERVISOR_TOKEN") or ""
-    return {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
-
-def _ha_get_state_fresh(entity_id: str):
-    try:
-        r = requests.get(f"http://supervisor/core/api/states/{entity_id}",
-                         headers=_ha_headers(), timeout=5)
-        if not r.ok:
-            return None
-        return (r.json() or {}).get("state")
-    except Exception:
-        return None
 
 def _resolve_log_path(filename: str) -> str:
     # HA Add-on: /config ist vorhanden
@@ -65,15 +49,6 @@ if not _logger.handlers:
     fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
     _logger.addHandler(fh)
     _logger.setLevel(logging.INFO)
-
-def _plan_log(msg: str):
-    try:
-        _logger.info(msg)
-    except Exception:
-        pass
-    print(msg, flush=True)  # zusätzlich in Add-on-Log / Konsole
-
-def _now(): return time.time()
 
 def _ampel(color, text):
     return html.Span([
@@ -127,67 +102,6 @@ def _pv_cost_per_kwh():
     else:
         tarif = _num(set_get("feedin_price_value", 0.0), 0.0)
     return max(tarif - fee_up, 0.0)  # nicht negativ
-
-
-def _is_profitable_for_start(m: dict, cooling_running_now: bool) -> bool:
-    """
-    Prüft, ob dieser Miner bei aktuellem Mix profitabel wäre.
-    Verwendet den einheitlichen Planner-Mix (incremental_mix_for) statt Feed-Heuristik.
-    Wenn Cooling noch nicht läuft und dieser Miner Cooling braucht, wird die Cooling-Last
-    in ΔP mit eingerechnet und Kosten fair anteilig verteilt.
-    """
-    try:
-        ths = float(m.get("hashrate_ths") or 0.0)
-        pkw = float(m.get("power_kw") or 0.0)
-        if ths <= 0.0 or pkw <= 0.0:
-            return False
-
-        # Einnahmen
-        btc_eur = get_live_btc_price_eur(fallback=_num(set_get("btc_price_eur", 0.0)))
-        net_ths = get_live_network_hashrate_ths(fallback=_num(set_get("network_hashrate_ths", 0.0)))
-        reward  = _num(set_get("block_reward_btc", 3.125), 3.125)
-        tax_pct = _num(set_get("sell_tax_percent", 0.0), 0.0)
-        eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
-
-        sat_th_h = sats_per_th_per_hour(reward, net_ths) if net_ths > 0 else 0.0
-        sats_per_h = sat_th_h * ths
-        revenue_eur_h = sats_per_h * eur_per_sat
-        after_tax = revenue_eur_h * (1.0 - max(0.0, min(tax_pct / 100.0, 1.0)))
-
-        # Kosten-Parameter
-        base = elec_price() or 0.0
-        fee_down = _num(elec_get("network_fee_down_value", 0.0), 0.0)
-        pv_cost = _pv_cost_per_kwh()
-
-        # Cooling-Setup
-        cooling_feature   = bool(set_get("cooling_feature_enabled", False))
-        require_cooling   = bool(m.get("require_cooling"))
-        cooling           = get_cooling() if cooling_feature else {}
-        cooling_kw_cfg    = float((cooling or {}).get("power_kw") or 0.0)
-
-        # ΔP: Miner + ggf. Cooling, falls es wegen dieses Miners starten müsste
-        extra_cool_kw = cooling_kw_cfg if (cooling_feature and require_cooling and not cooling_running_now) else 0.0
-        delta_kw = pkw + extra_cool_kw
-
-        # Einheitlicher Mix aus dem Planner
-        pv_share, grid_share, _pv_kw_for_delta = incremental_mix_for(delta_kw)
-        blended_eur_per_kwh = pv_share * pv_cost + grid_share * (base + fee_down)
-
-        # Cooling-Kosten fair anteilig, nur wenn Cooling wegen dieses Miners zusätzlich nötig wäre
-        cool_share_eur_h = 0.0
-        if cooling_feature and require_cooling and cooling_kw_cfg > 0.0:
-            active = [mx for mx in list_miners() if mx.get("enabled") and mx.get("on") and mx.get("require_cooling")]
-            n_future = len(active) + 1  # inkl. diesem Miner
-            cool_share_eur_h = (cooling_kw_cfg * blended_eur_per_kwh) / max(n_future, 1)
-
-        miner_cost_eur_h = pkw * blended_eur_per_kwh
-        total_cost_h = miner_cost_eur_h + cool_share_eur_h
-
-        return (after_tax - total_cost_h) > 0.0
-    except Exception:
-        return False
-
-
 
 
 def _any_miner_requires_cooling() -> bool:
@@ -567,100 +481,44 @@ def register_callbacks(app):
     def _engine_tick(_n, data, ready_val, timeout_val):
         data = data or {"cooling": {"state": "off", "until": 0}, "miners": {}}
         cool = get_cooling() or {}
-
-        # UI > Store > Defaults
-        ready_ent = (ready_val or cool.get("ready_entity") or "").strip()
-        try:
-            timeout_s = int(timeout_val or cool.get("ready_timeout_s") or 60)
-        except Exception:
-            timeout_s = 60
-
-        # Cooling-Mode & gewünschtes Verhalten:
         mode_auto = (str(cool.get("mode") or "").lower() == "auto")
-
-        st = data["cooling"].get("state", "off")
-        until = float(data["cooling"].get("until", 0.0))
-
-        # Effektiv läuft Cooling nur in "on"
-        cooling_running_now = (st == "on")
-
-        def ready():
-            # Frische Abfrage + Timeout-Fallback
-            if ready_ent:
-                st = _ha_get_state_fresh(ready_ent)
-                if str(st).lower() in ("on", "true", "1"):
-                    return True
-                return _now() >= until  # Fallback: spätestens nach Timeout weiter
-            return _now() >= until
-
-        # Auto: nur wenn mind. ein Auto-Miner mit Cooling-Pflicht JETZT profitabel wäre
-        profitable_auto_needs_cooling = False
-        if mode_auto:
-            prem = is_premium_enabled()
-            for idx, m in enumerate(list_miners() or []):
-                # ⬇️ Ohne Premium nur Miner 1 berücksichtigen
-                if (not prem) and idx >= 1:
-                    continue
-                if not m.get("enabled"):
-                    continue
-                if str(m.get("mode") or "").lower() != "auto":
-                    continue
-                if not m.get("require_cooling"):
-                    continue
-                if _is_profitable_for_start(m, cooling_running_now=cooling_running_now):
-                    dry("miner:profit", name=m.get("name"), mid=m.get("id"))
-                    profitable_auto_needs_cooling = True
-                    break
-
-        # Manual: respektiere den manuellen on/off-Schalter
-        want_on = profitable_auto_needs_cooling if mode_auto else bool(cool.get("on"))
-
-        if want_on:
-            if st in ("off", "stopping"):
-                call_action(cool.get("action_on_entity", ""), True)
-                data["cooling"] = {"state": "starting", "until": _now() + timeout_s}
-            elif st == "starting":
-                data["cooling"]["state"] = "waiting"
-            elif st == "waiting":
-                if ready():
-                    data["cooling"]["state"] = "on"
-            # "on" bleibt "on"
-        else:
-            if st in ("on", "waiting"):
-                call_action(cool.get("action_off_entity", ""), False)
-                data["cooling"] = {"state": "stopping", "until": _now() + timeout_s}
-            elif st == "stopping":
-                if not ready():  # ready() False = aus
-                    data["cooling"]["state"] = "off"
+        phase = str(cool.get("phase") or "off").lower()
+        state_map = {
+            "off": "off",
+            "running": "on",
+            "running_no_ready": "on",
+            "starting": "starting",
+            "start_failed": "starting",
+            "stopping": "stopping",
+        }
+        state = state_map.get(phase, "off")
+        data["cooling"] = {"state": state, "until": float(cool.get("startup_grace_until") or 0.0)}
 
         ampel = {
             "off": _ampel("#e74c3c", "Cooling off"),
-            "starting": _ampel("#f1c40f", "Cooling starting…"),
-            "waiting": _ampel("#f39c12", "Cooling waiting for ready…"),
+            "starting": _ampel("#f1c40f", "Cooling starting..."),
             "on": _ampel("#27ae60", "Cooling on"),
-            "stopping": _ampel("#f39c12", "Cooling stopping…"),
-        }[data["cooling"]["state"]]
+            "stopping": _ampel("#f39c12", "Cooling stopping..."),
+        }[state]
 
-        # Optional zum Debuggen:
         print(
-            f"[cool:auto] want_on={want_on} mode_auto={mode_auto} profitable={profitable_auto_needs_cooling} state={st}",
-            flush=True)
+            f"[cool:auto] mode_auto={mode_auto} desired_on={bool(cool.get('on'))} effective_on={bool(cool.get('effective_on'))} phase={phase}",
+            flush=True,
+        )
 
-        # SMOKE-TEST für Orchestrator: in _engine_tick ganz am Ende (nach Ampel-Berechnung), zusätzlich:
-        # --- Debug-Logs (optional, aber praktisch) ---
         try:
-            # Feinkorn: Status des Cooling-Controllers
-            dry("cool:auto",
+            dry(
+                "cool:auto",
                 mode=str(cool.get("mode", "")),
-                profitable=profitable_auto_needs_cooling,
-                want_on=want_on,
-                state=st)
+                desired=bool(cool.get("on")),
+                effective=bool(cool.get("effective_on")),
+                phase=phase,
+            )
         except Exception as e:
             print(f"[dry] error in cooling log: {e}", flush=True)
 
-        # Konsolidierter Plan (enthält House/Battery/Wallbox/etc.)
         try:
-            log_dry_run_plan("[dry-run]")  # ruft intern plan_and_allocate(..., dry_run=True) auf
+            log_dry_run_plan("[dry-run]")
         except Exception as e:
             print(f"[dry-run] error: {e}", flush=True)
 
@@ -887,6 +745,8 @@ def register_callbacks(app):
         old = next((m for m in (list_miners() or []) if m.get("id") == mid), {}) or {}
         old_on = bool(old.get("on"))
 
+        manual_flip_ts = None
+
         # Persistieren
         update_miner(
             mid,
@@ -905,12 +765,18 @@ def register_callbacks(app):
         # HA-Aktion NUR bei Save ausführen – und nur im Manual-Mode
         if enable and mode == "manual" and (want_on != old_on):
             from services.ha_entities import call_action
+            import time
             if want_on and act_on:
                 ok = call_action(act_on, True)
                 print(f"[save] miner {mid} ON via {act_on}: {ok}", flush=True)
+                manual_flip_ts = time.time()
             elif (not want_on) and act_off:
                 ok = call_action(act_off, False)
                 print(f"[save] miner {mid} OFF via {act_off}: {ok}", flush=True)
+                manual_flip_ts = time.time()
+
+        if manual_flip_ts is not None:
+            update_miner(mid, last_flip_ts=manual_flip_ts)
 
         # Mindestlaufzeit (min) robust lesen und speichern
         try:
@@ -1135,6 +1001,9 @@ def register_callbacks(app):
             raise dash.exceptions.PreventUpdate
 
         mode_auto = bool(mode_val and "auto" in mode_val)
+        desired_on_manual = bool(on_val and "on" in on_val)
+        current = get_cooling() or {}
+        previous_on = bool(current.get("on"))
 
         # Läuft irgendein cooling-pflichtiger Miner?
         active_required = any(
@@ -1146,15 +1015,28 @@ def register_callbacks(app):
         if mode_auto:
             # Im Auto-Modus persistieren wir "on" nur, wenn aktuell ein cooling-pflichtiger Miner *läuft*.
             # Sonst bleibt "off" gespeichert – die Orchestrierung schaltet bei Profitabilität an.
-            desired_on = bool((get_cooling() or {}).get("on"))
+            desired_on = bool(current.get("on"))
         else:
             # Im Manual-Modus honorieren wir den UI-Schalter
-            desired_on = bool(on_val and "on" in on_val)
+            desired_on = desired_on_manual
+
+        now_ts = time.time()
+        if not mode_auto and (desired_on != previous_on):
+            if desired_on and act_on:
+                ok = call_action(act_on, True)
+                print(f"[save] cooling ON via {act_on}: {ok}", flush=True)
+            elif (not desired_on) and act_off:
+                ok = call_action(act_off, False)
+                print(f"[save] cooling OFF via {act_off}: {ok}", flush=True)
 
         set_cooling(
             enabled=True,
             mode=("auto" if mode_auto else "manual"),
             on=desired_on,
+            pending_on=(desired_on and not mode_auto and bool(ready_ent) and desired_on != previous_on),
+            pending_off=((not desired_on) and not mode_auto and bool(ready_ent) and desired_on != previous_on and previous_on),
+            startup_grace_until=(now_ts + int(ready_to or 60)) if (desired_on and not mode_auto and bool(ready_ent) and desired_on != previous_on) else 0.0,
+            last_transition_ts=now_ts if (not mode_auto and desired_on != previous_on) else current.get("last_transition_ts", 0.0),
             power_kw=float(pkw or 0.0),
             action_on_entity=(act_on or ""),
             action_off_entity=(act_off or ""),
@@ -1213,3 +1095,4 @@ def register_callbacks(app):
         cost = power_kw * blended
         cs = currency_symbol()
         return f"Cooling-Costs: {cost:.2f} {cs}/h  (Mix PV {pv_share*100:.0f}% / Grid {grid_share*100:.0f}%)"
+

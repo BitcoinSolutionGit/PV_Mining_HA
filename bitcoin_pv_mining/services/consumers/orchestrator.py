@@ -1,67 +1,28 @@
-# services/orchestrator.py
 from __future__ import annotations
-from typing import List, Dict, Any
-import os
-from services.settings_store import get_var as set_get
-from services.cooling_store import get_cooling
-from services.ha_sensors import get_sensor_value
-from services.electricity_store import current_price as elec_price, get_var as elec_get
-from services.consumers.base import Ctx, now
-from services.consumers.registry import get_consumer_for_id
-from services.log import dry
-from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_id
 
-def _map_id(kind: str) -> str:
-    return resolve_runtime_sensor_id(kind, allow_mock=True)
+from typing import Any, Dict, List
 
-def _load_prio_ids() -> List[str]:
-    raw = set_get("priority_order", None)
-    if isinstance(raw, list) and raw:
-        return raw
-    import json
-    raw_json = set_get("priority_order_json", "")
-    if isinstance(raw_json, str) and raw_json.strip():
-        try:
-            val = json.loads(raw_json)
-            if isinstance(val, list) and val:
-                return val
-        except Exception:
-            pass
-    return []
+from services.power_planner import plan_and_allocate_auto
 
-def _ctx_now() -> Ctx:
-    pv_id   = _map_id("pv_production")
-    grid_id = _map_id("grid_consumption")
-    feed_id = _map_id("grid_feed_in")
-    return {
-        "price": elec_price() or 0.0,
-        "fee_down": float(elec_get("network_fee_down_value", 0.0) or 0.0),
-        "pv_kw": float(get_sensor_value(pv_id) or 0.0) if pv_id else 0.0,
-        "grid_kw": float(get_sensor_value(grid_id) or 0.0) if grid_id else 0.0,
-        "feed_in_kw": max(float(get_sensor_value(feed_id) or 0.0), 0.0) if feed_id else 0.0,
-        "now": now(),
-        "cooling": get_cooling() or {},
-    }
 
 def dry_run_plan() -> List[Dict[str, Any]]:
-    plan = []
-    order = _load_prio_ids()
-    ctx = _ctx_now()
-    for cid in order:
-        cons = get_consumer_for_id(cid)
-        if not cons:
-            continue
-        d = cons.compute_desire(ctx)
-        plan.append({"id": cid, "desire": d})
-    return plan
+    rows: List[Dict[str, Any]] = []
 
-def log_dry_run_plan(prefix: str = "[plan]"):
+    def _capture(msg: str) -> None:
+        if msg.startswith("[DRY] "):
+            rows.append({"line": msg})
+
+    plan_and_allocate_auto(apply=False, dry_run=True, log=True, logger=_capture)
+    return rows
+
+
+def log_dry_run_plan(prefix: str = "[plan]") -> None:
     try:
-        plan = dry_run_plan()
-        for row in plan:
-            d = row["desire"]
-            print(f"{prefix} {row['id']}: wants={d.wants} "
-                  f"min={d.min_kw:.3f} max={d.max_kw:.3f} "
-                  f"exact={d.exact_kw} must_run={d.must_run} reason={d.reason}", flush=True)
+        plan_and_allocate_auto(
+            apply=False,
+            dry_run=True,
+            log=True,
+            logger=lambda msg: print(f"{prefix} {msg}", flush=True),
+        )
     except Exception as e:
         print(f"{prefix} error: {e}", flush=True)

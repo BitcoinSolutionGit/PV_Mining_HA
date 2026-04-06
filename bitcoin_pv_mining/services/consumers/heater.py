@@ -92,25 +92,24 @@ class HeaterConsumer(BaseConsumer):
     def compute_desire(self, ctx: Ctx) -> Desire:
         enabled, auto, max_kw, t_target, t_sens, pct_tgt = self._read_cfg()
         if not enabled:
-            return Desire(False, 0.0, 0.0, None, False, "disabled")
+            return Desire(False, 0.0, 0.0, reason="disabled")
         if not auto:
-            return Desire(False, 0.0, 0.0, None, False, "manual mode")
+            return Desire(False, 0.0, 0.0, reason="manual mode")
         if max_kw is None or max_kw <= 0.0 or not pct_tgt:
-            return Desire(False, 0.0, 0.0, None, False, "not configured")
+            return Desire(False, 0.0, 0.0, reason="not configured")
 
         temp_sensor_id = self._temp_sensor_id(t_sens)
         t_now = _num(get_sensor_value(temp_sensor_id), None) if temp_sensor_id else None
         if t_now is None:
-            return Desire(False, 0.0, 0.0, None, False, "no water temp")
+            return Desire(False, 0.0, 0.0, reason="no water temp")
 
         # small hysteresis near target
         if t_now >= (t_target - 0.5):
-            return Desire(False, 0.0, 0.0, None, False, "target reached")
+            return Desire(False, 0.0, 0.0, reason="target reached")
 
         wants   = True
         min_kw  = 0.0
         max_kw  = max(0.0, max_kw)
-        must    = False
         reason  = f"heat towards target (T={t_now:.1f}<{t_target:.1f})"
 
         # --- Zero-export kick (optional) ---
@@ -130,10 +129,9 @@ class HeaterConsumer(BaseConsumer):
             # Kick if our command is effectively low OR we just switched to auto
             if (pct_now is None or pct_now < 5.0) and enough_cooldown:
                 min_kw = min(kick_kw, max_kw)
-                must   = True
                 reason += " | kickstart"
 
-        return Desire(wants, min_kw, max_kw, None, must, reason)
+        return Desire(wants=wants, min_kw=min_kw, max_kw=max_kw, reason=reason)
 
     def apply_allocation(self, ctx: Ctx, kw: float) -> None:
         enabled, auto, max_kw, _t_target, _t_sens, pct_tgt = self._read_cfg()
