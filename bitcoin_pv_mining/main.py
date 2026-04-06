@@ -735,8 +735,9 @@ def flash_and_premium(hash_, _n, premium_state, visible_until):
         "missing_grant":        "Login did not complete correctly. Please try again.",
         "premium_ok":           "Premium activated.",
     }
-    style_ok  = {"background":"#eaffea","border":"1px solid #27ae60","padding":"10px","borderRadius":"8px","fontWeight":"bold"}
+    style_ok = {"background":"#eaffea","border":"1px solid #27ae60","padding":"10px","borderRadius":"8px","fontWeight":"bold"}
     style_err = {"background":"#ffecec","border":"1px solid #e74c3c","padding":"10px","borderRadius":"8px","fontWeight":"bold"}
+    style_tier_info = {**style_err, "color": "#4b5563"}
 
     now = time.time()
     toast = None
@@ -750,7 +751,7 @@ def flash_and_premium(hash_, _n, premium_state, visible_until):
         elif h.startswith("premium_error="):
             code = h.split("=", 1)[1]
             text = messages.get(code, f"Error: {code}")
-            toast = html.Div(text, style=style_err)
+            toast = html.Div(text, style=(style_tier_info if code == "tier_too_low" else style_err))
 
     # 2) Optionaler Fallback: serverseitiges ui_flash (one-shot)
     if toast is None:
@@ -766,7 +767,7 @@ def flash_and_premium(hash_, _n, premium_state, visible_until):
                 if level == "ok":
                     toast = html.Div(messages.get(code, "OK"), style=style_ok)
                 else:
-                    toast = html.Div(messages.get(code, f"Error: {code}"), style=style_err)
+                    toast = html.Div(messages.get(code, f"Error: {code}"), style=(style_tier_info if code == "tier_too_low" else style_err))
         except Exception as e:
             print("[FLASH] read error:", e, flush=True)
 
@@ -1377,7 +1378,7 @@ app.index_string = '''
 app.layout = page_wrap([
     dcc.Store(id="active-tab", data="dashboard"),
     dcc.Store(id="premium-enabled", data={"enabled": is_premium_enabled()}),
-    dcc.Store(id="consent-state", data=get_consent_status()),
+    dcc.Store(id="consent-state", data=get_consent_status(), storage_type="local"),
     dcc.Store(id="prio-order", storage_type="local"),
     dcc.Store(id="flash-visible-until", data=0),
     dcc.Interval(id="flash-poll", interval=2000, n_intervals=0),

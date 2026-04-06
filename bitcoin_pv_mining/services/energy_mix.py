@@ -58,6 +58,12 @@ def _battery_power_kw_from_config() -> Optional[float]:
     Wir drehen das Vorzeichen, damit ENTLADUNG positiv ist.
     """
     try:
+        p_ent = effective_entity_key((bat_get("power_entity", "") or "").strip(), DEV_BATTERY_POWER)
+        if p_ent:
+            p = _f(get_sensor_value(p_ent), None)
+            if p is not None:
+                return -float(_kw(p))
+
         v_ent = effective_entity_key((bat_get("voltage_entity", "") or "").strip(), DEV_BATTERY_VOLTAGE)
         i_ent = effective_entity_key((bat_get("current_entity", "") or "").strip(), DEV_BATTERY_CURRENT)
         if v_ent and i_ent:

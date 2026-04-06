@@ -1,7 +1,32 @@
 # utils_config.py
 import os, json, yaml, uuid, datetime as dt
 
-CONFIG_DIR = "/config/pv_mining_addon"
+ADDON_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _normalize_config_dir(path: str) -> str:
+    raw = (path or "").strip()
+    if not raw:
+        return ""
+    if os.path.basename(raw.rstrip("/\\")).lower() == "pv_mining_addon":
+        return raw
+    return os.path.join(raw, "pv_mining_addon")
+
+
+def _resolve_config_dir() -> str:
+    env_candidates = [
+        _normalize_config_dir(os.getenv("PV_MINING_CONFIG_DIR", "")),
+        _normalize_config_dir(os.getenv("CONFIG_DIR", "")),
+    ]
+    local_candidate = os.path.join(ADDON_ROOT, "config", "pv_mining_addon")
+    candidates = [p for p in env_candidates if p] + ["/config/pv_mining_addon", local_candidate]
+    for path in candidates:
+        if os.path.isdir(path):
+            return path
+    return candidates[0]
+
+
+CONFIG_DIR = _resolve_config_dir()
 SENSORS_PATH = os.path.join(CONFIG_DIR, "sensors.yaml")
 STATE_PATH = os.path.join(CONFIG_DIR, "state.json")
 

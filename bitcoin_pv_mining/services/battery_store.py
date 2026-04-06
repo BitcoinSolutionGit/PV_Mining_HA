@@ -15,6 +15,7 @@ DEFAULTS = {
     # Sensor-Entities (optional)
     "capacity_entity": "",
     "soc_entity": "",
+    "power_entity": "",
     "voltage_entity": "",
     "current_entity": "",
     "temperature_entity": "",

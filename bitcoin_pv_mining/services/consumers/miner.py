@@ -81,6 +81,10 @@ def _non_pv_shutdown_reason() -> str:
 def _clear_non_pv_guard(mid: str) -> None:
     _non_pv_guard_since.pop(mid, None)
 
+
+def _power_source_block_reason() -> str:
+    return _non_pv_shutdown_reason()
+
 def _min_run_seconds_for(mid: str) -> int:
     """
     Per-Device Mindestlaufzeit in Sekunden.
@@ -285,6 +289,7 @@ class MinerConsumer(BaseConsumer):
         pkw = _num(m.get("power_kw"), 0.0)
 
         mode = str(m.get("mode") or "manual").lower()
+        power_source_block = _power_source_block_reason()
 
         # ---------- MANUAL OVERRIDE ----------
         if mode != "auto":
@@ -294,6 +299,8 @@ class MinerConsumer(BaseConsumer):
             cool_ok = _cooling_running_strict()
             print(f"[miner {self.miner_id}] manual desire: want_on={want_on} need_cool={need_cool} cool_ok={cool_ok}", flush=True)
 
+            if power_source_block:
+                return Desire(False, 0.0, 0.0, reason=f"power source blocked: {power_source_block}")
             if need_cool and (cool_ok is False):
                 return Desire(False, 0.0, 0.0, reason="cooling not ready (manual)")
             if want_on and pkw > 0.0:
@@ -312,25 +319,20 @@ class MinerConsumer(BaseConsumer):
                 return Desire(False, 0.0, 0.0, reason="cooling lost")
             return Desire(False, 0.0, 0.0, reason="cooling not ready")
 
+        if power_source_block:
+            _clear_non_pv_guard(self.miner_id)
+            return Desire(False, 0.0, 0.0, reason=f"power source blocked: {power_source_block}")
+
+        need_cool = _cooling_required(m)
+        cool_on = _cooling_running_now()
+        cool_kw = _cooling_power_kw() if need_cool else 0.0
+        delta_kw = pkw + (cool_kw if (need_cool and not cool_on) else 0.0)
+        _pv_share_now, strict_grid_share, _pv_kw_for_delta = incremental_mix_for(delta_kw)
+        if strict_grid_share > 1e-6:
+            _clear_non_pv_guard(self.miner_id)
+            return Desire(False, 0.0, 0.0, reason=f"strict pv-only block (grid share {strict_grid_share:.3f})")
+
         if is_on_now:
-            shutdown_reason = _non_pv_shutdown_reason()
-            if shutdown_reason:
-                since_ts = _non_pv_guard_since.get(self.miner_id)
-                if since_ts is None:
-                    since_ts = now_ts
-                    _non_pv_guard_since[self.miner_id] = since_ts
-                elapsed = max(0.0, now_ts - since_ts)
-                if elapsed >= max(0, min_run_s):
-                    return Desire(False, 0.0, 0.0, reason=f"force off after {int(elapsed)}s: {shutdown_reason}")
-                remaining = max(0, int(min_run_s - elapsed))
-                return Desire(
-                    True,
-                    pkw,
-                    pkw,
-                    must_run=True,
-                    exact_kw=pkw,
-                    reason=f"shutdown grace {remaining}s: {shutdown_reason}",
-                )
             _clear_non_pv_guard(self.miner_id)
         else:
             _clear_non_pv_guard(self.miner_id)
@@ -362,18 +364,8 @@ class MinerConsumer(BaseConsumer):
         pv_cost = _pv_cost_per_kwh()
         eff_grid_cost = _num(elec_price(), 0.0) + _num(elec_get("network_fee_down_value", 0.0), 0.0)
 
-        # Negativer Netzpreis → „alles ziehen“
-        if eff_grid_cost <= 0.0:
-            return Desire(True, 0.0, pkw, exact_kw=pkw, reason="neg grid price")
-
-        # Cooling-Bedarf/Zustand
-        need_cool = _cooling_required(m)
-        cool_on = _cooling_running_now()
-        cool_kw = _cooling_power_kw() if need_cool else 0.0
-
-        # ΔP für Mixberechnung: Miner + ggf. Cooling, falls Cooling noch aus ist
-        delta_kw = pkw + (cool_kw if (need_cool and not cool_on) else 0.0)
-        pv_share, grid_share, _pv_kw_for_delta = incremental_mix_for(delta_kw)
+        pv_share = 1.0 - strict_grid_share
+        grid_share = strict_grid_share
         blended_eur_per_kwh = pv_share * pv_cost + grid_share * eff_grid_cost
 
         # Cooling-Kosten fair anteilig, nur wenn Cooling durch diesen Miner zusätzlich starten müsste
@@ -442,12 +434,23 @@ class MinerConsumer(BaseConsumer):
         try:
             # ---------- MANUAL ----------
             if is_manual:
+                power_source_block = _power_source_block_reason()
                 need_cool = _cooling_required(m)
                 cool_strict = _cooling_running_strict()  # True/False/None
 
                 # Debug
                 print(f"[miner {self.miner_id}] manual apply: want_on={want_on_manual} prev_on={prev_on} "
                       f"need_cool={need_cool} cool_strict={cool_strict}", flush=True)
+
+                if power_source_block:
+                    if prev_on:
+                        if off_ent:
+                            call_action(off_ent, False)
+                        update_miner(self.miner_id, on=False, last_flip_ts=time.time())
+                        print(f"[miner {self.miner_id}] manual safety OFF: {power_source_block}", flush=True)
+                    else:
+                        print(f"[miner {self.miner_id}] manual ON blocked: {power_source_block}", flush=True)
+                    return
 
                 if want_on_manual:
                     # Safety: Wenn Cooling explizit als 'aus' gemeldet wird -> NICHT einschalten.
@@ -476,6 +479,11 @@ class MinerConsumer(BaseConsumer):
             frac = _on_fraction_for_miner(self.miner_id, default=0.95)
             should_on = pkw > 0.0 and alloc_kw >= frac * pkw
             print(f"[miner {self.miner_id}] on_fraction={frac:.2f} alloc={alloc_kw:.3f} pkw={pkw:.3f}", flush=True)
+
+            power_source_block = _power_source_block_reason()
+            if should_on and power_source_block:
+                print(f"[miner {self.miner_id}] AUTO wants ON but power source blocked -> skip ({power_source_block})", flush=True)
+                should_on = False
 
             # OPTIONAL: Safety – Miner nicht automatisch einschalten, wenn Cooling zwingend
             # benötigt wird, aber 'strict' nicht läuft.
