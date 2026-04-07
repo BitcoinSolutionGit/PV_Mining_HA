@@ -19,7 +19,7 @@ from services.license import set_token, verify_license, start_heartbeat_loop, is
 from services.utils import get_addon_version, load_state, save_state, iso_now, load_yaml
 from services.power_planner import plan_and_allocate_auto
 from services.settings_store import get_var as settings_get
-from services.disclaimer_consent import get_consent_status, needs_consent, save_user_consent
+from services.disclaimer_consent import get_consent_status, save_user_consent
 from urllib.parse import urlparse, parse_qs
 
 #from ui_pages.sensors import layout as sensors_layout, register_callbacks as reg_sensors
@@ -128,6 +128,41 @@ def _consent_label_style():
 
 def _consent_input_style():
     return {"marginTop": "4px"}
+
+
+def _tab_buttons_style(consent_required: bool) -> dict:
+    style = {"backgroundColor": "transparent", "padding": "6px 10px"}
+    if consent_required:
+        style["display"] = "none"
+    return style
+
+
+def _tabs_content_style(consent_required: bool) -> dict:
+    style = {
+        "backgroundColor": ui_background_color(),
+        "minHeight": "calc(100vh - 120px)",
+        "paddingBottom": "16px",
+    }
+    if consent_required:
+        style["display"] = "none"
+    return style
+
+
+def _consent_reason_text(reason: str, lang: str) -> str:
+    lang_key = "de" if str(lang).lower().startswith("de") else "en"
+    texts = {
+        "de": {
+            "missing_acceptance": "Zustimmung fehlt oder wurde noch nie gespeichert.",
+            "disclaimer_changed": "Der Disclaimer wurde aktualisiert und muss erneut akzeptiert werden.",
+            "addon_scope_changed": "Die Add-on-Version hat einen neuen Major/Minor-Stand erreicht und erfordert erneut Zustimmung.",
+        },
+        "en": {
+            "missing_acceptance": "Consent is missing or has never been stored.",
+            "disclaimer_changed": "The disclaimer was updated and must be accepted again.",
+            "addon_scope_changed": "The add-on reached a new major/minor version and requires consent again.",
+        },
+    }
+    return texts[lang_key].get(reason, "")
 
 
 def _first_run_modal():
@@ -965,9 +1000,12 @@ def debug_clear_token():
 @app.callback(
     Output("tabs-content", "children"),
     Input("active-tab", "data"),
-    Input("premium-enabled", "data")
+    Input("premium-enabled", "data"),
+    Input("consent-state", "data"),
 )
-def render_tab(tab, premium_data):
+def render_tab(tab, premium_data, consent_state):
+    if bool((consent_state or {}).get("required")):
+        return html.Div()
     enabled = bool((premium_data or {}).get("enabled"))
     if tab == "dashboard":
         return dashboard_layout()
@@ -1434,18 +1472,49 @@ app.layout = page_wrap([
         html.Button("Activate Premium", id="btn-premium",
                     n_clicks=0, className="custom-tab premium-btn premium-right"),
     ], id="tab-buttons", className="header-bar",
-        style={"backgroundColor": "transparent", "padding": "6px 10px"}),
+        style=_tab_buttons_style(bool(get_consent_status().get("required")))),
 
     html.Div(
         id="tabs-content",
         className="content-area",
-        style={
-            "backgroundColor": ui_background_color(),
-            "minHeight": "calc(100vh - 120px)",  # schrumpft nicht weg
-            "paddingBottom": "16px",
-        },
+        style=_tabs_content_style(bool(get_consent_status().get("required"))),
     ),
 ])
+
+@app.callback(
+    Output("consent-state", "data", allow_duplicate=True),
+    Input("planner-engine", "n_intervals"),
+    State("consent-state", "data"),
+    prevent_initial_call="initial_duplicate",
+)
+def _sync_consent_state(_n, current_state):
+    backend_state = get_consent_status()
+    keys = (
+        "required",
+        "required_reason",
+        "current_disclaimer_version",
+        "stored_disclaimer_version",
+        "current_addon_scope",
+        "stored_addon_scope",
+        "accepted",
+        "language",
+        "timestamp",
+    )
+    current = current_state or {}
+    if any(current.get(k) != backend_state.get(k) for k in keys):
+        return backend_state
+    return dash.no_update
+
+
+@app.callback(
+    Output("tab-buttons", "style"),
+    Output("tabs-content", "style"),
+    Input("consent-state", "data"),
+)
+def _gate_main_ui(consent_state):
+    required = bool((consent_state or {}).get("required"))
+    return _tab_buttons_style(required), _tabs_content_style(required)
+
 
 @app.callback(
     Output("first-run-overlay", "style"),
@@ -1483,15 +1552,22 @@ def _update_first_run_modal(consent_state, language, req_read, req_license, req_
     disclaimer_de_url, disclaimer_en_url = _disclaimer_urls()
     disclaimer_href = disclaimer_de_url if lang == "de" else disclaimer_en_url
     license_href = _license_url()
-    current_version = str(state.get("current_version", "unknown") or "unknown")
+    current_version = str(state.get("current_disclaimer_version", state.get("current_version", "unknown")) or "unknown")
     current_date = str(state.get("current_date", "") or "")
-    stored_version = str(state.get("stored_version", "") or "")
+    stored_version = str(state.get("stored_disclaimer_version", state.get("stored_version", "")) or "")
+    current_scope = str(state.get("current_addon_scope", "") or "")
+    stored_scope = str(state.get("stored_addon_scope", "") or "")
+    required_reason = str(state.get("required_reason", "") or "")
 
     version_parts = [f"{text['version']}: {current_version}"]
     if current_date:
         version_parts.append(current_date)
     if stored_version and stored_version != current_version:
         version_parts.append(f"{text['previous']}: {stored_version}")
+    if current_scope:
+        version_parts.append(f"Scope: {current_scope}")
+    if stored_scope and stored_scope != current_scope:
+        version_parts.append(f"Previous scope: {stored_scope}")
 
     warning_children = [
         text["warning"][0],
@@ -1500,6 +1576,9 @@ def _update_first_run_modal(consent_state, language, req_read, req_license, req_
         html.Br(),
         text["warning"][2],
     ]
+    reason_text = _consent_reason_text(required_reason, lang)
+    if reason_text:
+        warning_children.extend([html.Br(), html.Br(), reason_text])
 
     req_ok = ("on" in (req_read or [])) and ("on" in (req_license or [])) and ("on" in (req_installation or []))
     accept_class = "custom-tab first-run-accept" if req_ok else "custom-tab first-run-accept is-disabled"
@@ -1570,18 +1649,21 @@ def _persist_first_run_consent(n_decline, n_accept, language, req_read, req_lice
     prevent_initial_call=False
 )
 def _global_engine_tick(n, _consent_state, premium_data):
-    consent_required = needs_consent()
+    consent_status = get_consent_status()
+    consent_required = bool(consent_status.get("required"))
+    consent_reason = str(consent_status.get("required_reason", "") or "")
     backend_enabled = is_premium_enabled()
     client_enabled = bool((premium_data or {}).get("enabled"))
 
     print(
         f"[engine] tick n={n} consent_required={consent_required} "
+        f"consent_reason={consent_reason or '-'} "
         f"premium_backend={backend_enabled} premium_client={client_enabled}",
         flush=True,
     )
 
     if consent_required:
-        print("[engine] skip: consent required", flush=True)
+        print(f"[engine] skip: consent required ({consent_reason or 'unknown'})", flush=True)
         return ""
 
     # Engine-Gating nur gegen den Backend-Status, nicht gegen Browser-Store.

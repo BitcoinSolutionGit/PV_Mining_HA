@@ -18,12 +18,18 @@ def _resolve_config_dir() -> str:
         _normalize_config_dir(os.getenv("PV_MINING_CONFIG_DIR", "")),
         _normalize_config_dir(os.getenv("CONFIG_DIR", "")),
     ]
-    local_candidate = os.path.join(ADDON_ROOT, "config", "pv_mining_addon")
-    candidates = [p for p in env_candidates if p] + ["/config/pv_mining_addon", local_candidate]
-    for path in candidates:
-        if os.path.isdir(path):
+    for path in env_candidates:
+        if path:
             return path
-    return candidates[0]
+
+    if os.path.isdir("/config"):
+        return "/config/pv_mining_addon"
+
+    local_candidate = os.path.join(ADDON_ROOT, "config", "pv_mining_addon")
+    if os.path.isdir(local_candidate):
+        return local_candidate
+
+    return "/config/pv_mining_addon" if os.path.exists("/config") else local_candidate
 
 
 CONFIG_DIR = _resolve_config_dir()

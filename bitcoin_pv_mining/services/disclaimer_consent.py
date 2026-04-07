@@ -1,7 +1,8 @@
 import os
+import re
 import yaml
 
-from services.utils import load_state, save_state, iso_now
+from services.utils import get_addon_version, load_state, save_state, iso_now
 
 
 ADDON_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -73,31 +74,78 @@ def get_current_disclaimer_info() -> dict:
     }
 
 
+def _addon_scope(version: str) -> str:
+    raw = str(version or "").strip()
+    match = re.match(r"^\s*(\d+)\.(\d+)", raw)
+    if match:
+        return f"{match.group(1)}.{match.group(2)}"
+    nums = re.findall(r"\d+", raw)
+    if len(nums) >= 2:
+        return f"{nums[0]}.{nums[1]}"
+    if len(nums) == 1:
+        return f"{nums[0]}.0"
+    return "0.0"
+
+
+def get_current_consent_scope() -> str:
+    return _addon_scope(get_addon_version())
+
+
 def get_stored_consent() -> dict:
     st = load_state() or {}
-    consent = st.get("user_consent", {})
-    return consent if isinstance(consent, dict) else {}
+    raw = st.get("user_consent", {})
+    consent = raw if isinstance(raw, dict) else {}
+    language = str(consent.get("language", "") or "de").lower()
+    if language not in ("de", "en"):
+        language = "de"
+    return {
+        "accepted": bool(consent.get("accepted")),
+        "disclaimer_version": str(
+            consent.get("disclaimer_version", consent.get("version", "")) or ""
+        ),
+        "addon_scope": str(consent.get("addon_scope", "") or ""),
+        "language": language,
+        "timestamp": str(consent.get("timestamp", "") or ""),
+    }
+
+
+def get_required_reason() -> str:
+    current = get_current_disclaimer_info()
+    current_disclaimer_version = str(current.get("version", "unknown") or "unknown")
+    current_scope = get_current_consent_scope()
+    stored = get_stored_consent()
+
+    if not bool(stored.get("accepted")):
+        return "missing_acceptance"
+    if str(stored.get("disclaimer_version", "")) != current_disclaimer_version:
+        return "disclaimer_changed"
+    if str(stored.get("addon_scope", "")) != current_scope:
+        return "addon_scope_changed"
+    return ""
 
 
 def needs_consent() -> bool:
-    current_version = get_current_disclaimer_info().get("version", "unknown")
-    stored = get_stored_consent()
-    return (not bool(stored.get("accepted"))) or (str(stored.get("version", "")) != str(current_version))
+    return bool(get_required_reason())
 
 
 def get_consent_status() -> dict:
     current = get_current_disclaimer_info()
     stored = get_stored_consent()
-    language = str(stored.get("language", "") or "de").lower()
-    if language not in ("de", "en"):
-        language = "de"
+    current_disclaimer_version = str(current.get("version", "unknown") or "unknown")
+    current_addon_scope = get_current_consent_scope()
+    required_reason = get_required_reason()
     return {
-        "required": needs_consent(),
-        "current_version": current.get("version", "unknown"),
+        "required": bool(required_reason),
+        "required_reason": required_reason,
+        "current_version": current_disclaimer_version,
         "current_date": current.get("date", ""),
-        "stored_version": str(stored.get("version", "") or ""),
+        "stored_version": str(stored.get("disclaimer_version", "") or ""),
+        "current_disclaimer_version": current_disclaimer_version,
+        "stored_disclaimer_version": str(stored.get("disclaimer_version", "") or ""),
+        "current_addon_scope": current_addon_scope,
+        "stored_addon_scope": str(stored.get("addon_scope", "") or ""),
         "accepted": bool(stored.get("accepted")),
-        "language": language,
+        "language": str(stored.get("language", "de") or "de"),
         "timestamp": str(stored.get("timestamp", "") or ""),
     }
 
@@ -107,7 +155,9 @@ def save_user_consent(*, accepted: bool, language: str):
     current = get_current_disclaimer_info()
     st["user_consent"] = {
         "accepted": bool(accepted),
+        "disclaimer_version": current.get("version", "unknown"),
         "version": current.get("version", "unknown"),
+        "addon_scope": get_current_consent_scope(),
         "timestamp": iso_now(),
         "language": "de" if str(language).lower().startswith("de") else "en",
     }
