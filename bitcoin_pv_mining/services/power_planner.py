@@ -216,6 +216,43 @@ def _discrete_runtime_meta(cid: str) -> Optional[dict]:
     return None
 
 
+def _cooling_has_dependent_miner(
+    *,
+    collected: List[Tuple[str, BaseConsumer, Desire]],
+    pv_left: float,
+    grid_free: bool,
+) -> bool:
+    try:
+        from services.cooling_store import get_cooling
+        from services.miners_store import list_miners
+    except Exception:
+        return False
+
+    cooling = get_cooling() or {}
+    cooling_kw = max(0.0, _f(cooling.get("power_kw"), 0.0))
+    miners = {f"miner:{m.get('id')}": m for m in (list_miners() or []) if m.get("id")}
+
+    for cid, _cons, desire in collected:
+        miner = miners.get(cid)
+        if not miner:
+            continue
+        if not _truthy(miner.get("require_cooling"), False):
+            continue
+        if bool(miner.get("on")):
+            return True
+
+        req = desire.exact_kw if getattr(desire, "exact_kw", None) is not None else max(desire.min_kw or 0.0, desire.max_kw or 0.0)
+        req = max(0.0, float(req or 0.0))
+        if not bool(desire.wants) or req <= 0.0:
+            continue
+
+        combined_kw = cooling_kw + req
+        if grid_free or (pv_left + 1e-9 >= combined_kw):
+            return True
+
+    return False
+
+
 def _allocate_discrete_load(
     *,
     cid: str,
@@ -442,6 +479,14 @@ def plan_and_allocate(
         exact = getattr(de, "exact_kw", None)
         must = bool(getattr(de, "must_run", False))  # hier idR False
         reason = getattr(de, "reason", "")
+
+        if cid == "cooling" and not _cooling_has_dependent_miner(collected=collected, pv_left=pv_left, grid_free=grid_free):
+            de = Desire(False, 0.0, 0.0, reason="no dependent cooling miner")
+            wants = False
+            min_kw = 0.0
+            max_kw = 0.0
+            exact = None
+            reason = getattr(de, "reason", "")
 
         pv_alloc = 0.0
         grid_alloc = 0.0

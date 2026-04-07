@@ -138,6 +138,22 @@ def _cooling_running_now() -> bool:
         return False
 
 
+def _cooling_auto_available() -> bool:
+    try:
+        from services.cooling_store import get_cooling
+
+        c = get_cooling() or {}
+        if not _truthy(set_get("cooling_feature_enabled", False), False):
+            return False
+        if not _truthy(c.get("enabled"), True):
+            return False
+        if str(c.get("mode") or "manual").lower() != "auto":
+            return False
+        return _num(c.get("power_kw"), 0.0) > 0.0
+    except Exception:
+        return False
+
+
 def _miner_record(miner_id: str) -> Optional[dict]:
     for miner in (list_miners() or []):
         if miner.get("id") == miner_id:
@@ -190,10 +206,12 @@ class MinerConsumer(BaseConsumer):
         if pkw <= 0.0 or (is_miner and ths <= 0.0):
             return Desire(False, 0.0, 0.0, reason="no hashrate/power")
 
-        if _cooling_required(record) and not _cooling_running_now():
-            if is_on_now:
-                return Desire(False, 0.0, 0.0, reason="cooling lost")
-            return Desire(False, 0.0, 0.0, reason="cooling not ready")
+        need_cool = _cooling_required(record)
+        cool_on = _cooling_running_now()
+        if need_cool and not _cooling_auto_available():
+            return Desire(False, 0.0, 0.0, reason="cooling unavailable")
+        if need_cool and is_on_now and not cool_on:
+            return Desire(False, 0.0, 0.0, reason="cooling lost")
 
         btc_eur = get_live_btc_price_eur(fallback=_num(set_get("btc_price_eur", 0.0)))
         net_ths = get_live_network_hashrate_ths(fallback=_num(set_get("network_hashrate_ths", 0.0)))
@@ -216,8 +234,6 @@ class MinerConsumer(BaseConsumer):
             return Desire(True, 0.0, pkw, exact_kw=pkw, reason="negative grid price")
 
         pv_cost = _pv_cost_per_kwh()
-        need_cool = _cooling_required(record)
-        cool_on = _cooling_running_now()
         cool_kw = _cooling_power_kw() if need_cool else 0.0
         delta_kw = pkw + (cool_kw if (need_cool and not cool_on) else 0.0)
         pv_share = min(1.0, max(0.0, _num(ctx.get("surplus_kw", 0.0) if isinstance(ctx, dict) else getattr(ctx, "surplus_kw", 0.0), 0.0) / max(delta_kw, 1e-9)))
@@ -231,7 +247,10 @@ class MinerConsumer(BaseConsumer):
         total_cost_h = pkw * blended_eur_per_kwh + cool_share_eur_h
 
         if grid_share <= 1e-6:
-            return Desire(True, 0.0, pkw, exact_kw=pkw, reason="pv_only_ok")
+            reason = "pv_only_ok"
+            if need_cool and not cool_on:
+                reason = f"{reason} | cooling required"
+            return Desire(True, 0.0, pkw, exact_kw=pkw, reason=reason)
 
         if not is_miner:
             return Desire(False, 0.0, 0.0, reason="consumer: positive grid share")
@@ -240,10 +259,16 @@ class MinerConsumer(BaseConsumer):
         if is_on_now:
             if profit <= off_margin:
                 return Desire(False, 0.0, 0.0, reason=f"not profitable (delta={profit:.2f} EUR/h <= off_margin)")
-            return Desire(True, 0.0, pkw, exact_kw=pkw, reason=f"keep on (delta={profit:.2f} EUR/h)")
+            reason = f"keep on (delta={profit:.2f} EUR/h)"
+            if need_cool and not cool_on:
+                reason = f"{reason} | cooling required"
+            return Desire(True, 0.0, pkw, exact_kw=pkw, reason=reason)
 
         if profit >= on_margin:
-            return Desire(True, 0.0, pkw, exact_kw=pkw, reason=f"profitable (delta={profit:.2f} EUR/h >= on_margin)")
+            reason = f"profitable (delta={profit:.2f} EUR/h >= on_margin)"
+            if need_cool and not cool_on:
+                reason = f"{reason} | cooling required"
+            return Desire(True, 0.0, pkw, exact_kw=pkw, reason=reason)
         return Desire(False, 0.0, 0.0, reason=f"not profitable (delta={profit:.2f} EUR/h < on_margin)")
 
     def apply_allocation(self, ctx: Ctx, alloc_kw: float) -> None:
