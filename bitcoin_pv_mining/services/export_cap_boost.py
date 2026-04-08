@@ -1,8 +1,8 @@
 # services/export_cap_boost.py
 import time
-from services.utils import load_state, save_state
+from services.utils import load_state, update_state
 from services.settings_store import get_var as set_get
-from services.miners_store import list_miners, update_miner
+from services.miners_store import list_miners, request_miner_state
 from services.cooling_store import get_cooling
 
 def _truthy(x, default=False):
@@ -38,7 +38,10 @@ def try_export_cap_boost(feed_kw: float, import_kw: float):
     """
     cap = float(set_get("grid_export_cap_kw", 0.0) or 0.0)
     if cap <= 0:  # aus
-        st = load_state(); st.pop("cap_boost", None); save_state(st); return None
+        def _clear(st: dict):
+            st.pop("cap_boost", None)
+        update_state(_clear)
+        return None
 
     eps = 0.05  # kW Toleranz
     guard_w = float(set_get("surplus_guard_w", 100.0) or 100.0)
@@ -54,10 +57,13 @@ def try_export_cap_boost(feed_kw: float, import_kw: float):
 
     # Sofort-Rollback falls Import zu hoch
     if import_kw * 1000.0 > guard_w + 100.0 and last_id:
-        update_miner(last_id, on=False)
-        st["cap_boost"] = {"last_id": None, "since": 0, "cooldown_until": now + cool_s}
-        save_state(st)
-        return {"rollback": last_id}
+        ok, reason = request_miner_state(last_id, False, now_ts=now, enforce_runtime=True)
+        if ok:
+            def _rollback(st2: dict):
+                st2["cap_boost"] = {"last_id": None, "since": 0, "cooldown_until": now + cool_s}
+            update_state(_rollback)
+            return {"rollback": last_id}
+        return {"rollback_blocked": last_id, "reason": reason}
 
     # Cooldown / Mindestlaufzeit respektieren
     if now < until or (last_id and now - since < min_run):
@@ -65,8 +71,9 @@ def try_export_cap_boost(feed_kw: float, import_kw: float):
 
     # Nur boosten, wenn Kappe greift
     if feed_kw < cap - eps:
-        st["cap_boost"] = {"last_id": None, "since": 0, "cooldown_until": 0}
-        save_state(st)
+        def _inactive(st2: dict):
+            st2["cap_boost"] = {"last_id": None, "since": 0, "cooldown_until": 0}
+        update_state(_inactive)
         return None
 
     # Kleinsten geeigneten Auto-Miner wählen
@@ -74,7 +81,11 @@ def try_export_cap_boost(feed_kw: float, import_kw: float):
     if not cand:
         return None
 
-    update_miner(cand.get("id"), on=True)  # Miner einschalten (dein Consumer kümmert sich um HA-Action)
-    st["cap_boost"] = {"last_id": cand.get("id"), "since": now, "cooldown_until": now + min_run}
-    save_state(st)
+    ok, reason = request_miner_state(cand.get("id"), True, now_ts=now, enforce_runtime=True)
+    if not ok:
+        return {"probe_blocked": cand.get("id"), "reason": reason}
+
+    def _probe_on(st2: dict):
+        st2["cap_boost"] = {"last_id": cand.get("id"), "since": now, "cooldown_until": now + min_run}
+    update_state(_probe_on)
     return {"probe_on": cand.get("id")}

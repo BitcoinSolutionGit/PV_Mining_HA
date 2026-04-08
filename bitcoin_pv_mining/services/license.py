@@ -5,7 +5,7 @@ import datetime as dt
 import threading
 import requests
 
-from .utils import load_state, save_state, iso_now, get_addon_version
+from .utils import load_state, update_state, iso_now, get_addon_version
 
 # Basis-URL deines Lizenzservers (env überschreibbar)
 LICENSE_BASE_URL = os.getenv("LICENSE_BASE_URL", "https://license.bitcoinsolution.at")
@@ -24,9 +24,9 @@ def get_token() -> str:
 
 def set_token(tok: str) -> None:
     """Speichert den Lizenz-Token in state.json."""
-    st = load_state()
-    st["license_token"] = tok
-    save_state(st)
+    def _mut(st: dict):
+        st["license_token"] = tok
+    update_state(_mut)
 
 
 def is_premium_enabled() -> bool:
@@ -41,18 +41,18 @@ def require_premium() -> None:
 
 def set_premium_enabled(flag: bool) -> None:
     """Setzt das Premium-Flag in state.json."""
-    st = load_state()
-    st["premium_enabled"] = bool(flag)
-    save_state(st)
+    def _mut(st: dict):
+        st["premium_enabled"] = bool(flag)
+    update_state(_mut)
 
 
 def _cache_token_exp(expires_at_iso: str | None) -> None:
     """Schreibt expires_at (ISO) in state.json, wenn vorhanden."""
     if not expires_at_iso:
         return
-    st = load_state()
-    st["token_expires_at"] = expires_at_iso
-    save_state(st)
+    def _mut(st: dict):
+        st["token_expires_at"] = expires_at_iso
+    update_state(_mut)
 
 
 def has_valid_token_cached() -> bool:
@@ -83,10 +83,11 @@ def verify_license() -> bool:
     Schreibt premium_enabled, token_expires_at und last_verify_at in state.json.
     """
     tok = get_token()
-    st = load_state()
     if not tok:
-        st["premium_enabled"] = False
-        save_state(st)
+        def _mut_no_token(st: dict):
+            st["premium_enabled"] = False
+            st["last_verify_at"] = iso_now()
+        update_state(_mut_no_token)
         print("[LICENSE] verify skipped: no token", flush=True)
         return False
 
@@ -97,12 +98,20 @@ def verify_license() -> bool:
         js = r.json() if ok_json else {}
 
         valid = bool(js.get("ok"))
-        st["premium_enabled"] = valid
-        if isinstance(js.get("payload"), dict):
-            _cache_token_exp(js["payload"].get("expires_at"))
+        payload = js.get("payload") if isinstance(js.get("payload"), dict) else {}
 
-        st["last_verify_at"] = iso_now()
-        save_state(st)
+        def _mut_verify(st: dict):
+            st["premium_enabled"] = valid
+            st["last_verify_at"] = iso_now()
+            if isinstance(payload, dict):
+                expires_at = payload.get("expires_at")
+                if expires_at:
+                    st["token_expires_at"] = expires_at
+                token = payload.get("token")
+                if token:
+                    st["license_token"] = token
+
+        update_state(_mut_verify)
         print("[LICENSE] verify:", r.text[:300], flush=True)
         return valid
     except Exception as e:
@@ -156,10 +165,27 @@ def heartbeat_once(addon_version: str | None = None) -> None:
         r = requests.post(f"{LICENSE_BASE_URL}/heartbeat.php", json=payload, timeout=8)
         print("[LICENSE] heartbeat payload:", payload, flush=True)
         print("[LICENSE] heartbeat resp:", r.text[:300], flush=True)
+        js = {}
+        try:
+            if r.headers.get("content-type", "").startswith("application/json"):
+                js = r.json()
+        except Exception:
+            js = {}
+        payload_resp = js.get("payload") if isinstance(js.get("payload"), dict) else {}
 
-        st = load_state()
-        st["last_heartbeat_at"] = iso_now()
-        save_state(st)
+        def _mut_heartbeat(st: dict):
+            st["last_heartbeat_at"] = iso_now()
+            if isinstance(js, dict) and "ok" in js:
+                st["premium_enabled"] = bool(js.get("ok"))
+            if isinstance(payload_resp, dict):
+                expires_at = payload_resp.get("expires_at")
+                if expires_at:
+                    st["token_expires_at"] = expires_at
+                token_new = payload_resp.get("token")
+                if token_new:
+                    st["license_token"] = token_new
+
+        update_state(_mut_heartbeat)
     except Exception as e:
         print("[LICENSE] heartbeat error:", e, flush=True)
 

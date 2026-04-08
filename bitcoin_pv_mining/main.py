@@ -16,7 +16,7 @@ from ui_dashboard import layout as dashboard_layout, register_callbacks
 
 from services.btc_api import update_btc_data_periodically
 from services.license import set_token, verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
-from services.utils import get_addon_version, load_state, save_state, iso_now, load_yaml
+from services.utils import get_addon_version, load_state, save_state, update_state, iso_now, load_yaml
 from services.power_planner import plan_and_allocate_auto
 from services.settings_store import get_var as settings_get
 from services.disclaimer_consent import get_consent_status, save_user_consent
@@ -534,9 +534,9 @@ def debug_test_pending():
 @server.route("/debug/clear_flash")
 @server.route(f"{prefix}debug/clear_flash")
 def debug_clear_flash():
-    st = load_state()
-    st.pop("ui_flash", None)
-    save_state(st)
+    def _mut(st: dict):
+        st.pop("ui_flash", None)
+    update_state(_mut)
     return "OK"
 
 # HIER
@@ -692,9 +692,9 @@ def _oauth_pending_proxy_impl():
 
 def _flash(level: str, code: str) -> None:
     try:
-        st = load_state()
-        st["ui_flash"] = {"level": level, "code": code, "ts": iso_now()}
-        save_state(st)
+        def _mut(st: dict):
+            st["ui_flash"] = {"level": level, "code": code, "ts": iso_now()}
+        update_state(_mut)
     except Exception as e:
         print("[FLASH] write error:", e, flush=True)
 
@@ -799,8 +799,9 @@ def flash_and_premium(hash_, _n, premium_state, visible_until):
                 code  = (flash.get("code") or "").strip()
                 level = flash.get("level") or "error"
                 # einmalig konsumieren
-                st.pop("ui_flash", None)
-                save_state(st)
+                def _mut(st2: dict):
+                    st2.pop("ui_flash", None)
+                update_state(_mut)
                 if level == "ok":
                     toast = html.Div(messages.get(code, "OK"), style=style_ok)
                 else:

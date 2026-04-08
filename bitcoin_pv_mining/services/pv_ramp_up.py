@@ -6,7 +6,7 @@ from typing import Callable, Dict
 from services.ha_sensors import get_sensor_value
 from services.heater_store import get_var as heat_get, resolve_entity_id as heat_resolve
 from services.settings_store import get_var as set_get
-from services.utils import load_state, save_state
+from services.utils import load_state, update_state
 
 STATE_KEY = "pv_ramp_up"
 
@@ -56,7 +56,7 @@ def _load_block() -> tuple[dict, dict]:
 
 
 def _save_block(state: dict, block: dict) -> None:
-    state[STATE_KEY] = {
+    normalized = {
         "stable_bonus_kw": max(0.0, _f(block.get("stable_bonus_kw"), 0.0)),
         "candidate_bonus_kw": max(0.0, _f(block.get("candidate_bonus_kw"), 0.0)),
         "candidate_since_ts": max(0.0, _f(block.get("candidate_since_ts"), 0.0)),
@@ -65,7 +65,11 @@ def _save_block(state: dict, block: dict) -> None:
         "last_safety_reduce_ts": max(0.0, _f(block.get("last_safety_reduce_ts"), 0.0)),
         "inactive_ticks": max(0, int(_f(block.get("inactive_ticks", 0), 0))),
     }
-    save_state(state)
+
+    def _mut(st: dict):
+        st[STATE_KEY] = normalized
+
+    update_state(_mut)
 
 
 def _result(block: dict, *, reason: str, cap_engaged: bool, heater_ok: bool) -> dict:

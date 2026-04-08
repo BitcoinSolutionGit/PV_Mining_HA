@@ -8,10 +8,9 @@ from services.btc_metrics import get_live_btc_price_eur, get_live_network_hashra
 from services.consumers.base import BaseConsumer, Desire, Ctx
 from services.electricity_store import current_price as elec_price
 from services.electricity_store import get_var as elec_get
-from services.ha_entities import call_action
 from services.ha_sensors import get_sensor_value
 from services.license import is_premium_enabled
-from services.miners_store import list_miners, update_miner
+from services.miners_store import list_miners, request_miner_state
 from services.settings_store import get_var as set_get
 
 
@@ -288,8 +287,6 @@ class MinerConsumer(BaseConsumer):
             return
 
         pkw = _num(record.get("power_kw"), 0.0)
-        on_ent = (record.get("action_on_entity") or "").strip()
-        off_ent = (record.get("action_off_entity") or "").strip()
         prev_on = bool(record.get("on"))
 
         frac = _on_fraction_for_miner(self.miner_id, default=0.95)
@@ -304,14 +301,10 @@ class MinerConsumer(BaseConsumer):
 
         try:
             if should_on and not prev_on:
-                if on_ent:
-                    call_action(on_ent, True)
-                update_miner(self.miner_id, on=True, last_flip_ts=time.time())
-                print(f"[miner {self.miner_id}] apply ~{alloc_kw:.2f} kW (ON)", flush=True)
+                ok, reason = request_miner_state(self.miner_id, True, now_ts=time.time(), enforce_runtime=True)
+                print(f"[miner {self.miner_id}] apply ~{alloc_kw:.2f} kW (ON) ok={ok} reason={reason}", flush=True)
             elif (not should_on) and prev_on:
-                if off_ent:
-                    call_action(off_ent, False)
-                update_miner(self.miner_id, on=False, last_flip_ts=time.time())
-                print(f"[miner {self.miner_id}] apply 0 kW (OFF)", flush=True)
+                ok, reason = request_miner_state(self.miner_id, False, now_ts=time.time(), enforce_runtime=True)
+                print(f"[miner {self.miner_id}] apply 0 kW (OFF) ok={ok} reason={reason}", flush=True)
         except Exception as e:
             print(f"[miner {self.miner_id}] apply error: {e}", flush=True)

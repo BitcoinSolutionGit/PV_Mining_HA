@@ -2,7 +2,7 @@ import os
 import re
 import yaml
 
-from services.utils import get_addon_version, load_state, save_state, iso_now
+from services.utils import get_addon_version, load_state, update_state, iso_now
 
 
 ADDON_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -151,14 +151,14 @@ def get_consent_status() -> dict:
 
 
 def save_user_consent(*, accepted: bool, language: str):
-    st = load_state() or {}
     current = get_current_disclaimer_info()
-    st["user_consent"] = {
-        "accepted": bool(accepted),
-        "disclaimer_version": current.get("version", "unknown"),
-        "version": current.get("version", "unknown"),
-        "addon_scope": get_current_consent_scope(),
-        "timestamp": iso_now(),
-        "language": "de" if str(language).lower().startswith("de") else "en",
-    }
-    save_state(st)
+    def _mut(st: dict):
+        st["user_consent"] = {
+            "accepted": bool(accepted),
+            "disclaimer_version": current.get("version", "unknown"),
+            "version": current.get("version", "unknown"),
+            "addon_scope": get_current_consent_scope(),
+            "timestamp": iso_now(),
+            "language": "de" if str(language).lower().startswith("de") else "en",
+        }
+    update_state(_mut)
