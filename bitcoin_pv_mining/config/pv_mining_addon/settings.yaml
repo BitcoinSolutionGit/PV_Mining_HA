@@ -19,3 +19,9 @@ settings:
 
   surplus_guard_w: 150.0   # z. B. 100–300 W
   surplus_guard_pct: 0.00  # optionaler prozentualer Guard (0–0.05)
+  allow_pv_ramp_up: true
+  pv_ramp_settle_s: 300
+  pv_ramp_hysteresis_w: 100
+  pv_ramp_step_up_kw: 0.10
+  pv_ramp_step_down_kw: 0.20
+  pv_ramp_cap_epsilon_kw: 0.05

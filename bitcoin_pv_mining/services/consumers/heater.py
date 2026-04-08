@@ -32,6 +32,15 @@ def _log(msg: str):
     except Exception:
         pass
 
+
+def _ctx_num(ctx: Ctx | dict | None, key: str, default: float = 0.0) -> float:
+    try:
+        if isinstance(ctx, dict):
+            return _num(ctx.get(key), default)
+        return _num(getattr(ctx, key, default), default)
+    except Exception:
+        return default
+
 def _ha_headers():
     tok = os.getenv("SUPERVISOR_TOKEN", "")
     h = {"Content-Type": "application/json"}
@@ -139,9 +148,15 @@ class HeaterConsumer(BaseConsumer):
             _log(f"[heater] skip apply (enabled={enabled} auto={auto} tgt='{pct_tgt}' max_kw={max_kw})")
             return
 
-        pct = max(0.0, min(100.0, (float(kw) / float(max_kw)) * 100.0))
+        base_kw = max(0.0, float(kw or 0.0))
+        probe_kw = max(0.0, _ctx_num(ctx, "pv_ramp_probe_offset_kw", 0.0))
+        final_kw = max(0.0, min(float(max_kw), base_kw + probe_kw))
+        pct = max(0.0, min(100.0, (final_kw / float(max_kw)) * 100.0))
         ok = _set_percent_entity(pct_tgt, round(pct))
-        _log(f"[heater] apply kw={kw:.3f} -> {pct:.1f}% target={pct_tgt} ok={ok}")
+        _log(
+            f"[heater] apply base_kw={base_kw:.3f} probe_kw={probe_kw:.3f} "
+            f"final_kw={final_kw:.3f} -> {pct:.1f}% target={pct_tgt} ok={ok}"
+        )
 
         # start cooldown once we actually commanded >= ~5%
         if ok and pct >= 5.0:

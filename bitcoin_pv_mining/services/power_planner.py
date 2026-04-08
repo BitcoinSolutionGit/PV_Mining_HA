@@ -13,6 +13,7 @@ from services.settings_store import get_var as set_get
 from services.electricity_store import current_price as elec_price, get_var as elec_get
 from services.energy_mix import surplus_strict_kw as _surplus_strict_kw, incremental_mix_for, read_energy_flows
 from services.export_cap_boost import try_export_cap_boost
+from services.pv_ramp_up import evaluate_pv_ramp_up
 from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_id
 
 # stdout logger -> Add-on-Log
@@ -342,9 +343,41 @@ def plan_and_allocate(
     guard_w   = _f(set_get("surplus_guard_w", 100.0), 100.0)
     guard_pct = _f(set_get("surplus_guard_pct", 0.0), 0.0)
     guard_kw  = max(guard_w / 1000.0, max(0.0, guard_pct) * surplus_raw)
-    surplus_kw = max(surplus_raw - guard_kw, 0.0)
+    measured_surplus_kw = max(surplus_raw - guard_kw, 0.0)
+    feed_kw = 0.0
+    import_kw = 0.0
+    try:
+        _pv_dbg, _imp_dbg, _feed_dbg = _read_pv_import_feed()
+        import_kw = max(_f(_imp_dbg, 0.0), 0.0)
+        feed_kw = max(_f(_feed_dbg, 0.0), 0.0)
+    except Exception:
+        pass
 
-    pv_left: float = surplus_kw
+    battery_block_kw = _battery_discharge_kw_now()
+    battery_block = battery_block_kw > 0.05
+    log_fn(f"[plan] battery_discharge={battery_block_kw:.3f} kW -> battery_block={battery_block}")
+
+    try:
+        pv_ramp = evaluate_pv_ramp_up(
+            feed_kw=feed_kw,
+            import_kw=import_kw,
+            battery_block=battery_block,
+            logger=log_fn,
+        )
+    except Exception as e:
+        log_fn(f"[pv_ramp] error: {e}")
+        pv_ramp = {
+            "stable_bonus_kw": 0.0,
+            "probe_offset_kw": 0.0,
+            "candidate_bonus_kw": 0.0,
+            "candidate_since_ts": 0.0,
+            "inactive_ticks": 0,
+            "cap_engaged": False,
+            "heater_ok": False,
+            "reason": "error",
+        }
+
+    pv_left: float = max(0.0, measured_surplus_kw + _f(pv_ramp.get("stable_bonus_kw"), 0.0))
     grid_draw: float = 0.0
     allocations: List[Tuple[str, BaseConsumer, float]] = []
 
@@ -353,10 +386,15 @@ def plan_and_allocate(
 
     # expose planner facts to consumers
     for k, v in (
-            ("surplus_kw", pv_left),  # PV-Überschuss nach Guard
+            ("surplus_kw", pv_left),  # PV-Überschuss nach Guard / Ramp-Up
+            ("surplus_measured_kw", measured_surplus_kw),
+            ("surplus_effective_kw", pv_left),
             ("grid_cost_eur_kwh", eff_grid_cost),  # effektiver Grid-preis (incl. fee_down)
             ("pv_kw_raw", pv_kw),  # (optional) aktuelle PV-Produktion
             ("surplus_raw_kw", surplus_raw),  # (optional) Überschuss vor Guard
+            ("pv_ramp_bonus_kw", _f(pv_ramp.get("stable_bonus_kw"), 0.0)),
+            ("pv_ramp_probe_offset_kw", _f(pv_ramp.get("probe_offset_kw"), 0.0)),
+            ("pv_ramp_candidate_kw", _f(pv_ramp.get("candidate_bonus_kw"), 0.0)),
     ):
         # robust für Ctx als Objekt ODER Mapping
         try:
@@ -370,8 +408,13 @@ def plan_and_allocate(
 
     # Ctx anreichern, damit Consumer zugreifen können
     try:
-        ctx["surplus_kw"] = pv_left  # strikter PV-Überschuss nach Guard
+        ctx["surplus_kw"] = pv_left  # strikter PV-Überschuss nach Guard / Ramp-Up
+        ctx["surplus_measured_kw"] = measured_surplus_kw
+        ctx["surplus_effective_kw"] = pv_left
         ctx["grid_cost_eur_kwh"] = eff_grid_cost
+        ctx["pv_ramp_bonus_kw"] = _f(pv_ramp.get("stable_bonus_kw"), 0.0)
+        ctx["pv_ramp_probe_offset_kw"] = _f(pv_ramp.get("probe_offset_kw"), 0.0)
+        ctx["pv_ramp_candidate_kw"] = _f(pv_ramp.get("candidate_bonus_kw"), 0.0)
     except Exception:
         pass
 
@@ -380,7 +423,13 @@ def plan_and_allocate(
     log_fn(f"[plan] order={order}")
     log_fn(f"[plan] start surplus={pv_left:.3f} kW")
     log_fn(f"[plan:strict] total={total_load:.3f} kW  ctrl_now={ctrl_now:.3f} kW  base={base_load:.3f} kW  pv={pv_kw:.3f} kW  raw={surplus_raw:.3f} kW")
-    log_fn(f"[plan:guard] guard={guard_kw:.3f} kW (w={guard_w:.0f}W, pct={guard_pct:.3f}) -> pv_left={pv_left:.3f} kW")
+    log_fn(f"[plan:guard] guard={guard_kw:.3f} kW (w={guard_w:.0f}W, pct={guard_pct:.3f}) -> measured={measured_surplus_kw:.3f} kW")
+    log_fn(
+        f"[pv_ramp] measured={measured_surplus_kw:.3f} bonus={_f(pv_ramp.get('stable_bonus_kw'), 0.0):.3f} "
+        f"probe={_f(pv_ramp.get('probe_offset_kw'), 0.0):.3f} candidate={_f(pv_ramp.get('candidate_bonus_kw'), 0.0):.3f} "
+        f"effective={pv_left:.3f} cap={int(bool(pv_ramp.get('cap_engaged')))} heater={int(bool(pv_ramp.get('heater_ok')))} "
+        f"inactive={int(_f(pv_ramp.get('inactive_ticks', 0), 0))} reason={pv_ramp.get('reason', '')}"
+    )
 
     # Debug: Rohwerte der Sensoren
     try:
@@ -432,9 +481,6 @@ def plan_and_allocate(
         collected.append((cid, cons, desire))
 
     now_ts = _f(getattr(ctx, "ts", 0.0), 0.0) or now()
-    battery_block_kw = _battery_discharge_kw_now()
-    battery_block = battery_block_kw > 0.05
-    log_fn(f"[plan] battery_discharge={battery_block_kw:.3f} kW -> battery_block={battery_block}")
     hard_must_runs = [(cid, cons, de) for (cid, cons, de) in collected if cid == "house" and bool(getattr(de, "must_run", False))]
     remaining = [(cid, cons, de) for (cid, cons, de) in collected if not (cid == "house" and bool(getattr(de, "must_run", False)))]
 

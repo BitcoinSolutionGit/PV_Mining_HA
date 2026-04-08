@@ -377,6 +377,11 @@ def layout():
     # Defaults lesen
     export_cap = _num(set_get("grid_export_cap_kw", 0.0), 0.0)
     boost_cooldown = int(_num(set_get("boost_cooldown_s", 30), 30))
+    allow_pv_ramp_up = bool(set_get("allow_pv_ramp_up", True))
+    pv_ramp_settle_s = int(_num(set_get("pv_ramp_settle_s", 300), 300))
+    pv_ramp_hysteresis_w = _num(set_get("pv_ramp_hysteresis_w", 100.0), 100.0)
+    pv_ramp_step_up_kw = _num(set_get("pv_ramp_step_up_kw", 0.10), 0.10)
+    pv_ramp_step_down_kw = _num(set_get("pv_ramp_step_down_kw", 0.20), 0.20)
     cool_on_frac = _num(set_get("cooling_on_fraction", 0.50), 0.50)
     miner_on_frac = _num(set_get("miner_on_fraction", _num(set_get("discrete_on_fraction", 0.95), 0.95)), 0.95)
     cool_min_run = int(_num(set_get("cooling_min_run_s", 20), 20))
@@ -604,6 +609,40 @@ def layout():
                 html.Label("Boost cooldown (s)"),
                 number_stepper("set-boost-cooldown", boost_cooldown, step=1, min=5, width_px=140),
                 html.Span(" (Beruhigungszeit nach Zuschalten)", style={"marginLeft": "8px", "opacity": 0.7}),
+            ], style={"marginTop": "8px"}),
+        ]),
+
+        _section("PV ramp-up", [
+            dcc.Checklist(
+                id="set-allow-pv-ramp-up",
+                options=[{"label": " Allow PV ramp up", "value": "on"}],
+                value=(["on"] if allow_pv_ramp_up else []),
+                style={"marginBottom": "8px"}
+            ),
+            html.Div(
+                "Learns a virtual PV bonus behind the export limit by probing with the water heater. "
+                "The stable bonus is then used globally by the planner.",
+                style={"opacity": 0.8, "marginBottom": "10px"}
+            ),
+            html.Div([
+                html.Label("Settle time (s)"),
+                number_stepper("set-pv-ramp-settle", pv_ramp_settle_s, step=1, min=30, width_px=140),
+                html.Span("  (e.g. 300 = 5 min before a new bonus becomes global)", style={"marginLeft": "8px", "opacity": 0.7}),
+            ], style={"marginTop": "6px"}),
+            html.Div([
+                html.Label("Import hysteresis (W)"),
+                number_stepper("set-pv-ramp-hysteresis", pv_ramp_hysteresis_w, step=1, min=0, width_px=140),
+                html.Span("  (import above this reduces the learned bonus)", style={"marginLeft": "8px", "opacity": 0.7}),
+            ], style={"marginTop": "8px"}),
+            html.Div([
+                html.Label("Probe step up (kW)"),
+                number_stepper("set-pv-ramp-step-up", pv_ramp_step_up_kw, step=0.01, min=0, width_px=140),
+                html.Span("  (extra heater load per planner tick while probing)", style={"marginLeft": "8px", "opacity": 0.7}),
+            ], style={"marginTop": "8px"}),
+            html.Div([
+                html.Label("Safety step down (kW)"),
+                number_stepper("set-pv-ramp-step-down", pv_ramp_step_down_kw, step=0.01, min=0, width_px=140),
+                html.Span("  (minimum reduction when grid import appears)", style={"marginLeft": "8px", "opacity": 0.7}),
             ], style={"marginTop": "8px"}),
         ]),
 
@@ -865,6 +904,11 @@ def register_callbacks(app):
         State("ui-show-sink-inactive", "value"),
         State("set-export-cap", "value"),
         State("set-boost-cooldown", "value"),
+        State("set-allow-pv-ramp-up", "value"),
+        State("set-pv-ramp-settle", "value"),
+        State("set-pv-ramp-hysteresis", "value"),
+        State("set-pv-ramp-step-up", "value"),
+        State("set-pv-ramp-step-down", "value"),
         State("set-cooling-on-frac", "value"),
         State("set-miner-on-frac", "value"),
         State("set-cooling-min-run-s", "value"),
@@ -876,6 +920,7 @@ def register_callbacks(app):
               guard_w, guard_pct,
               miner_on_margin, miner_off_margin, miner_min_run_s, miner_min_off_s,
               show_desktop, show_tablet, show_phone, show_src, show_sink, export_cap, boost_cooldown,
+              allow_pv_ramp_up_val, pv_ramp_settle_s, pv_ramp_hysteresis_w, pv_ramp_step_up_kw, pv_ramp_step_down_kw,
               cool_on_frac, miner_on_frac, cool_min_run_s, cool_min_off_s):
         if not n:
             return ""
@@ -911,6 +956,12 @@ def register_callbacks(app):
             ui_show_inactive_sinks=ui_show_inactive_sinks,
             grid_export_cap_kw=_num(export_cap, 0.0),
             boost_cooldown_s=int(_num(boost_cooldown, 30)),
+            allow_pv_ramp_up=bool(allow_pv_ramp_up_val and "on" in allow_pv_ramp_up_val),
+            pv_ramp_settle_s=max(30, int(_num(pv_ramp_settle_s, 300))),
+            pv_ramp_hysteresis_w=max(0.0, _num(pv_ramp_hysteresis_w, 100.0)),
+            pv_ramp_step_up_kw=max(0.0, _num(pv_ramp_step_up_kw, 0.10)),
+            pv_ramp_step_down_kw=max(0.0, _num(pv_ramp_step_down_kw, 0.20)),
+            pv_ramp_cap_epsilon_kw=max(0.0, _num(set_get("pv_ramp_cap_epsilon_kw", 0.05), 0.05)),
             cooling_on_fraction=max(0.0, min(1.0, _num(cool_on_frac, 0.50))),
             miner_on_fraction=max(0.0, min(1.0, _num(miner_on_frac, _num(set_get("discrete_on_fraction", 0.95), 0.95)))),
             cooling_min_run_s=int(_num(cool_min_run_s, 20)),
@@ -924,6 +975,11 @@ def register_callbacks(app):
                 f"off≤{_num(miner_off_margin, -0.01):.2f} €/h, "
                 f"minRun={int(_num(miner_min_run_s, 30))} s, "
                 f"minOff={int(_num(miner_min_off_s, 20))} s."
+                f" PV ramp={int(bool(allow_pv_ramp_up_val and 'on' in allow_pv_ramp_up_val))}, "
+                f"settle={max(30, int(_num(pv_ramp_settle_s, 300)))} s, "
+                f"hys={max(0.0, _num(pv_ramp_hysteresis_w, 100.0)):.0f} W, "
+                f"up={max(0.0, _num(pv_ramp_step_up_kw, 0.10)):.2f} kW, "
+                f"down={max(0.0, _num(pv_ramp_step_down_kw, 0.20)):.2f} kW."
                 f" Cooling frac={_num(cool_on_frac, 0.5):.2f}, "
                 f" Miner frac={_num(miner_on_frac, 0.95):.2f}, "
                 f" CminRun={int(_num(cool_min_run_s, 20))} s, "
