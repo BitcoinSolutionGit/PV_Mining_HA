@@ -172,11 +172,12 @@ def heartbeat_once(addon_version: str | None = None) -> None:
         except Exception:
             js = {}
         payload_resp = js.get("payload") if isinstance(js.get("payload"), dict) else {}
+        heartbeat_ok = js.get("ok") if isinstance(js, dict) and "ok" in js else None
 
         def _mut_heartbeat(st: dict):
             st["last_heartbeat_at"] = iso_now()
-            if isinstance(js, dict) and "ok" in js:
-                st["premium_enabled"] = bool(js.get("ok"))
+            if heartbeat_ok is True:
+                st["premium_enabled"] = True
             if isinstance(payload_resp, dict):
                 expires_at = payload_resp.get("expires_at")
                 if expires_at:
@@ -186,6 +187,9 @@ def heartbeat_once(addon_version: str | None = None) -> None:
                     st["license_token"] = token_new
 
         update_state(_mut_heartbeat)
+        if heartbeat_ok is False:
+            print("[LICENSE] heartbeat reported not ok - running verify before changing premium state", flush=True)
+            verify_license()
     except Exception as e:
         print("[LICENSE] heartbeat error:", e, flush=True)
 
