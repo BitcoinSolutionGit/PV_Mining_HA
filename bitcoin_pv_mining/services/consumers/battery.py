@@ -44,6 +44,10 @@ def _read_power_kw(self) -> float | None:
 class BatteryConsumer(BaseConsumer):
     id = "battery"
     label = "Battery"
+    # Aktuell gibt es keine direkte Batterie-Aktorik. Die Batterie folgt nur der
+    # Physik und darf deshalb im Planner kein PV-Budget für steuerbare Lasten
+    # reservieren.
+    reserves_pv_budget = False
 
     # ---- kleine Reader-Helpers ----
     def _read_soc(self) -> float:

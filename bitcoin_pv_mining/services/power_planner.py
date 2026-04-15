@@ -310,6 +310,13 @@ def _allocate_discrete_load(
     return alloc_total, pv_alloc, grid_alloc, decision_reason
 
 
+def _consumer_reserves_pv_budget(cid: str, cons: BaseConsumer) -> bool:
+    flag = getattr(cons, "reserves_pv_budget", None)
+    if flag is not None:
+        return bool(flag)
+    return cid != "battery"
+
+
 
 # ----------------------------------------------------------------------------------
 # Kernfunktion
@@ -542,6 +549,19 @@ def plan_and_allocate(
             continue
 
         if not wants or (min_kw <= 0.0 and max_kw <= 0.0):
+            allocations.append((cid, cons, 0.0))
+            log_fn(f"[plan:alloc]  {cid}: pv=0.00 grid=0.00 total=0.00 pv_left={pv_left:.2f}")
+            log_fn(
+                f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} exact={_fmt(exact)} must={must} -> alloc=0.000 (pv=0.000, grid=0.000) | {reason}")
+            if apply and not dry_run:
+                try:
+                    cons.apply_allocation(ctx, 0.0)
+                except Exception as e:
+                    log_fn(f"[plan] error: apply_allocation({cid}, 0.000) -> {e}")
+            continue
+
+        if not _consumer_reserves_pv_budget(cid, cons):
+            reason = f"{reason} | passive observer, no budget reservation" if reason else "passive observer, no budget reservation"
             allocations.append((cid, cons, 0.0))
             log_fn(f"[plan:alloc]  {cid}: pv=0.00 grid=0.00 total=0.00 pv_left={pv_left:.2f}")
             log_fn(
