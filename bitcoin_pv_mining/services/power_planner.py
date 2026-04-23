@@ -317,6 +317,20 @@ def _consumer_reserves_pv_budget(cid: str, cons: BaseConsumer) -> bool:
     return cid != "battery"
 
 
+def _cooling_active_need_now() -> bool:
+    try:
+        from services.miners_store import list_miners
+
+        return any(
+            _truthy(m.get("enabled"), False)
+            and _truthy(m.get("on"), False)
+            and _truthy(m.get("require_cooling"), False)
+            for m in (list_miners() or [])
+        )
+    except Exception:
+        return False
+
+
 def _sanitize_priority_order(order: List[str]) -> List[str]:
     """
     Cooling is no longer a standalone planner item. It is handled implicitly
@@ -632,6 +646,19 @@ def plan_and_allocate(
 
         log_fn(
             f"[DRY] {cid:12s} wants={wants} min={_fmt(min_kw)} max={_fmt(max_kw)} exact={_fmt(exact)} must={must} -> alloc={alloc_total:.3f} (pv={pv_alloc:.3f}, grid={grid_alloc:.3f}) | {reason}")
+
+    # Cooling is handled implicitly by miners, but still needs a central
+    # cleanup path when the last cooling-dependent miner is already off.
+    cooling_needed_now = _cooling_active_need_now()
+    if not cooling_needed_now:
+        cool_cons = _get_cons("cooling")
+        if cool_cons:
+            log_fn("[plan] cooling cleanup: no active cooling-dependent miner -> target OFF")
+            if apply and not dry_run:
+                try:
+                    cool_cons.apply_allocation(ctx, 0.0)
+                except Exception as e:
+                    log_fn(f"[plan] error: cooling cleanup OFF -> {e}")
 
 
     return {"pv_left": pv_left, "grid_draw": grid_draw, "allocations": allocations}

@@ -404,12 +404,36 @@ class MinerConsumer(BaseConsumer):
 
         pkw = _num(record.get("power_kw"), 0.0)
         prev_on = bool(record.get("on"))
+        need_cool = _cooling_required(record)
+
+        # Safety-critical emergency brake:
+        # a running cooling-dependent miner must shut down immediately if cooling is lost.
+        if prev_on and need_cool and not _cooling_running_now():
+            now_ts = time.time()
+            try:
+                ok, reason = request_miner_state(
+                    self.miner_id,
+                    False,
+                    now_ts=now_ts,
+                    enforce_runtime=False,
+                )
+                print(
+                    f"[miner {self.miner_id}] EMERGENCY OFF: cooling lost -> ok={ok} reason={reason}",
+                    flush=True,
+                )
+                cool_ok, cool_reason = _request_cooling_off_if_idle(now_ts)
+                print(
+                    f"[miner {self.miner_id}] cooling follow-up after EMERGENCY OFF -> {cool_reason} ok={cool_ok}",
+                    flush=True,
+                )
+            except Exception as e:
+                print(f"[miner {self.miner_id}] EMERGENCY OFF error: {e}", flush=True)
+            return
 
         frac = _on_fraction_for_miner(self.miner_id, default=0.95)
         should_on = pkw > 0.0 and alloc_kw >= frac * pkw
         print(f"[miner {self.miner_id}] on_fraction={frac:.2f} alloc={alloc_kw:.3f} pkw={pkw:.3f}", flush=True)
 
-        need_cool = _cooling_required(record)
         if should_on and need_cool:
             cool_ok, cool_reason = _cooling_permits_miner_start()
             if not cool_ok:
