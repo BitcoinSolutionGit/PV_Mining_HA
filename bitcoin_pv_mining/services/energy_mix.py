@@ -10,11 +10,13 @@ from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_
 try:
     from services.dev_mock import (
         effective_entity_key,
+        DEV_BATTERY_POWER,
         DEV_BATTERY_VOLTAGE,
         DEV_BATTERY_CURRENT,
         DEV_HEATER_PERCENT,
     )
 except Exception:
+    DEV_BATTERY_POWER = "mock:battery_power"
     DEV_BATTERY_VOLTAGE = "mock:battery_voltage"
     DEV_BATTERY_CURRENT = "mock:battery_current"
     DEV_HEATER_PERCENT = "mock:heater_percent"
