@@ -225,6 +225,45 @@ def _request_cooling_on(now_ts: float) -> tuple[bool, str]:
         return False, f"cooling request failed: {e}"
 
 
+def _request_cooling_off_if_idle(now_ts: float) -> tuple[bool, str]:
+    try:
+        c = get_cooling() or {}
+        if not _truthy(set_get("cooling_feature_enabled", False), False):
+            return False, "cooling feature disabled"
+        if not _truthy(c.get("enabled"), True):
+            return False, "cooling disabled"
+        if str(c.get("mode") or "manual").lower() != "auto":
+            return False, "cooling manual mode"
+
+        others_need_cooling = any(
+            _truthy(m.get("enabled"), False)
+            and _truthy(m.get("on"), False)
+            and _cooling_required(m)
+            for m in (list_miners() or [])
+        )
+        if others_need_cooling:
+            return False, "other cooling miners still running"
+
+        if not _cooling_effective_on():
+            return True, "cooling already off"
+
+        off_ent = (c.get("action_off_entity") or "").strip()
+        ha_raw = c.get("ha_on")
+        if off_ent:
+            call_action(off_ent, False)
+
+        set_cooling(
+            on=False,
+            pending_on=False,
+            pending_off=(ha_raw is not None and _cooling_effective_on()),
+            startup_grace_until=0.0,
+            last_transition_ts=now_ts,
+        )
+        return True, "cooling requested off"
+    except Exception as e:
+        return False, f"cooling off request failed: {e}"
+
+
 def _miner_record(miner_id: str) -> Optional[dict]:
     for miner in (list_miners() or []):
         if miner.get("id") == miner_id:
@@ -387,7 +426,14 @@ class MinerConsumer(BaseConsumer):
                 ok, reason = request_miner_state(self.miner_id, True, now_ts=time.time(), enforce_runtime=True)
                 print(f"[miner {self.miner_id}] apply ~{alloc_kw:.2f} kW (ON) ok={ok} reason={reason}", flush=True)
             elif (not should_on) and prev_on:
-                ok, reason = request_miner_state(self.miner_id, False, now_ts=time.time(), enforce_runtime=True)
+                now_ts = time.time()
+                ok, reason = request_miner_state(self.miner_id, False, now_ts=now_ts, enforce_runtime=True)
                 print(f"[miner {self.miner_id}] apply 0 kW (OFF) ok={ok} reason={reason}", flush=True)
+                if ok and need_cool:
+                    cool_ok, cool_reason = _request_cooling_off_if_idle(now_ts)
+                    print(
+                        f"[miner {self.miner_id}] cooling follow-up after OFF -> {cool_reason} ok={cool_ok}",
+                        flush=True,
+                    )
         except Exception as e:
             print(f"[miner {self.miner_id}] apply error: {e}", flush=True)

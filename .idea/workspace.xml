@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V0.7.26" />
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V0.7.27">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -290,15 +292,7 @@
       <workItem from="1775660504452" duration="1601000" />
       <workItem from="1775665581771" duration="600000" />
       <workItem from="1775725615563" duration="3179000" />
-      <workItem from="1776956650801" duration="3112000" />
-    </task>
-    <task id="LOCAL-00356" summary="V0.6.55">
-      <option name="closed" value="true" />
-      <created>1758484895093</created>
-      <option name="number" value="00356" />
-      <option name="presentableId" value="LOCAL-00356" />
-      <option name="project" value="LOCAL" />
-      <updated>1758484895094</updated>
+      <workItem from="1776956650801" duration="4602000" />
     </task>
     <task id="LOCAL-00357" summary="V0.6.56">
       <option name="closed" value="true" />
@@ -684,7 +678,15 @@
       <option name="project" value="LOCAL" />
       <updated>1776959747814</updated>
     </task>
-    <option name="localTasksCounter" value="405" />
+    <task id="LOCAL-00405" summary="V0.7.27">
+      <option name="closed" value="true" />
+      <created>1776960635685</created>
+      <option name="number" value="00405" />
+      <option name="presentableId" value="LOCAL-00405" />
+      <option name="project" value="LOCAL" />
+      <updated>1776960635685</updated>
+    </task>
+    <option name="localTasksCounter" value="406" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -702,7 +704,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="V0.7.01" />
     <MESSAGE value="V0.7.02" />
     <MESSAGE value="V0.7.03" />
     <MESSAGE value="V0.7.04" />
@@ -727,7 +728,8 @@
     <MESSAGE value="V0.7.24" />
     <MESSAGE value="V0.7.25" />
     <MESSAGE value="V0.7.26" />
-    <option name="LAST_COMMIT_MESSAGE" value="V0.7.26" />
+    <MESSAGE value="V0.7.27" />
+    <option name="LAST_COMMIT_MESSAGE" value="V0.7.27" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$main.coverage" NAME="main Coverage Results" MODIFIED="1775168695381" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />
