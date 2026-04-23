@@ -29,7 +29,6 @@ ELEC_OVR = os.path.join(CONFIG_DIR, "electricity.local.yaml")
 
 PRIO_COLORS = {
     "inflow":    "#FFD700",
-    "cooling":   "#5DADE2",
     "miners":    "#FF9900",
     "battery":   "#8E44AD",
     "heater":    "#3399FF",
@@ -215,9 +214,6 @@ def _prio_available_items():
     """
     items = []
 
-    if _is_cooling_auto_enabled():
-        items.append({"id": "cooling", "label": "Cooling circuit", "color": PRIO_COLORS["cooling"]})
-
     try:
         for m in list_miners() or []:
             if not _is_miner_enabled(m):
@@ -257,7 +253,7 @@ def _prio_merge_with_stored(stored_ids, available):
     """Gespeicherte Reihenfolge mit Verfügbarem mergen, Neues hinten anhängen,
        grid_feed immer ganz unten."""
     avail_ids = [a["id"] for a in available]
-    order = [x for x in (stored_ids or []) if x in avail_ids]
+    order = [x for x in (stored_ids or []) if x in avail_ids and x != "cooling"]
     for aid in avail_ids:
         if aid not in order and aid != "grid_feed":
             order.append(aid)
@@ -715,7 +711,7 @@ def layout():
 
         _section("Power draw priority", [
             html.P(
-                "Only consumers in Auto mode are prioritized (Miners, Cooling). Use ↑/↓ to reorder — it’s saved automatically.",
+                "The planner prefers this order when enough power is available. Cooling is handled implicitly by miners that require it. Use ↑/↓ to reorder — it’s saved automatically.",
                 className="settings-subtle-text",
             ),
             html.Div(id="prio-list", className="prio-list"),

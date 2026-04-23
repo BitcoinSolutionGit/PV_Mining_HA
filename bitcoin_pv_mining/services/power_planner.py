@@ -317,6 +317,17 @@ def _consumer_reserves_pv_budget(cid: str, cons: BaseConsumer) -> bool:
     return cid != "battery"
 
 
+def _sanitize_priority_order(order: List[str]) -> List[str]:
+    """
+    Cooling is no longer a standalone planner item. It is handled implicitly
+    by miners that require it.
+    """
+    cleaned = [cid for cid in (order or []) if cid != "cooling"]
+    if "grid_feed" in cleaned:
+        cleaned = [cid for cid in cleaned if cid != "grid_feed"] + ["grid_feed"]
+    return cleaned
+
+
 
 # ----------------------------------------------------------------------------------
 # Kernfunktion
@@ -333,6 +344,7 @@ def plan_and_allocate(
 ) -> dict:
     # Logger wählen
     log_fn = (logger or _stdout_logger) if log else (lambda *_: None)
+    order = _sanitize_priority_order(order)
 
     # Consumer-Map
     cons_map: Dict[str, BaseConsumer] = consumers.copy() if consumers else {}
@@ -533,14 +545,6 @@ def plan_and_allocate(
         must = bool(getattr(de, "must_run", False))  # hier idR False
         reason = getattr(de, "reason", "")
 
-        if cid == "cooling" and not _cooling_has_dependent_miner(collected=collected, pv_left=pv_left, grid_free=grid_free):
-            de = Desire(False, 0.0, 0.0, reason="no dependent cooling miner")
-            wants = False
-            min_kw = 0.0
-            max_kw = 0.0
-            exact = None
-            reason = getattr(de, "reason", "")
-
         pv_alloc = 0.0
         grid_alloc = 0.0
         alloc_total = 0.0
@@ -640,11 +644,9 @@ def _discover_priority_order() -> List[str]:
         available = prio_available_items()
         stored = prio_load_ids()
         order = prio_merge(stored, available)
-        if "grid_feed" in order:
-            order = [x for x in order if x != "grid_feed"] + ["grid_feed"]
-        return order
+        return _sanitize_priority_order(order)
     except Exception:
-        return ["house", "battery", "heater", "wallbox", "cooling", "grid_feed"]
+        return ["house", "battery", "heater", "wallbox", "grid_feed"]
 
 
 def plan_and_allocate_auto(
