@@ -1438,7 +1438,7 @@ app.layout = page_wrap([
 
 
     # NEU: globaler Engine-Timer (unabhängig vom Tab)
-    dcc.Interval(id="planner-engine", interval=10_000, n_intervals=0),  # alle 10s
+    dcc.Interval(id="planner-engine", interval=15_000, n_intervals=0),  # alle 15s
     html.Div(id="planner-heartbeat", style={"display": "none"}),        # Dummy-Output
 
     html.Div([

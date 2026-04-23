@@ -142,6 +142,8 @@ def _cooling_auto_available() -> bool:
             return False
         if str(c.get("mode") or "manual").lower() != "auto":
             return False
+        if not (c.get("ready_entity") or "").strip():
+            return False
         return _num(c.get("power_kw"), 0.0) > 0.0
     except Exception:
         return False
@@ -157,6 +159,30 @@ def _cooling_effective_on() -> bool:
         )
     except Exception:
         return False
+
+
+def _cooling_permits_miner_start() -> tuple[bool, str]:
+    """
+    Safety-critical rule:
+    cooling-dependent miners may start only with an explicit ready signal.
+    """
+    try:
+        c = get_cooling() or {}
+        ready_entity = (c.get("ready_entity") or "").strip()
+        phase = str(c.get("phase") or "").strip().lower()
+        ha_on = c.get("ha_on")
+
+        if not ready_entity:
+            return False, "cooling ready sensor missing"
+        if ha_on is True:
+            return True, "cooling ready"
+        if phase == "starting":
+            return False, "cooling starting"
+        if phase == "stopping":
+            return False, "cooling stopping"
+        return False, "cooling not ready"
+    except Exception as e:
+        return False, f"cooling state unknown: {e}"
 
 
 def _cooling_startup_grace_s(c: Optional[dict] = None, default: int = 60) -> int:
@@ -345,11 +371,16 @@ class MinerConsumer(BaseConsumer):
         print(f"[miner {self.miner_id}] on_fraction={frac:.2f} alloc={alloc_kw:.3f} pkw={pkw:.3f}", flush=True)
 
         need_cool = _cooling_required(record)
-        cool_strict = _cooling_running_strict()
-        if should_on and need_cool and (cool_strict is not True):
-            ok, reason = _request_cooling_on(time.time())
-            print(f"[miner {self.miner_id}] cooling dependency -> {reason} ok={ok}", flush=True)
-            should_on = False
+        if should_on and need_cool:
+            cool_ok, cool_reason = _cooling_permits_miner_start()
+            if not cool_ok:
+                ok, reason = _request_cooling_on(time.time())
+                print(
+                    f"[miner {self.miner_id}] cooling dependency -> {cool_reason}; "
+                    f"request={reason} ok={ok}",
+                    flush=True,
+                )
+                should_on = False
 
         try:
             if should_on and not prev_on:

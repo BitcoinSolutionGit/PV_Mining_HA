@@ -93,6 +93,8 @@ def _heater_status() -> dict:
     auto = not bool(heat_get("manual_override", False))
     max_kw = max(0.0, _f(heat_get("max_power_heater", 0.0), 0.0))
     target_temp = _f(heat_get("wanted_water_temperature", 0.0), 0.0)
+    kick_enabled = bool(heat_get("zero_export_kick_enabled", False))
+    kick_kw = max(0.0, _f(heat_get("zero_export_kick_kw", 0.2), 0.2))
 
     temp_entity = (
         heat_resolve("sensor_water_temperature")
@@ -135,6 +137,8 @@ def _heater_status() -> dict:
         "target_temp": target_temp,
         "temp_now": temp_now,
         "percent_entity": percent_entity,
+        "kick_enabled": kick_enabled,
+        "kick_kw": kick_kw,
     }
 
 
@@ -156,17 +160,27 @@ def evaluate_pv_ramp_up(
 
     allow = _truthy(set_get("allow_pv_ramp_up", True), True)
     cap_kw = max(0.0, _f(set_get("grid_export_cap_kw", 0.0), 0.0))
-    settle_s = max(0, int(_f(set_get("pv_ramp_settle_s", 300), 300)))
-    hysteresis_kw = max(0.0, _f(set_get("pv_ramp_hysteresis_w", 100.0), 100.0) / 1000.0)
-    step_up_kw = max(0.0, _f(set_get("pv_ramp_step_up_kw", 0.10), 0.10))
-    step_down_kw = max(0.0, _f(set_get("pv_ramp_step_down_kw", 0.20), 0.20))
+    settle_s = max(0, int(_f(set_get("pv_ramp_settle_s", 60), 60)))
+    hysteresis_kw = max(0.0, _f(set_get("pv_ramp_hysteresis_w", 200.0), 200.0) / 1000.0)
+    step_up_kw = max(0.0, _f(set_get("pv_ramp_step_up_kw", 0.40), 0.40))
+    step_down_kw = max(0.0, _f(set_get("pv_ramp_step_down_kw", 0.60), 0.60))
     eps_kw = max(0.0, _f(set_get("pv_ramp_cap_epsilon_kw", 0.05), 0.05))
 
     state, block = _load_block()
     heater = _heater_status()
-    cap_engaged = max(0.0, _f(feed_kw, 0.0)) >= max(0.0, cap_kw - eps_kw)
+    measured_feed = max(0.0, _f(feed_kw, 0.0))
+    measured_import = max(0.0, _f(import_kw, 0.0))
+    cap_engaged_real = measured_feed >= max(0.0, cap_kw - eps_kw) if cap_kw > 0.0 else False
+    zero_export_probe = (
+        bool(heater.get("eligible"))
+        and bool(heater.get("kick_enabled"))
+        and _f(heater.get("current_kw"), 0.0) > 0.0
+        and measured_import <= hysteresis_kw
+        and measured_feed <= max(eps_kw, cap_kw + eps_kw)
+    )
+    cap_engaged = cap_engaged_real or zero_export_probe
 
-    if (not allow) or cap_kw <= 0.0:
+    if not allow:
         block = _reset_block(block)
         _save_block(state, block)
         return _result(block, reason="disabled", cap_engaged=False, heater_ok=heater["eligible"])
@@ -187,7 +201,6 @@ def evaluate_pv_ramp_up(
     candidate_since = max(0.0, _f(block.get("candidate_since_ts"), 0.0))
     prev_candidate = candidate
 
-    measured_import = max(0.0, _f(import_kw, 0.0))
     if measured_import > hysteresis_kw and (stable > 0.0 or probe > 0.0):
         reduce_by = max(step_down_kw, measured_import)
         stable = max(0.0, stable - reduce_by)
@@ -252,5 +265,10 @@ def evaluate_pv_ramp_up(
     )
     _save_block(state, block)
 
-    reason = "candidate stable" if promoted else "probing"
+    if promoted:
+        reason = "candidate stable"
+    elif zero_export_probe and not cap_engaged_real:
+        reason = "zero-export probing"
+    else:
+        reason = "probing"
     return _result(block, reason=reason, cap_engaged=True, heater_ok=True)

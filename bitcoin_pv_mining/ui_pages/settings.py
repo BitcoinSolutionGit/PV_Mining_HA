@@ -374,10 +374,10 @@ def layout():
     export_cap = _num(set_get("grid_export_cap_kw", 0.0), 0.0)
     boost_cooldown = int(_num(set_get("boost_cooldown_s", 30), 30))
     allow_pv_ramp_up = bool(set_get("allow_pv_ramp_up", True))
-    pv_ramp_settle_s = int(_num(set_get("pv_ramp_settle_s", 300), 300))
-    pv_ramp_hysteresis_w = _num(set_get("pv_ramp_hysteresis_w", 100.0), 100.0)
-    pv_ramp_step_up_kw = _num(set_get("pv_ramp_step_up_kw", 0.10), 0.10)
-    pv_ramp_step_down_kw = _num(set_get("pv_ramp_step_down_kw", 0.20), 0.20)
+    pv_ramp_settle_s = int(_num(set_get("pv_ramp_settle_s", 60), 60))
+    pv_ramp_hysteresis_w = _num(set_get("pv_ramp_hysteresis_w", 200.0), 200.0)
+    pv_ramp_step_up_kw = _num(set_get("pv_ramp_step_up_kw", 0.40), 0.40)
+    pv_ramp_step_down_kw = _num(set_get("pv_ramp_step_down_kw", 0.60), 0.60)
     cool_on_frac = _num(set_get("cooling_on_fraction", 0.50), 0.50)
     miner_on_frac = _num(set_get("miner_on_fraction", _num(set_get("discrete_on_fraction", 0.95), 0.95)), 0.95)
     cool_min_run = int(_num(set_get("cooling_min_run_s", 20), 20))
@@ -622,8 +622,8 @@ def layout():
             ),
             html.Div([
                 html.Label("Settle time (s)"),
-                number_stepper("set-pv-ramp-settle", pv_ramp_settle_s, step=1, min=30, width_px=140),
-                html.Span("  (e.g. 300 = 5 min before a new bonus becomes global)", style={"marginLeft": "8px", "opacity": 0.7}),
+                number_stepper("set-pv-ramp-settle", pv_ramp_settle_s, step=1, min=10, width_px=140),
+                html.Span("  (e.g. 60 = 1 min before a learned bonus becomes global)", style={"marginLeft": "8px", "opacity": 0.7}),
             ], style={"marginTop": "6px"}),
             html.Div([
                 html.Label("Import hysteresis (W)"),
@@ -953,10 +953,10 @@ def register_callbacks(app):
             grid_export_cap_kw=_num(export_cap, 0.0),
             boost_cooldown_s=int(_num(boost_cooldown, 30)),
             allow_pv_ramp_up=bool(allow_pv_ramp_up_val and "on" in allow_pv_ramp_up_val),
-            pv_ramp_settle_s=max(30, int(_num(pv_ramp_settle_s, 300))),
-            pv_ramp_hysteresis_w=max(0.0, _num(pv_ramp_hysteresis_w, 100.0)),
-            pv_ramp_step_up_kw=max(0.0, _num(pv_ramp_step_up_kw, 0.10)),
-            pv_ramp_step_down_kw=max(0.0, _num(pv_ramp_step_down_kw, 0.20)),
+            pv_ramp_settle_s=max(10, int(_num(pv_ramp_settle_s, 60))),
+            pv_ramp_hysteresis_w=max(0.0, _num(pv_ramp_hysteresis_w, 200.0)),
+            pv_ramp_step_up_kw=max(0.0, _num(pv_ramp_step_up_kw, 0.40)),
+            pv_ramp_step_down_kw=max(0.0, _num(pv_ramp_step_down_kw, 0.60)),
             pv_ramp_cap_epsilon_kw=max(0.0, _num(set_get("pv_ramp_cap_epsilon_kw", 0.05), 0.05)),
             cooling_on_fraction=max(0.0, min(1.0, _num(cool_on_frac, 0.50))),
             miner_on_fraction=max(0.0, min(1.0, _num(miner_on_frac, _num(set_get("discrete_on_fraction", 0.95), 0.95)))),
@@ -972,10 +972,10 @@ def register_callbacks(app):
                 f"minRun={int(_num(miner_min_run_s, 30))} s, "
                 f"minOff={int(_num(miner_min_off_s, 20))} s."
                 f" PV ramp={int(bool(allow_pv_ramp_up_val and 'on' in allow_pv_ramp_up_val))}, "
-                f"settle={max(30, int(_num(pv_ramp_settle_s, 300)))} s, "
-                f"hys={max(0.0, _num(pv_ramp_hysteresis_w, 100.0)):.0f} W, "
-                f"up={max(0.0, _num(pv_ramp_step_up_kw, 0.10)):.2f} kW, "
-                f"down={max(0.0, _num(pv_ramp_step_down_kw, 0.20)):.2f} kW."
+                f"settle={max(10, int(_num(pv_ramp_settle_s, 60)))} s, "
+                f"hys={max(0.0, _num(pv_ramp_hysteresis_w, 200.0)):.0f} W, "
+                f"up={max(0.0, _num(pv_ramp_step_up_kw, 0.40)):.2f} kW, "
+                f"down={max(0.0, _num(pv_ramp_step_down_kw, 0.60)):.2f} kW."
                 f" Cooling frac={_num(cool_on_frac, 0.5):.2f}, "
                 f" Miner frac={_num(miner_on_frac, 0.95):.2f}, "
                 f" CminRun={int(_num(cool_min_run_s, 20))} s, "
