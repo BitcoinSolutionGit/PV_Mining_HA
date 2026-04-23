@@ -281,7 +281,7 @@ def _allocate_discrete_load(
     decision_reason = ""
     if battery_block:
         if locked_on:
-            decision_reason = f"battery grace {max(0, int(min_run_s - elapsed))}s"
+            decision_reason = f"battery-backed min-run lock {max(0, int(min_run_s - elapsed))}s"
             alloc_total = max(req, nominal_kw)
         else:
             decision_reason = "battery discharge block"
@@ -375,6 +375,8 @@ def plan_and_allocate(
     battery_block_kw = _battery_discharge_kw_now()
     battery_block = battery_block_kw > 0.05
     log_fn(f"[plan] battery_discharge={battery_block_kw:.3f} kW -> battery_block={battery_block}")
+    if battery_block:
+        log_fn("[plan] battery discharge active -> flexible consumers are cut back; locked miners may continue until min-run expires")
 
     try:
         pv_ramp = evaluate_pv_ramp_up(
@@ -414,6 +416,8 @@ def plan_and_allocate(
             ("pv_ramp_bonus_kw", _f(pv_ramp.get("stable_bonus_kw"), 0.0)),
             ("pv_ramp_probe_offset_kw", _f(pv_ramp.get("probe_offset_kw"), 0.0)),
             ("pv_ramp_candidate_kw", _f(pv_ramp.get("candidate_bonus_kw"), 0.0)),
+            ("battery_discharge_kw", battery_block_kw),
+            ("battery_block", battery_block),
     ):
         # robust für Ctx als Objekt ODER Mapping
         try:
@@ -434,6 +438,8 @@ def plan_and_allocate(
         ctx["pv_ramp_bonus_kw"] = _f(pv_ramp.get("stable_bonus_kw"), 0.0)
         ctx["pv_ramp_probe_offset_kw"] = _f(pv_ramp.get("probe_offset_kw"), 0.0)
         ctx["pv_ramp_candidate_kw"] = _f(pv_ramp.get("candidate_bonus_kw"), 0.0)
+        ctx["battery_discharge_kw"] = battery_block_kw
+        ctx["battery_block"] = battery_block
     except Exception:
         pass
 

@@ -150,12 +150,17 @@ class HeaterConsumer(BaseConsumer):
 
         base_kw = max(0.0, float(kw or 0.0))
         probe_kw = max(0.0, _ctx_num(ctx, "pv_ramp_probe_offset_kw", 0.0))
+        battery_block = bool(_ctx_num(ctx, "battery_block", 0.0))
+        battery_discharge_kw = max(0.0, _ctx_num(ctx, "battery_discharge_kw", 0.0))
         final_kw = max(0.0, min(float(max_kw), base_kw + probe_kw))
         pct = max(0.0, min(100.0, (final_kw / float(max_kw)) * 100.0))
         ok = _set_percent_entity(pct_tgt, round(pct))
+        reason_suffix = ""
+        if battery_block and final_kw <= 1e-9:
+            reason_suffix = f" | cut back due to battery discharge ({battery_discharge_kw:.3f} kW)"
         _log(
             f"[heater] apply base_kw={base_kw:.3f} probe_kw={probe_kw:.3f} "
-            f"final_kw={final_kw:.3f} -> {pct:.1f}% target={pct_tgt} ok={ok}"
+            f"final_kw={final_kw:.3f} -> {pct:.1f}% target={pct_tgt} ok={ok}{reason_suffix}"
         )
 
         # start cooldown once we actually commanded >= ~5%
