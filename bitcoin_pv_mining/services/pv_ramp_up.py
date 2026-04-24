@@ -55,6 +55,25 @@ def _load_block() -> tuple[dict, dict]:
     return state, block
 
 
+def get_pv_ramp_snapshot() -> dict:
+    """
+    Read the current PV-ramp state without mutating it.
+    The dashboard uses this so the Sankey can visualize the same temporary
+    headroom model that the planner currently applies.
+    """
+    _state, block = _load_block()
+    stable = max(0.0, _f(block.get("stable_bonus_kw"), 0.0))
+    probe = max(0.0, _f(block.get("probe_offset_kw"), 0.0))
+    candidate = max(0.0, _f(block.get("candidate_bonus_kw"), stable + probe))
+    return {
+        "stable_bonus_kw": stable,
+        "probe_offset_kw": probe,
+        "candidate_bonus_kw": candidate,
+        "candidate_since_ts": max(0.0, _f(block.get("candidate_since_ts"), 0.0)),
+        "inactive_ticks": max(0, int(_f(block.get("inactive_ticks", 0), 0))),
+    }
+
+
 def _save_block(state: dict, block: dict) -> None:
     normalized = {
         "stable_bonus_kw": max(0.0, _f(block.get("stable_bonus_kw"), 0.0)),

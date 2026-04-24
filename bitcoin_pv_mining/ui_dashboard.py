@@ -13,6 +13,7 @@ from services.electricity_store import current_price, currency_symbol, get_var a
 from services.heater_store import resolve_entity_id as heater_resolve_entity, get_var as heat_get_var
 from services.miners_store import list_miners
 from services.cooling_store import get_cooling
+from services.pv_ramp_up import get_pv_ramp_snapshot
 from services.settings_store import get_var as set_get
 from services.wallbox_store import get_var as wb_get
 from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_id
@@ -68,6 +69,7 @@ TEXT_MUTED = "#98a7c4"
 PLOT_LINE = "rgba(191, 205, 229, 0.18)"
 
 PV_GREEN = "#29c36a"
+BOOST_GREEN = "#8ee57b"
 GRID_RED = "#ef5350"
 GRID_FEED_RED = "#ff6b6b"
 HOUSE_GREY = "#94a3b8"
@@ -207,6 +209,21 @@ def _wallbox_enabled():
         return bool(wb_get("enabled", False))
     except Exception:
         return False
+
+
+def _planner_boost_kw() -> float:
+    """
+    Temporary extra headroom used by the planner beyond measured surplus.
+    Includes both settled ramp bonus and the currently active probe offset.
+    """
+    try:
+        snap = get_pv_ramp_snapshot() or {}
+        stable_kw = max(_num(snap.get("stable_bonus_kw"), 0.0), 0.0)
+        probe_kw = max(_num(snap.get("probe_offset_kw"), 0.0), 0.0)
+        candidate_kw = max(_num(snap.get("candidate_bonus_kw"), stable_kw + probe_kw), 0.0)
+        return max(candidate_kw, 0.0)
+    except Exception:
+        return 0.0
 
 def _battery_enabled():
     try:
@@ -389,6 +406,7 @@ def _hex_to_rgba(hex_color: str, alpha: float) -> str:
 COLORS = {
     "inflow": "#FFD700",
     "pv": PV_GREEN,
+    "boost": BOOST_GREEN,
     "grid": GRID_RED,
     "cooling": COOLING_BLUE,
     "miners": CONSUMER_ORANGE,
@@ -420,6 +438,7 @@ def register_callbacks(app):
         feed_val = float(get_sensor_value(feed_id) or 0.0)
 
         bat_pwr = float(_battery_power_kw_live() or 0.0)
+        boost_kw = float(_planner_boost_kw() or 0.0)
         heater_kw = float(_heater_power_kw() or 0.0)
         wallbox_kw = float(_wallbox_power_kw() or 0.0)
 
@@ -471,6 +490,7 @@ def register_callbacks(app):
             "grid": grid_val,
             "feed": feed_val,
             "bat_pwr": bat_pwr,
+            "boost_kw": boost_kw,
             "heater_kw": heater_kw,
             "wallbox_kw": wallbox_kw,
             "cooling": {"enabled": cooling_enabled, "running": cooling_running, "pkw": cooling_pkw, "status": cooling_status},
@@ -518,6 +538,7 @@ def register_callbacks(app):
         grid_val = data["grid"]
         feed_val = data["feed"]
         bat_pwr = data["bat_pwr"]
+        boost_kw = max(float(data.get("boost_kw", 0.0) or 0.0), 0.0)
         heater_kw = data["heater_kw"]
         wallbox_kw = data["wallbox_kw"]
 
@@ -546,13 +567,14 @@ def register_callbacks(app):
         bat_charge_kw = max(bat_pwr, 0.0)  # Senke
         bat_discharge_kw = max(-bat_pwr, 0.0)  # Quelle
 
-        # Verfügbare Energie für Verbraucher = PV + Grid (+ Entladung)
-        inflow_base = max(pv_val + grid_val, 0.0)
+        # Verfügbare Energie für Verbraucher = PV + Ramp-Boost + Grid (+ Entladung)
+        inflow_base = max(pv_val + boost_kw + grid_val, 0.0)
         inflow_eff = inflow_base + bat_discharge_kw
 
         # ---- Prozentanteile für den Inflow-Knoten ----
         den = inflow_eff if inflow_eff > 0 else 0.0
         pv_pct = round((pv_val / den) * 100.0, 1) if den else 0.0
+        boost_pct = round((boost_kw / den) * 100.0, 1) if den else 0.0
         grid_pct = round((grid_val / den) * 100.0, 1) if den else 0.0
         batt_pct = round((bat_discharge_kw / den) * 100.0, 1) if den else 0.0
 
@@ -612,7 +634,7 @@ def register_callbacks(app):
 
         # Node-Label leer lassen; Text zeigen wir als Annotation oben mittig.
         inflow_line1 = f"Energy Inflow — {_fmt_kw(inflow_eff)}"
-        inflow_line2 = f"PV: {pv_pct}% · Grid: {grid_pct}% · Battery: {batt_pct}%"
+        inflow_line2 = f"PV: {pv_pct}% · Boost: {boost_pct}% · Grid: {grid_pct}% · Battery: {batt_pct}%"
         inflow_idx = add_node(" ", COLORS["inflow"])
 
         # ---------- Linke Quellknoten (optional) ----------
@@ -633,6 +655,10 @@ def register_callbacks(app):
             if grid_active or SHOW_GHOST_SRC:
                 grid_src_idx = add_node(f"Grid (import)<br>{_fmt_kw(grid_val)}", grid_color)
                 add_link(grid_src_idx, inflow_idx, grid_eff, grid_color)
+
+        if boost_kw > 0.0:
+            boost_idx = add_node(f"PV ramp-up reserve<br>{_fmt_kw(boost_kw)}", COLORS["boost"])
+            add_link(boost_idx, inflow_idx, boost_kw, COLORS["boost"])
 
         battery_src_idx = None
         if battery_feat and ((bat_discharge_kw > 0.0) or SHOW_GHOST_SRC):
