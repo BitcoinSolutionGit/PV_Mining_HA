@@ -209,16 +209,6 @@ def _cool_card(c: dict, sym: str, ha_actions: list[dict], ready_options: list[di
         ], style={"display":"flex","gap":"10px","marginTop":"8px","flexWrap":"wrap"}),
 
         html.Div([
-            html.Label("Ready/State entity  (True = running)"),
-            dcc.Dropdown(
-                id="cool-ready-entity",
-                options=ready_options,
-                value=c.get("ready_entity", "") or None,
-                placeholder="Select state feedback entity…",
-                persistence=True, persistence_type="memory"
-            )
-        ], style={"flex": "1"}),
-        html.Div([
             html.Label("State entity  (preferred real relay)"),
             dcc.Dropdown(
                 id="cool-state-entity",
@@ -227,10 +217,10 @@ def _cool_card(c: dict, sym: str, ha_actions: list[dict], ready_options: list[di
                 placeholder="Select Shelly switch…",
                 persistence=True, persistence_type="memory"
             )
-        ], style={"flex": "1", "marginLeft": "10px"}),
+        ], style={"flex": "1"}),
         html.Div([
-            html.Label("Timeout (s)"),
-            number_stepper("cool-ready-timeout", int(c.get("ready_timeout_s", 60) or 60), step=1, min=5, width_px=140)
+            html.Label("State timeout (s)"),
+            number_stepper("cool-state-timeout", int(c.get("state_timeout_s", c.get("ready_timeout_s", 60)) or 60), step=1, min=5, width_px=140)
         ], style={"marginLeft": "10px"}),
 
         # Leistung
@@ -440,6 +430,11 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
                 number_stepper({"type": "m-minrun", "mid": mid}, _minrun_val, step=1, min=0, width_px=160, persistence=True, persistence_type="memory"),
                 html.Span("  (Default 1; 0 = no lock)", style={"marginLeft":"8px","opacity":0.7}),
             ], style={"flex":"1"}),
+            html.Div([
+                html.Label("State timeout (s)"),
+                number_stepper({"type": "m-state-timeout", "mid": mid}, int(float(m.get("state_timeout_s", 10) or 10)), step=1, min=1, width_px=160, persistence=True, persistence_type="memory"),
+                html.Span("  (wait time for relay feedback)", style={"marginLeft":"8px","opacity":0.7}),
+            ], style={"flex":"1","marginLeft":"10px"}),
         ], style={"display":"flex","gap":"10px","marginTop":"8px"}),
 
         html.Div([
@@ -495,11 +490,9 @@ def register_callbacks(app):
         Output("cool-ampel", "children"),
         Input("miners-refresh", "n_intervals"),
         State("orchestrator", "data"),
-        State("cool-ready-entity", "value"),
-        State("cool-ready-timeout", "value"),
         prevent_initial_call=False
     )
-    def _engine_tick(_n, data, ready_val, timeout_val):
+    def _engine_tick(_n, data):
         data = data or {"cooling": {"state": "off", "until": 0}, "miners": {}}
         cool = get_cooling() or {}
         mode_auto = (str(cool.get("mode") or "").lower() == "auto")
@@ -507,19 +500,21 @@ def register_callbacks(app):
         state_map = {
             "off": "off",
             "running": "on",
-            "running_no_ready": "on",
+            "running_no_state": "on",
             "starting": "starting",
-            "start_failed": "starting",
+            "start_failed": "failed",
             "stopping": "stopping",
+            "stop_failed": "failed",
         }
         state = state_map.get(phase, "off")
-        data["cooling"] = {"state": state, "until": float(cool.get("startup_grace_until") or 0.0)}
+        data["cooling"] = {"state": state, "until": float(cool.get("fail_deadline_ts") or cool.get("confirm_deadline_ts") or 0.0)}
 
         ampel = {
             "off": _ampel("#e74c3c", "Cooling off"),
             "starting": _ampel("#f1c40f", "Cooling starting..."),
             "on": _ampel("#27ae60", "Cooling on"),
             "stopping": _ampel("#f39c12", "Cooling stopping..."),
+            "failed": _ampel("#e74c3c", "Cooling relay feedback timeout"),
         }[state]
 
         print(
@@ -730,12 +725,13 @@ def register_callbacks(app):
         State({"type": "m-act-on", "mid": ALL}, "value"),
         State({"type": "m-act-off", "mid": ALL}, "value"),
         State({"type": "m-state", "mid": ALL}, "value"),
+        State({"type": "m-state-timeout", "mid": ALL}, "value"),
         State({"type": "m-minrun", "mid": ALL}, "value"),
         State({"type": "m-kind", "mid": ALL}, "value"),
         prevent_initial_call=True
     )
     def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals,
-                    ths_vals, pkw_vals, reqcool_vals, act_on_vals, act_off_vals, state_vals, minrun_vals, kinds_vals):
+                    ths_vals, pkw_vals, reqcool_vals, act_on_vals, act_off_vals, state_vals, state_timeout_vals, minrun_vals, kinds_vals):
         trg = callback_context.triggered_id
         if not trg:
             raise dash.exceptions.PreventUpdate
@@ -766,6 +762,7 @@ def register_callbacks(app):
         act_on = (act_on_vals[idx] if idx < len(act_on_vals) else None) or ""
         act_off = (act_off_vals[idx] if idx < len(act_off_vals) else None) or ""
         state_ent = (state_vals[idx] if idx < len(state_vals) else None) or ""
+        state_timeout_s = int(_num(state_timeout_vals[idx] if idx < len(state_timeout_vals) else 10, 10) or 10)
 
         # Vor dem Schreiben alten Zustand für Vergleich holen
         from services.miners_store import list_miners, update_miner
@@ -787,6 +784,7 @@ def register_callbacks(app):
             action_on_entity=act_on,
             action_off_entity=act_off,
             state_entity=state_ent,
+            state_timeout_s=max(1, state_timeout_s),
             is_miner=is_miner,
         )
 
@@ -804,7 +802,15 @@ def register_callbacks(app):
                 manual_flip_ts = time.time()
 
         if manual_flip_ts is not None:
-            update_miner(mid, last_flip_ts=manual_flip_ts)
+            has_feedback = bool((state_ent or "").strip())
+            effective_old_on = bool(old.get("effective_on", old.get("on")))
+            update_miner(
+                mid,
+                pending_on=(want_on and has_feedback),
+                pending_off=((not want_on) and has_feedback and effective_old_on),
+                startup_grace_until=(manual_flip_ts + max(1, state_timeout_s)) if has_feedback else 0.0,
+                last_flip_ts=manual_flip_ts,
+            )
 
         # Mindestlaufzeit (min) robust lesen und speichern
         try:
@@ -1020,12 +1026,11 @@ def register_callbacks(app):
         State("cool-pwr", "value"),
         State("cool-act-on", "value"),
         State("cool-act-off", "value"),
-        State("cool-ready-entity", "value"),
         State("cool-state-entity", "value"),
-        State("cool-ready-timeout", "value"),
+        State("cool-state-timeout", "value"),
         prevent_initial_call=True
     )
-    def _cool_save(n, mode_val, on_val, pkw, act_on, act_off, ready_ent, state_ent, ready_to):
+    def _cool_save(n, mode_val, on_val, pkw, act_on, act_off, state_ent, state_to):
         if not n:
             raise dash.exceptions.PreventUpdate
 
@@ -1033,7 +1038,8 @@ def register_callbacks(app):
         desired_on_manual = bool(on_val and "on" in on_val)
         current = get_cooling() or {}
         previous_on = bool(current.get("on"))
-        feedback_ent = (state_ent or ready_ent or "").strip()
+        feedback_ent = (state_ent or "").strip()
+        state_timeout_s = max(int(float(state_to or 60)), 1)
 
         # Läuft irgendein cooling-pflichtiger Miner?
         active_required = any(
@@ -1065,14 +1071,15 @@ def register_callbacks(app):
             on=desired_on,
             pending_on=(desired_on and not mode_auto and bool(feedback_ent) and desired_on != previous_on),
             pending_off=((not desired_on) and not mode_auto and bool(feedback_ent) and desired_on != previous_on and previous_on),
-            startup_grace_until=(now_ts + int(ready_to or 60)) if (desired_on and not mode_auto and bool(feedback_ent) and desired_on != previous_on) else 0.0,
+            confirm_deadline_ts=(now_ts + state_timeout_s) if (not mode_auto and bool(feedback_ent) and desired_on != previous_on) else 0.0,
+            fail_deadline_ts=(now_ts + (3 * state_timeout_s)) if (not mode_auto and bool(feedback_ent) and desired_on != previous_on) else 0.0,
+            failed_phase="",
             last_transition_ts=now_ts if (not mode_auto and desired_on != previous_on) else current.get("last_transition_ts", 0.0),
             power_kw=float(pkw or 0.0),
             action_on_entity=(act_on or ""),
             action_off_entity=(act_off or ""),
-            ready_entity=(ready_ent or ""),
             state_entity=(state_ent or ""),
-            ready_timeout_s=int(ready_to or 60),
+            state_timeout_s=state_timeout_s,
         )
 
         return _cool_kpi_render(float(pkw or 0.0))

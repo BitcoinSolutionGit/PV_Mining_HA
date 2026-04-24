@@ -74,12 +74,14 @@ def _pv_cost_per_kwh() -> float:
     return max(price - fee_up, 0.0)
 
 
-def _startup_grace_s(c: dict | None = None, default: int = 60) -> int:
+def _state_timeout_s(c: dict | None = None, default: int = 60) -> int:
     try:
-        raw = (c or {}).get("ready_timeout_s")
+        raw = (c or {}).get("state_timeout_s")
+        if raw is None or str(raw).strip() == "":
+            raw = (c or {}).get("ready_timeout_s")
         if raw is None or str(raw).strip() == "":
             raw = default
-        return max(int(float(raw)), default)
+        return max(int(float(raw)), 1)
     except Exception:
         return default
 
@@ -97,10 +99,7 @@ class CoolingConsumer(BaseConsumer):
         enabled = _truthy(c.get("enabled"), True)
         mode = str(c.get("mode") or "manual").lower()
         power_kw = _num(c.get("power_kw"), 0.0)
-        pending_on = _truthy(c.get("pending_on"), False)
-        pending_off = _truthy(c.get("pending_off"), False)
-        startup_grace_until = _num(c.get("startup_grace_until"), 0.0)
-        startup_grace_active = pending_on and not pending_off and (startup_grace_until <= 0.0 or time.time() < startup_grace_until)
+        phase = str(c.get("phase") or "").lower()
 
         if not enabled:
             return Desire(False, 0.0, 0.0, reason="disabled")
@@ -108,8 +107,9 @@ class CoolingConsumer(BaseConsumer):
             return Desire(False, 0.0, 0.0, reason="no power configured")
         if mode != "auto":
             return Desire(False, 0.0, 0.0, reason="manual mode")
-
-        if startup_grace_active:
+        if phase == "start_failed":
+            return Desire(False, 0.0, 0.0, reason="start failed")
+        if phase == "starting":
             return Desire(True, power_kw, power_kw, exact_kw=power_kw, reason="startup grace")
 
         try:
@@ -147,7 +147,11 @@ class CoolingConsumer(BaseConsumer):
         tax_pct = _num(set_get("sell_tax_percent", 0.0), 0.0)
         sat_th_h = sats_per_th_per_hour(reward, net_ths) if net_ths > 0 else 0.0
         eur_per_sat = (btc_eur / 1e8) if btc_eur > 0 else 0.0
-        is_running = _truthy(c.get("effective_on"), False) or _truthy(c.get("on"), False)
+        is_running = (
+            _truthy(c.get("effective_on"), False)
+            or _truthy(c.get("pending_on"), False)
+            or _truthy(c.get("pending_off"), False)
+        )
 
         for miner in candidates:
             miner_kw = _num(miner.get("power_kw"), 0.0)
@@ -181,31 +185,43 @@ class CoolingConsumer(BaseConsumer):
         running = _truthy(c.get("effective_on"), False) if "effective_on" in c else (bool(ha_raw) if ha_raw is not None else _truthy(c.get("on"), False))
         pending_on = _truthy(c.get("pending_on"), False)
         pending_off = _truthy(c.get("pending_off"), False)
+        phase = str(c.get("phase") or "").lower()
         should_on = power_kw > 0.0 and alloc_kw > 0.0
+        has_feedback = bool((c.get("state_entity") or "").strip())
 
         now_ts = time.time()
         cooldown = 0.8
 
         try:
             if should_on and not running and not pending_on:
+                if phase == "start_failed" and bool(c.get("on")):
+                    return
                 if on_ent and _can_send("on", now_ts, cooldown):
                     call_action(on_ent, True)
+                timeout_s = _state_timeout_s(c)
                 set_cooling(
                     on=True,
-                    pending_on=(ha_raw is not None),
+                    pending_on=has_feedback,
                     pending_off=False,
-                    startup_grace_until=(now_ts + _startup_grace_s(c)) if ha_raw is not None else 0.0,
+                    confirm_deadline_ts=(now_ts + timeout_s) if has_feedback else 0.0,
+                    fail_deadline_ts=(now_ts + (3 * timeout_s)) if has_feedback else 0.0,
+                    failed_phase="",
                     last_transition_ts=now_ts,
                 )
                 print(f"[cooling] AUTO request ON (~{alloc_kw:.2f} kW)", flush=True)
-            elif (not should_on) and (running or pending_on or pending_off):
+            elif (not should_on) and (running or pending_on or pending_off or phase == "stop_failed"):
+                if phase == "stop_failed" and not bool(c.get("on")):
+                    return
                 if off_ent and _can_send("off", now_ts, cooldown):
                     call_action(off_ent, False)
+                timeout_s = _state_timeout_s(c)
                 set_cooling(
                     on=False,
                     pending_on=False,
-                    pending_off=(ha_raw is not None and running),
-                    startup_grace_until=0.0,
+                    pending_off=(has_feedback and running),
+                    confirm_deadline_ts=(now_ts + timeout_s) if has_feedback and running else 0.0,
+                    fail_deadline_ts=(now_ts + (3 * timeout_s)) if has_feedback and running else 0.0,
+                    failed_phase="",
                     last_transition_ts=now_ts,
                 )
                 print(f"[cooling] AUTO request OFF (~{alloc_kw:.2f} kW)", flush=True)

@@ -467,10 +467,12 @@ def register_callbacks(app):
                 cooling_status = "Cooling waiting for ready…"
             elif phase == "stopping":
                 cooling_status = "Cooling stopping..."
-            elif phase == "running_no_ready":
-                cooling_status = "Cooling (no ready sensor) ON"
+            elif phase == "running_no_state":
+                cooling_status = "Cooling (no state entity) ON"
             elif phase == "start_failed":
                 cooling_status = "Cooling start timeout"
+            elif phase == "stop_failed":
+                cooling_status = "Cooling stop timeout"
             else:
                 cooling_status = "Cooling off"
 

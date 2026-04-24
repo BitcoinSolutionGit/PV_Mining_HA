@@ -125,7 +125,7 @@ def _cooling_running_now() -> bool:
         c = get_cooling() or {}
         if "ha_on" in c and c["ha_on"] is not None:
             return bool(c["ha_on"])
-        rs_id = (c.get("state_entity") or c.get("ready_entity") or c.get("ready_state_entity") or "").strip()
+        rs_id = (c.get("state_entity") or "").strip()
         if rs_id:
             return _truthy(get_sensor_value(rs_id), False)
         return _truthy(c.get("effective_on"), False) or _truthy(c.get("on"), False)
@@ -142,7 +142,7 @@ def _cooling_auto_available() -> bool:
             return False
         if str(c.get("mode") or "manual").lower() != "auto":
             return False
-        if not ((c.get("state_entity") or "") or (c.get("ready_entity") or "")).strip():
+        if not (c.get("state_entity") or "").strip():
             return False
         return _num(c.get("power_kw"), 0.0) > 0.0
     except Exception:
@@ -155,7 +155,7 @@ def _cooling_effective_on() -> bool:
         return (
             _truthy(c.get("effective_on"), False)
             or _truthy(c.get("pending_on"), False)
-            or _truthy(c.get("on"), False)
+            or _truthy(c.get("pending_off"), False)
         )
     except Exception:
         return False
@@ -168,18 +168,22 @@ def _cooling_permits_miner_start() -> tuple[bool, str]:
     """
     try:
         c = get_cooling() or {}
-        ready_entity = ((c.get("state_entity") or "") or (c.get("ready_entity") or "")).strip()
+        state_entity = (c.get("state_entity") or "").strip()
         phase = str(c.get("phase") or "").strip().lower()
         ha_on = c.get("ha_on")
 
-        if not ready_entity:
-            return False, "cooling ready sensor missing"
+        if not state_entity:
+            return False, "cooling state sensor missing"
         if ha_on is True:
             return True, "cooling ready"
         if phase == "starting":
             return False, "cooling starting"
         if phase == "stopping":
             return False, "cooling stopping"
+        if phase == "start_failed":
+            return False, "cooling start failed"
+        if phase == "stop_failed":
+            return False, "cooling stop failed"
         return False, "cooling not ready"
     except Exception as e:
         return False, f"cooling state unknown: {e}"
@@ -187,10 +191,12 @@ def _cooling_permits_miner_start() -> tuple[bool, str]:
 
 def _cooling_startup_grace_s(c: Optional[dict] = None, default: int = 60) -> int:
     try:
-        raw = (c or {}).get("ready_timeout_s")
+        raw = (c or {}).get("state_timeout_s")
+        if raw is None or str(raw).strip() == "":
+            raw = (c or {}).get("ready_timeout_s")
         if raw is None or str(raw).strip() == "":
             raw = default
-        return max(int(float(raw)), default)
+        return max(int(float(raw)), 1)
     except Exception:
         return default
 
@@ -204,20 +210,25 @@ def _request_cooling_on(now_ts: float) -> tuple[bool, str]:
             return False, "cooling disabled"
         if str(c.get("mode") or "manual").lower() != "auto":
             return False, "cooling manual mode"
+        if str(c.get("phase") or "").lower() == "start_failed" and bool(c.get("on")):
+            return False, "cooling start failed"
 
         if _cooling_effective_on():
             return True, "cooling already on"
 
         on_ent = (c.get("action_on_entity") or "").strip()
-        ha_raw = c.get("ha_on")
+        has_feedback = bool((c.get("state_entity") or "").strip())
+        timeout_s = _cooling_startup_grace_s(c)
         if on_ent:
             call_action(on_ent, True)
 
         set_cooling(
             on=True,
-            pending_on=(ha_raw is not None),
+            pending_on=has_feedback,
             pending_off=False,
-            startup_grace_until=(now_ts + _cooling_startup_grace_s(c)) if ha_raw is not None else 0.0,
+            confirm_deadline_ts=(now_ts + timeout_s) if has_feedback else 0.0,
+            fail_deadline_ts=(now_ts + (3 * timeout_s)) if has_feedback else 0.0,
+            failed_phase="",
             last_transition_ts=now_ts,
         )
         return True, "cooling requested on"
@@ -248,15 +259,18 @@ def _request_cooling_off_if_idle(now_ts: float) -> tuple[bool, str]:
             return True, "cooling already off"
 
         off_ent = (c.get("action_off_entity") or "").strip()
-        ha_raw = c.get("ha_on")
+        has_feedback = bool((c.get("state_entity") or "").strip())
+        timeout_s = _cooling_startup_grace_s(c)
         if off_ent:
             call_action(off_ent, False)
 
         set_cooling(
             on=False,
             pending_on=False,
-            pending_off=(ha_raw is not None and _cooling_effective_on()),
-            startup_grace_until=0.0,
+            pending_off=(has_feedback and _cooling_effective_on()),
+            confirm_deadline_ts=(now_ts + timeout_s) if has_feedback and _cooling_effective_on() else 0.0,
+            fail_deadline_ts=(now_ts + (3 * timeout_s)) if has_feedback and _cooling_effective_on() else 0.0,
+            failed_phase="",
             last_transition_ts=now_ts,
         )
         return True, "cooling requested off"

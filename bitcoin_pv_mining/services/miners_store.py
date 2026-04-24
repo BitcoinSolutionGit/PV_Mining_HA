@@ -45,9 +45,23 @@ def _state_entity_id(miner: dict) -> str:
     ).strip()
 
 
+def _state_timeout_s(miner: dict, default: int = 10) -> int:
+    try:
+        raw = miner.get("state_timeout_s")
+        if raw is None or str(raw).strip() == "":
+            raw = default
+        return max(int(float(raw)), default)
+    except Exception:
+        return default
+
+
 def _with_runtime(miner: dict) -> dict:
     out = dict(miner or {})
     desired_on = bool(out.get("on"))
+    now_ts = time.time()
+    pending_on = bool(out.get("pending_on"))
+    pending_off = bool(out.get("pending_off"))
+    startup_grace_until = _num(out.get("startup_grace_until"), 0.0)
     ha_on = None
     try:
         state_entity = _state_entity_id(out)
@@ -59,8 +73,25 @@ def _with_runtime(miner: dict) -> dict:
         ha_on = None
 
     if ha_on is True:
+        pending_on = False
+        pending_off = False
+        startup_grace_until = 0.0
+    elif ha_on is False:
+        if pending_off:
+            pending_off = False
+        if pending_on and startup_grace_until > 0.0 and now_ts >= startup_grace_until:
+            pending_on = False
+            startup_grace_until = 0.0
+
+    if ha_on is True:
         effective_on = True
         phase = "running"
+    elif pending_on:
+        effective_on = True
+        phase = "starting" if (startup_grace_until <= 0.0 or now_ts < startup_grace_until) else "start_failed"
+    elif pending_off:
+        effective_on = True
+        phase = "stopping"
     elif ha_on is False:
         effective_on = False
         phase = "off"
@@ -73,6 +104,9 @@ def _with_runtime(miner: dict) -> dict:
 
     out["desired_on"] = desired_on
     out["ha_on"] = ha_on
+    out["pending_on"] = pending_on
+    out["pending_off"] = pending_off
+    out["startup_grace_until"] = startup_grace_until
     out["effective_on"] = effective_on
     out["phase"] = phase
     return out
@@ -100,6 +134,10 @@ def add_miner(name: str = "") -> dict:
         "mode": "manual",     # "manual" | "auto"
         "on": False,          # gewünschter Zustand (manual) / angezeigter Zustand (auto)
         "state_entity": "",
+        "state_timeout_s": 10,
+        "pending_on": False,
+        "pending_off": False,
+        "startup_grace_until": 0.0,
         "hashrate_ths": 100.0,
         "power_kw": 3.0,
         "require_cooling": False,
@@ -176,7 +214,16 @@ def request_miner_state(mid: str, target_on: bool, *, now_ts: float | None = Non
     if action_entity:
         call_action(action_entity, bool(target_on))
 
-    update_miner(mid, on=bool(target_on), last_flip_ts=now_eff)
+    has_feedback = bool(_state_entity_id(miner))
+    timeout_s = _state_timeout_s(miner, 10)
+    update_miner(
+        mid,
+        on=bool(target_on),
+        pending_on=(bool(target_on) and has_feedback),
+        pending_off=((not bool(target_on)) and has_feedback and bool(miner.get("effective_on", miner.get("on")))),
+        startup_grace_until=(now_eff + timeout_s) if has_feedback else 0.0,
+        last_flip_ts=now_eff,
+    )
     return True, "switched"
 
 def delete_miner(mid: str):

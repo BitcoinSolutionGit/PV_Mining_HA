@@ -186,7 +186,7 @@ def _discrete_runtime_meta(cid: str) -> Optional[dict]:
             c = get_cooling() or {}
             return {
                 "kind": "cooling",
-                "actual_on": bool(c.get("effective_on")) or bool(c.get("pending_on")) or bool(c.get("on")),
+                "actual_on": bool(c.get("effective_on")) or bool(c.get("pending_on")) or bool(c.get("pending_off")),
                 "last_flip_ts": _f(c.get("last_transition_ts"), 0.0),
                 "nominal_kw": _f(c.get("power_kw"), 0.0),
                 "min_run_s": int(_f(set_get("cooling_min_run_s", 20), 20)),
