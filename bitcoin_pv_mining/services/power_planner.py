@@ -141,7 +141,7 @@ def _controllable_now_kw() -> float:
         c = get_cooling() or {}
         pkw = _f(c.get("power_kw"), 0.0)
         ha_on = c.get("ha_on")
-        is_on = (bool(ha_on) if ha_on is not None else _truthy(c.get("on"), False))
+        is_on = bool(c.get("effective_on")) if "effective_on" in c else (bool(ha_on) if ha_on is not None else _truthy(c.get("on"), False))
         if is_on and pkw > 0.0:
             now_kw += pkw
     except Exception:
@@ -151,7 +151,7 @@ def _controllable_now_kw() -> float:
     try:
         from services.miners_store import list_miners
         for m in (list_miners() or []):
-            if bool(m.get("on")):
+            if bool(m.get("effective_on", m.get("on"))):
                 now_kw += _f(m.get("power_kw"), 0.0)
     except Exception:
         pass
@@ -205,7 +205,7 @@ def _discrete_runtime_meta(cid: str) -> Optional[dict]:
                 return None
             return {
                 "kind": "miner",
-                "actual_on": bool(miner.get("on")),
+                "actual_on": bool(miner.get("effective_on", miner.get("on"))),
                 "last_flip_ts": _f(miner.get("last_flip_ts"), 0.0),
                 "nominal_kw": _f(miner.get("power_kw"), 0.0),
                 "min_run_s": _miner_min_run_s(mid),
@@ -239,7 +239,7 @@ def _cooling_has_dependent_miner(
             continue
         if not _truthy(miner.get("require_cooling"), False):
             continue
-        if bool(miner.get("on")):
+        if bool(miner.get("effective_on", miner.get("on"))):
             return True
 
         req = desire.exact_kw if getattr(desire, "exact_kw", None) is not None else max(desire.min_kw or 0.0, desire.max_kw or 0.0)
@@ -323,7 +323,7 @@ def _cooling_active_need_now() -> bool:
 
         return any(
             _truthy(m.get("enabled"), False)
-            and _truthy(m.get("on"), False)
+            and _truthy(m.get("effective_on", m.get("on")), False)
             and _truthy(m.get("require_cooling"), False)
             for m in (list_miners() or [])
         )

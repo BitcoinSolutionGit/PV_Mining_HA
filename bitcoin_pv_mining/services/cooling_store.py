@@ -20,6 +20,7 @@ _DEFAULT = {
     "power_kw": 0.5,
     "action_on_entity": "",
     "action_off_entity": "",
+    "state_entity": "",
     "ready_entity": "",
     "created_at": int(time.time()),
 }
@@ -56,7 +57,7 @@ def get_cooling() -> dict:
     # Tatsächlichen Zustand aus HA lesen (kann True/False/None sein)
     ha_on = None
     try:
-        rid = (out.get("ready_entity") or "").strip()
+        rid = ((out.get("state_entity") or "") or (out.get("ready_entity") or "")).strip()
         if rid:
             state = get_entity_state(rid)  # "on" / "off" / "unavailable" / ...
             ha_on = is_on_like(state)  # robustes Mapping

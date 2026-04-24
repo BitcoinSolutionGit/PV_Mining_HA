@@ -114,7 +114,7 @@ class CoolingConsumer(BaseConsumer):
 
         try:
             active_need = any(
-                _truthy(m.get("on"), False) and _requires_cooling(m)
+                _truthy(m.get("effective_on", m.get("on")), False) and _requires_cooling(m)
                 for m in (list_miners() or [])
             )
         except Exception:

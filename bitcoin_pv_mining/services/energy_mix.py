@@ -97,7 +97,7 @@ def _controllable_now_kw() -> float:
         from services.cooling_store import get_cooling
         c = get_cooling() or {}
         pkw = _f(c.get("power_kw"), 0.0)
-        is_on = bool(c.get("on"))
+        is_on = bool(c.get("effective_on", c.get("on")))
         if is_on and pkw > 0.0:
             now_kw += pkw
     except Exception:
@@ -107,7 +107,7 @@ def _controllable_now_kw() -> float:
     try:
         from services.miners_store import list_miners
         for m in (list_miners() or []):
-            if bool(m.get("on")):
+            if bool(m.get("effective_on", m.get("on"))):
                 now_kw += _f(m.get("power_kw"), 0.0)
     except Exception:
         pass

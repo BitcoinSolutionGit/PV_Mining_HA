@@ -482,7 +482,7 @@ def register_callbacks(app):
         miners = [{
             "name": (m.get("name") or "Miner").strip(),
             "kw": float(m.get("power_kw") or 0.0),
-            "active": bool(m.get("enabled")) and bool(m.get("on")),
+            "active": bool(m.get("enabled")) and bool(m.get("effective_on", m.get("on"))),
         } for m in miners_raw]
 
         return {

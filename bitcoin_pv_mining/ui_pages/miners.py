@@ -145,7 +145,7 @@ def _should_show_cooling_block() -> bool:
 
 def _cool_card(c: dict, sym: str, ha_actions: list[dict], ready_options: list[dict]):
     if not ready_options:
-        ready_options = [{"label": e, "value": e} for e in list_ready_entities(("input_boolean", "binary_sensor"))]
+        ready_options = [{"label": e, "value": e} for e in list_ready_entities(("switch", "input_boolean", "binary_sensor"))]
 
     return html.Div([
         html.Div([ html.Strong(c.get("name","Cooling circuit")) ],
@@ -214,10 +214,20 @@ def _cool_card(c: dict, sym: str, ha_actions: list[dict], ready_options: list[di
                 id="cool-ready-entity",
                 options=ready_options,
                 value=c.get("ready_entity", "") or None,
-                placeholder="Select input_boolean…",
+                placeholder="Select state feedback entity…",
                 persistence=True, persistence_type="memory"
             )
         ], style={"flex": "1"}),
+        html.Div([
+            html.Label("State entity  (preferred real relay)"),
+            dcc.Dropdown(
+                id="cool-state-entity",
+                options=ready_options,
+                value=c.get("state_entity", "") or None,
+                placeholder="Select Shelly switch…",
+                persistence=True, persistence_type="memory"
+            )
+        ], style={"flex": "1", "marginLeft": "10px"}),
         html.Div([
             html.Label("Timeout (s)"),
             number_stepper("cool-ready-timeout", int(c.get("ready_timeout_s", 60) or 60), step=1, min=5, width_px=140)
@@ -282,7 +292,7 @@ def layout():
     sym = currency_symbol()
     ha_actions = list_actions()
     try:
-        ready_opts = [{"label": e, "value": e} for e in list_ready_entities(("input_boolean", "binary_sensor"))]
+        ready_opts = [{"label": e, "value": e} for e in list_ready_entities(("switch", "input_boolean", "binary_sensor"))]
     except Exception:
         ready_opts = []
 
@@ -344,7 +354,7 @@ def layout():
     ])
 
 # ---------- render helpers ----------
-def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[dict]):
+def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[dict], ready_options: list[dict]):
     mid = m["id"]
     is_free = (idx == 0)  # erster Miner gratis
 
@@ -455,6 +465,17 @@ def _miner_card(m: dict, idx: int, premium_on: bool, sym: str, ha_actions: list[
             ], style={"flex": "1", "marginLeft": "10px"}),
         ], style={"display": "flex", "gap": "10px", "marginTop": "8px","flexWrap":"wrap"}),
 
+        html.Div([
+            html.Label("State entity  (preferred real relay)"),
+            dcc.Dropdown(
+                id={"type": "m-state", "mid": m["id"]},
+                options=ready_options,
+                value=m.get("state_entity", "") or None,
+                placeholder="Select Shelly switch…",
+                persistence=True, persistence_type="memory"
+            )
+        ], style={"marginTop": "8px"}),
+
         html.Hr(),
 
         # live KPIs
@@ -545,7 +566,11 @@ def register_callbacks(app):
             ha_actions = list_actions()  # <- HIER holen (scripts + switches)
         except Exception:
             ha_actions = []
-        return [_miner_card(m, i, prem, sym, ha_actions) for i, m in enumerate(miners)]
+        try:
+            ready_opts = [{"label": e, "value": e} for e in list_ready_entities(("switch", "input_boolean", "binary_sensor"))]
+        except Exception:
+            ready_opts = []
+        return [_miner_card(m, i, prem, sym, ha_actions, ready_opts) for i, m in enumerate(miners)]
 
     # 2) Global settings speichern
     @app.callback(
@@ -704,12 +729,13 @@ def register_callbacks(app):
         State({"type": "m-reqcool", "mid": ALL}, "value"),
         State({"type": "m-act-on", "mid": ALL}, "value"),
         State({"type": "m-act-off", "mid": ALL}, "value"),
+        State({"type": "m-state", "mid": ALL}, "value"),
         State({"type": "m-minrun", "mid": ALL}, "value"),
         State({"type": "m-kind", "mid": ALL}, "value"),
         prevent_initial_call=True
     )
     def _save_miner(nclicks_list, save_ids, names, enabled_vals, mode_vals, on_vals,
-                    ths_vals, pkw_vals, reqcool_vals, act_on_vals, act_off_vals, minrun_vals, kinds_vals):
+                    ths_vals, pkw_vals, reqcool_vals, act_on_vals, act_off_vals, state_vals, minrun_vals, kinds_vals):
         trg = callback_context.triggered_id
         if not trg:
             raise dash.exceptions.PreventUpdate
@@ -739,6 +765,7 @@ def register_callbacks(app):
         reqc = bool(reqcool_vals[idx] and "on" in reqcool_vals[idx]) if idx < len(reqcool_vals) else False
         act_on = (act_on_vals[idx] if idx < len(act_on_vals) else None) or ""
         act_off = (act_off_vals[idx] if idx < len(act_off_vals) else None) or ""
+        state_ent = (state_vals[idx] if idx < len(state_vals) else None) or ""
 
         # Vor dem Schreiben alten Zustand für Vergleich holen
         from services.miners_store import list_miners, update_miner
@@ -759,6 +786,7 @@ def register_callbacks(app):
             require_cooling=reqc,
             action_on_entity=act_on,
             action_off_entity=act_off,
+            state_entity=state_ent,
             is_miner=is_miner,
         )
 
@@ -842,7 +870,7 @@ def register_callbacks(app):
         require_cooling = bool(reqcool_val and "on" in reqcool_val)
         c = get_cooling() if cooling_feature else {}
         cooling_kw_cfg = float((c or {}).get("power_kw") or 0.0)
-        cooling_is_on = bool((c or {}).get("on"))
+        cooling_is_on = bool((c or {}).get("effective_on")) if c else False
 
         # Zusätzliche Last ΔP: Miner + ggf. Cooling, falls dieser Miner Cooling neu starten würde
         delta_kw = pkw + (cooling_kw_cfg if (cooling_feature and require_cooling and not cooling_is_on) else 0.0)
@@ -855,7 +883,7 @@ def register_callbacks(app):
         # Cooling-Kostenanteil fair teilen (aktive cooling-Miner + dieser Miner)
         cool_share = 0.0
         if cooling_feature and require_cooling and cooling_kw_cfg > 0.0:
-            active = [m for m in list_miners() if m.get("enabled") and m.get("on") and m.get("require_cooling")]
+            active = [m for m in list_miners() if m.get("enabled") and m.get("effective_on", m.get("on")) and m.get("require_cooling")]
             n_future = len(active) + 1  # inkl. diesem Miner
             cool_share = (cooling_kw_cfg * blended_eur_per_kwh) / max(n_future, 1)
 
@@ -920,7 +948,7 @@ def register_callbacks(app):
         if (not is_consumer) and pkw > 0.0:
             # "Äquivalente" kW inkl. anteiligem Cooling, wenn dieser Miner Cooling braucht
             if cooling_feature and require_cooling and cooling_kw_cfg > 0.0:
-                active = [m for m in list_miners() if m.get("enabled") and m.get("on") and m.get("require_cooling")]
+                active = [m for m in list_miners() if m.get("enabled") and m.get("effective_on", m.get("on")) and m.get("require_cooling")]
                 n_future = len(active) + 1
                 equiv_kw = pkw + (cooling_kw_cfg / max(n_future, 1))
             else:
@@ -968,7 +996,7 @@ def register_callbacks(app):
 
         # Läuft ein cooling-pflichtiger Miner aktuell? (nur Hinweistext)
         active_required = any(
-            m.get("enabled") and m.get("on") and m.get("require_cooling")
+            m.get("enabled") and m.get("effective_on", m.get("on")) and m.get("require_cooling")
             for m in list_miners()
         )
 
@@ -993,10 +1021,11 @@ def register_callbacks(app):
         State("cool-act-on", "value"),
         State("cool-act-off", "value"),
         State("cool-ready-entity", "value"),
+        State("cool-state-entity", "value"),
         State("cool-ready-timeout", "value"),
         prevent_initial_call=True
     )
-    def _cool_save(n, mode_val, on_val, pkw, act_on, act_off, ready_ent, ready_to):
+    def _cool_save(n, mode_val, on_val, pkw, act_on, act_off, ready_ent, state_ent, ready_to):
         if not n:
             raise dash.exceptions.PreventUpdate
 
@@ -1004,10 +1033,11 @@ def register_callbacks(app):
         desired_on_manual = bool(on_val and "on" in on_val)
         current = get_cooling() or {}
         previous_on = bool(current.get("on"))
+        feedback_ent = (state_ent or ready_ent or "").strip()
 
         # Läuft irgendein cooling-pflichtiger Miner?
         active_required = any(
-            m.get("enabled") and m.get("on") and m.get("require_cooling")
+            m.get("enabled") and m.get("effective_on", m.get("on")) and m.get("require_cooling")
             for m in list_miners()
         )
 
@@ -1033,14 +1063,15 @@ def register_callbacks(app):
             enabled=True,
             mode=("auto" if mode_auto else "manual"),
             on=desired_on,
-            pending_on=(desired_on and not mode_auto and bool(ready_ent) and desired_on != previous_on),
-            pending_off=((not desired_on) and not mode_auto and bool(ready_ent) and desired_on != previous_on and previous_on),
-            startup_grace_until=(now_ts + int(ready_to or 60)) if (desired_on and not mode_auto and bool(ready_ent) and desired_on != previous_on) else 0.0,
+            pending_on=(desired_on and not mode_auto and bool(feedback_ent) and desired_on != previous_on),
+            pending_off=((not desired_on) and not mode_auto and bool(feedback_ent) and desired_on != previous_on and previous_on),
+            startup_grace_until=(now_ts + int(ready_to or 60)) if (desired_on and not mode_auto and bool(feedback_ent) and desired_on != previous_on) else 0.0,
             last_transition_ts=now_ts if (not mode_auto and desired_on != previous_on) else current.get("last_transition_ts", 0.0),
             power_kw=float(pkw or 0.0),
             action_on_entity=(act_on or ""),
             action_off_entity=(act_off or ""),
             ready_entity=(ready_ent or ""),
+            state_entity=(state_ent or ""),
             ready_timeout_s=int(ready_to or 60),
         )
 

@@ -18,14 +18,14 @@ def _auto_off_miners_sorted():
     for m in (list_miners() or []):
         if not _truthy(m.get("enabled"), True):  continue
         if str(m.get("mode","manual")).lower() != "auto":  continue
-        if _truthy(m.get("on"), False):          continue
+        if _truthy(m.get("effective_on", m.get("on")), False): continue
         p = float(m.get("power_kw") or 0.0)
         if p <= 0.0: continue
         # Cooling-Restriktion berücksichtigen
         if _truthy(m.get("require_cooling"), False):
             c = get_cooling() or {}
             ha = c.get("ha_on")
-            cooling_ok = (bool(ha) if ha is not None else _truthy(c.get("on"), False))
+            cooling_ok = bool(c.get("effective_on")) if "effective_on" in c else (bool(ha) if ha is not None else _truthy(c.get("on"), False))
             if not cooling_ok: continue
         out.append((p, m))
     return [m for _, m in sorted(out, key=lambda x: x[0])]

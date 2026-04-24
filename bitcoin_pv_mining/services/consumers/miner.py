@@ -125,7 +125,7 @@ def _cooling_running_now() -> bool:
         c = get_cooling() or {}
         if "ha_on" in c and c["ha_on"] is not None:
             return bool(c["ha_on"])
-        rs_id = (c.get("ready_entity") or c.get("ready_state_entity") or c.get("state_entity") or "").strip()
+        rs_id = (c.get("state_entity") or c.get("ready_entity") or c.get("ready_state_entity") or "").strip()
         if rs_id:
             return _truthy(get_sensor_value(rs_id), False)
         return _truthy(c.get("effective_on"), False) or _truthy(c.get("on"), False)
@@ -142,7 +142,7 @@ def _cooling_auto_available() -> bool:
             return False
         if str(c.get("mode") or "manual").lower() != "auto":
             return False
-        if not (c.get("ready_entity") or "").strip():
+        if not ((c.get("state_entity") or "") or (c.get("ready_entity") or "")).strip():
             return False
         return _num(c.get("power_kw"), 0.0) > 0.0
     except Exception:
@@ -168,7 +168,7 @@ def _cooling_permits_miner_start() -> tuple[bool, str]:
     """
     try:
         c = get_cooling() or {}
-        ready_entity = (c.get("ready_entity") or "").strip()
+        ready_entity = ((c.get("state_entity") or "") or (c.get("ready_entity") or "")).strip()
         phase = str(c.get("phase") or "").strip().lower()
         ha_on = c.get("ha_on")
 
@@ -237,7 +237,7 @@ def _request_cooling_off_if_idle(now_ts: float) -> tuple[bool, str]:
 
         others_need_cooling = any(
             _truthy(m.get("enabled"), False)
-            and _truthy(m.get("on"), False)
+            and _truthy(m.get("effective_on", m.get("on")), False)
             and _cooling_required(m)
             for m in (list_miners() or [])
         )
@@ -311,7 +311,7 @@ class MinerConsumer(BaseConsumer):
         is_miner = bool(record.get("is_miner", True))
         ths = _num(record.get("hashrate_ths"), 0.0)
         pkw = _num(record.get("power_kw"), 0.0)
-        is_on_now = bool(record.get("on"))
+        is_on_now = bool(record.get("effective_on", record.get("on")))
 
         if pkw <= 0.0 or (is_miner and ths <= 0.0):
             return Desire(False, 0.0, 0.0, reason="no hashrate/power")
@@ -403,7 +403,7 @@ class MinerConsumer(BaseConsumer):
             return
 
         pkw = _num(record.get("power_kw"), 0.0)
-        prev_on = bool(record.get("on"))
+        prev_on = bool(record.get("effective_on", record.get("on")))
         need_cool = _cooling_required(record)
 
         # Safety-critical emergency brake:
