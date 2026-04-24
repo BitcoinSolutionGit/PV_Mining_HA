@@ -708,7 +708,7 @@ div[class*="-option"],
 div[class*="-Option"],
 div[role="listbox"],
 div[role="option"] {
-  color: var(--app-text) !important;
+  color: #111111 !important;
 }
 
 #app-root div[class*="-menu"],
@@ -720,8 +720,8 @@ div[class*="-Menu"],
 div[class*="-menuList"],
 div[class*="-MenuList"],
 div[role="listbox"] {
-  background: rgba(16, 22, 34, 0.98) !important;
-  background-color: rgba(16, 22, 34, 0.98) !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
   border-color: var(--app-border) !important;
 }
 
@@ -732,6 +732,7 @@ div[class*="-Option"],
 div[role="option"] {
   background: transparent !important;
   background-color: transparent !important;
+  color: #111111 !important;
 }
 
 #app-root div[class*="-option"]:hover,
@@ -740,8 +741,35 @@ div[role="option"] {
 div[class*="-option"]:hover,
 div[class*="-Option"]:hover,
 div[role="option"]:hover {
-  background: rgba(95, 224, 216, 0.16) !important;
-  background-color: rgba(95, 224, 216, 0.16) !important;
+  background: #e8f2ff !important;
+  background-color: #e8f2ff !important;
+  color: #111111 !important;
+}
+
+#app-root div[class*="-option--is-focused"],
+#app-root div[class*="-Option--is-focused"],
+#app-root div[class*="-option--is-selected"],
+#app-root div[class*="-Option--is-selected"],
+div[class*="-option--is-focused"],
+div[class*="-Option--is-focused"],
+div[class*="-option--is-selected"],
+div[class*="-Option--is-selected"] {
+  background: #dcecff !important;
+  background-color: #dcecff !important;
+  color: #111111 !important;
+}
+
+#app-root div[class*="-menu"] input,
+#app-root div[class*="-Menu"] input,
+#app-root div[class*="-menuList"] input,
+#app-root div[class*="-MenuList"] input,
+div[class*="-menu"] input,
+div[class*="-Menu"] input,
+div[class*="-menuList"] input,
+div[class*="-MenuList"] input {
+  color: #111111 !important;
+  caret-color: #111111 !important;
+  background: #ffffff !important;
 }
 
 @media (max-width: 899px) {
