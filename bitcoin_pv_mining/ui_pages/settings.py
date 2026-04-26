@@ -67,6 +67,13 @@ def _input_style(width_px: int):
         "color": "#f4f7ff",
     }
 
+def _sensor_value_style():
+    return {
+        "marginTop": "6px",
+        "fontSize": "0.9rem",
+        "opacity": 0.8,
+    }
+
 def _section(title: str, body_children):
     return html.Div([
         html.H3(title, className="settings-section-title"),
@@ -86,6 +93,32 @@ def _truthy(val, default=False):
         return val
     s = str(val).strip().lower()
     return s in ("1", "true", "yes", "on", "auto", "automatic", "enabled")
+
+def _format_sensor_value(value):
+    if value is None:
+        return "no data"
+    if isinstance(value, float):
+        abs_val = abs(value)
+        if abs_val >= 100.0:
+            return f"{value:.1f}"
+        if abs_val >= 10.0:
+            return f"{value:.2f}"
+        return f"{value:.4f}".rstrip("0").rstrip(".")
+    return str(value)
+
+def _sensor_value_text(entity_id: str) -> str:
+    entity_id = (entity_id or "").strip()
+    if not entity_id:
+        return "Current sensor value: no sensor selected"
+    return f"Current sensor value: {_format_sensor_value(get_sensor_value(entity_id))}"
+
+def _sensor_value_readout(readout_id: str, entity_id: str):
+    return html.Div(
+        _sensor_value_text(entity_id),
+        id=readout_id,
+        className="settings-subtle-text",
+        style=_sensor_value_style(),
+    )
 
 def _is_battery_active() -> bool:
     return bool(bat_get("enabled", False))
@@ -385,6 +418,7 @@ def layout():
 
     return html.Div([
         html.H2("Settings", className="page-title"),
+        dcc.Interval(id="set-sensor-values-interval", interval=10000, n_intervals=0),
 
     # --- NEW: SENSORS (top) ---
     _section("Sensors", [
@@ -395,6 +429,7 @@ def layout():
             value=_resolve_sensor_id("pv_production") or None,
             placeholder="Select sensor..."
         ),
+        _sensor_value_readout("set-sens-pv-read", _resolve_sensor_id("pv_production")),
         html.Label("Grid consumption", style={"marginTop": "12px"}),
         dcc.Dropdown(
             id="set-sens-grid",
@@ -402,6 +437,7 @@ def layout():
             value=_resolve_sensor_id("grid_consumption") or None,
             placeholder="Select sensor..."
         ),
+        _sensor_value_readout("set-sens-grid-read", _resolve_sensor_id("grid_consumption")),
         html.Label("Grid feed-in", style={"marginTop": "12px"}),
         dcc.Dropdown(
             id="set-sens-feed",
@@ -409,6 +445,7 @@ def layout():
             value=_resolve_sensor_id("grid_feed_in") or None,
             placeholder="Select sensor..."
         ),
+        _sensor_value_readout("set-sens-feed-read", _resolve_sensor_id("grid_feed_in")),
         html.Div([
             html.Button("Save sensors", id="set-sens-save", className="custom-tab", style={"marginTop": "12px"}),
             html.Span(id="set-sens-status", className="settings-status", style={"marginLeft": "10px"}),
@@ -444,6 +481,7 @@ def layout():
                 value=elec_resolve("current_electricity_price") or None,
                 placeholder="Select sensor..."
             ),
+            _sensor_value_readout("sensor-current-electricity-price-read", elec_resolve("current_electricity_price")),
         ], id="set-elec-row-sensor", style={"marginTop": "6px"}),
 
         # fixed row
@@ -569,6 +607,7 @@ def layout():
                     options=sensors, value=fi_sens or None, placeholder="select Sensor...",
                     style=_input_style(260)  # <— Rahmen um den Container
                 ),
+                _sensor_value_readout("set-feedin-sensor-read", fi_sens),
             ], id="row-feed-sensor", style={"marginTop": "6px", "display": (
                 "block" if (policy == "feedin" and mode == "sensor") else "none")}),
 
@@ -726,6 +765,29 @@ def layout():
 # --------------------------------
 
 def register_callbacks(app):
+
+    @app.callback(
+        Output("set-sens-pv-read", "children"),
+        Output("set-sens-grid-read", "children"),
+        Output("set-sens-feed-read", "children"),
+        Output("sensor-current-electricity-price-read", "children"),
+        Output("set-feedin-sensor-read", "children"),
+        Input("set-sensor-values-interval", "n_intervals"),
+        Input("set-sens-pv", "value"),
+        Input("set-sens-grid", "value"),
+        Input("set-sens-feed", "value"),
+        Input("sensor-current-electricity-price", "value"),
+        Input("set-feedin-sensor", "value"),
+        prevent_initial_call=False,
+    )
+    def _refresh_sensor_readouts(_tick, pv_sensor, grid_sensor, feed_sensor, elec_sensor, feedin_sensor):
+        return (
+            _sensor_value_text(pv_sensor),
+            _sensor_value_text(grid_sensor),
+            _sensor_value_text(feed_sensor),
+            _sensor_value_text(elec_sensor),
+            _sensor_value_text(feedin_sensor),
+        )
 
     # ----------------------------
     # SENSORS: Save mapping
