@@ -18,4 +18,27 @@ target_soc: 100.0          # %
 reserve_soc: 5.0         # %
 allow_grid_charge: false  # (für Auto-Logik später)
 
+# Negative-price control via Home Assistant entities
+neg_price_control_enabled: false
+
+# Numeric controls (number.* / input_number.*)
+discharge_limit_entity: ""
+discharge_limit_negative_w: 0.0
+discharge_limit_normal_w:
+
+charge_power_entity: ""
+charge_power_negative_w:
+charge_power_normal_w:
+
+target_soc_entity: ""
+target_soc_negative_pct: 100.0
+target_soc_normal_pct:
+
+# Boolean/action controls
+# Either use a single switch/input_boolean entity...
+charge_allowed_entity: ""
+# ...or separate ON/OFF action entities like scripts/buttons/switches.
+charge_allowed_on_entity: ""
+charge_allowed_off_entity: ""
+
 

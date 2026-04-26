@@ -11,3 +11,7 @@
 ### [`docs/examples/configuration.yaml`](./bitcoin_pv_mining/docs/examples/configuration.yaml)
 
 ### [`docs/examples/scripts.yaml`](./bitcoin_pv_mining/docs/examples/scripts.yaml)
+
+### [`docs/examples/battery_negative_price_package.yaml`](./bitcoin_pv_mining/docs/examples/battery_negative_price_package.yaml)
+
+### [`docs/examples/battery_negative_price_setup.md`](./bitcoin_pv_mining/docs/examples/battery_negative_price_setup.md)

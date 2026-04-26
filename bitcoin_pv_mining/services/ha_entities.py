@@ -80,6 +80,10 @@ def list_actions() -> list[dict]:
         opts.append({"label": f"{label_prefix} • {ent}", "value": ent})
     return opts
 
+
+def list_entity_options(domains=("script", "switch")) -> list[dict]:
+    return [{"label": ent, "value": ent} for ent in list_entities(domains)]
+
 def call_action(entity_id: str, turn_on: bool = True) -> bool:
     """
     Führt die passende Aktion für Scripts/Switches/Input-Boolean (& Button) aus.
@@ -113,6 +117,34 @@ def call_action(entity_id: str, turn_on: bool = True) -> bool:
 
     print(f"[ha_entities] call_action -> {domain}.{service} {entity_id} ok={ok}", flush=True)
     time.sleep(0.2)  # ganz kleines Pufferchen
+    return ok
+
+
+def set_numeric_entity(entity_id: str, value: float) -> bool:
+    """
+    Sets a numeric Home Assistant entity via the matching service.
+    Supports:
+    - input_number.X -> input_number.set_value
+    - number.X       -> number.set_value
+    """
+    if not entity_id or "." not in entity_id:
+        print("[ha_entities] set_numeric_entity: invalid entity_id", flush=True)
+        return False
+
+    domain = entity_id.split(".", 1)[0].lower()
+    if domain not in ("input_number", "number"):
+        print(f"[ha_entities] set_numeric_entity: unsupported domain {domain}", flush=True)
+        return False
+
+    try:
+        num_value = float(value)
+    except Exception:
+        print(f"[ha_entities] set_numeric_entity: invalid value for {entity_id}: {value!r}", flush=True)
+        return False
+
+    ok = _post_service(domain, "set_value", {"entity_id": entity_id, "value": num_value})
+    print(f"[ha_entities] set_numeric_entity -> {entity_id}={num_value} ok={ok}", flush=True)
+    time.sleep(0.2)
     return ok
 
 

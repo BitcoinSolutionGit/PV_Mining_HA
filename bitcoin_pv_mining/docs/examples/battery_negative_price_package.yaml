@@ -1,0 +1,212 @@
+# Example Home Assistant package for the add-on's negative-price battery control.
+#
+# Recommended usage:
+# 1. Enable packages in your Home Assistant configuration:
+#      homeassistant:
+#        packages: !include_dir_named packages
+# 2. Copy this file to:
+#      /config/packages/battery_negative_price_package.yaml
+# 3. Edit the placeholder Modbus hub / slave / register addresses below.
+# 4. In the add-on Battery page, map the helper entities from this file.
+#
+# The add-on writes ONLY the helper entities. This package forwards helper changes
+# to your inverter via Home Assistant actions.
+
+input_number:
+  battery_discharge_limit_watt:
+    name: battery_discharge_limit_watt
+    min: 0
+    max: 10000
+    step: 1
+    unit_of_measurement: "W"
+    mode: box
+
+  battery_charge_power_watt:
+    name: battery_charge_power_watt
+    min: 0
+    max: 10000
+    step: 1
+    unit_of_measurement: "W"
+    mode: box
+
+  battery_target_soc_pct:
+    name: battery_target_soc_pct
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    mode: box
+
+input_boolean:
+  battery_charge_allowed:
+    name: battery_charge_allowed
+    icon: mdi:battery-charging
+
+script:
+  scr_fronius_battery_push_discharge_limit_from_helper:
+    alias: Fronius Battery - Push discharge limit from helper
+    mode: restart
+    sequence:
+      - variables:
+          modbus_hub: "REPLACE_WITH_YOUR_FRONIUS_MODBUS_HUB"
+          modbus_slave: 1
+          register_address: 0
+          target_w: "{{ states('input_number.battery_discharge_limit_watt') | int(0) }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ modbus_hub.startswith('REPLACE_') or (register_address | int(0)) == 0 }}"
+            sequence:
+              - service: persistent_notification.create
+                data:
+                  title: Battery Modbus bridge not configured
+                  message: >-
+                    Edit script scr_fronius_battery_push_discharge_limit_from_helper
+                    and replace modbus_hub, modbus_slave, and register_address.
+              - stop: "Battery Modbus bridge not configured"
+      - service: modbus.write_register
+        data:
+          hub: "{{ modbus_hub }}"
+          slave: "{{ modbus_slave | int }}"
+          address: "{{ register_address | int }}"
+          value: "{{ target_w | int }}"
+
+  scr_fronius_battery_push_charge_power_from_helper:
+    alias: Fronius Battery - Push charge power from helper
+    mode: restart
+    sequence:
+      - variables:
+          modbus_hub: "REPLACE_WITH_YOUR_FRONIUS_MODBUS_HUB"
+          modbus_slave: 1
+          register_address: 0
+          target_w: "{{ states('input_number.battery_charge_power_watt') | int(0) }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ modbus_hub.startswith('REPLACE_') or (register_address | int(0)) == 0 }}"
+            sequence:
+              - service: persistent_notification.create
+                data:
+                  title: Battery Modbus bridge not configured
+                  message: >-
+                    Edit script scr_fronius_battery_push_charge_power_from_helper
+                    and replace modbus_hub, modbus_slave, and register_address.
+              - stop: "Battery Modbus bridge not configured"
+      - service: modbus.write_register
+        data:
+          hub: "{{ modbus_hub }}"
+          slave: "{{ modbus_slave | int }}"
+          address: "{{ register_address | int }}"
+          value: "{{ target_w | int }}"
+
+  scr_fronius_battery_push_target_soc_from_helper:
+    alias: Fronius Battery - Push target SoC from helper
+    mode: restart
+    sequence:
+      - variables:
+          modbus_hub: "REPLACE_WITH_YOUR_FRONIUS_MODBUS_HUB"
+          modbus_slave: 1
+          register_address: 0
+          target_pct: "{{ states('input_number.battery_target_soc_pct') | int(0) }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ modbus_hub.startswith('REPLACE_') or (register_address | int(0)) == 0 }}"
+            sequence:
+              - service: persistent_notification.create
+                data:
+                  title: Battery Modbus bridge not configured
+                  message: >-
+                    Edit script scr_fronius_battery_push_target_soc_from_helper
+                    and replace modbus_hub, modbus_slave, and register_address.
+              - stop: "Battery Modbus bridge not configured"
+      - service: modbus.write_register
+        data:
+          hub: "{{ modbus_hub }}"
+          slave: "{{ modbus_slave | int }}"
+          address: "{{ register_address | int }}"
+          value: "{{ target_pct | int }}"
+
+  scr_fronius_battery_push_charge_allowed_from_helper:
+    alias: Fronius Battery - Push charge allowed from helper
+    mode: restart
+    sequence:
+      - variables:
+          modbus_hub: "REPLACE_WITH_YOUR_FRONIUS_MODBUS_HUB"
+          modbus_slave: 1
+          register_address: 0
+          # If your inverter expects a coil instead of a holding register,
+          # replace the service below with modbus.write_coil and pass state: true/false.
+          target_value: "{{ 1 if is_state('input_boolean.battery_charge_allowed', 'on') else 0 }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ modbus_hub.startswith('REPLACE_') or (register_address | int(0)) == 0 }}"
+            sequence:
+              - service: persistent_notification.create
+                data:
+                  title: Battery Modbus bridge not configured
+                  message: >-
+                    Edit script scr_fronius_battery_push_charge_allowed_from_helper
+                    and replace modbus_hub, modbus_slave, and register_address.
+              - stop: "Battery Modbus bridge not configured"
+      - service: modbus.write_register
+        data:
+          hub: "{{ modbus_hub }}"
+          slave: "{{ modbus_slave | int }}"
+          address: "{{ register_address | int }}"
+          value: "{{ target_value | int }}"
+
+  scr_fronius_battery_sync_negative_price_helpers_to_inverter:
+    alias: Fronius Battery - Sync all negative-price helpers to inverter
+    mode: restart
+    sequence:
+      - service: script.scr_fronius_battery_push_discharge_limit_from_helper
+      - delay: "00:00:01"
+      - service: script.scr_fronius_battery_push_charge_allowed_from_helper
+      - delay: "00:00:01"
+      - service: script.scr_fronius_battery_push_charge_power_from_helper
+      - delay: "00:00:01"
+      - service: script.scr_fronius_battery_push_target_soc_from_helper
+
+automation:
+  - alias: Fronius Battery - discharge limit helper changed
+    trigger:
+      - platform: state
+        entity_id: input_number.battery_discharge_limit_watt
+    action:
+      - service: script.scr_fronius_battery_push_discharge_limit_from_helper
+    mode: restart
+
+  - alias: Fronius Battery - charge allowed helper changed
+    trigger:
+      - platform: state
+        entity_id: input_boolean.battery_charge_allowed
+    action:
+      - service: script.scr_fronius_battery_push_charge_allowed_from_helper
+    mode: restart
+
+  - alias: Fronius Battery - charge power helper changed
+    trigger:
+      - platform: state
+        entity_id: input_number.battery_charge_power_watt
+    action:
+      - service: script.scr_fronius_battery_push_charge_power_from_helper
+    mode: restart
+
+  - alias: Fronius Battery - target SoC helper changed
+    trigger:
+      - platform: state
+        entity_id: input_number.battery_target_soc_pct
+    action:
+      - service: script.scr_fronius_battery_push_target_soc_from_helper
+    mode: restart
+
+  - alias: Fronius Battery - startup sync helpers to inverter
+    trigger:
+      - platform: homeassistant
+        event: start
+    action:
+      - delay: "00:00:20"
+      - service: script.scr_fronius_battery_sync_negative_price_helpers_to_inverter
+    mode: single

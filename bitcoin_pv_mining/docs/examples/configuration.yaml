@@ -4,6 +4,11 @@ automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
 
+# Optional if you want to use the battery negative-price example package:
+#
+# homeassistant:
+#   packages: !include_dir_named packages
+
 
 sensor:
   # I Use the dynamic tariff from smartenergy - https://www.smartenergy.at/smartcontrol - you can change this to AVATAR or else

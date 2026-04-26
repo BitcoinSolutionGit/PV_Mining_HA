@@ -72,7 +72,13 @@ Läuft als Home-Assistant-Add-on und spricht über die Supervisor-API mit deinen
 
 ## Beispiel-YAML
 
-Siehe [`docs/examples/homeassistant.yaml`](docs/examples/homeassistant.yaml).
+Siehe:
+
+- [`docs/examples/configuration.yaml`](bitcoin_pv_mining/docs/examples/configuration.yaml)
+- [`docs/examples/automations.yaml`](bitcoin_pv_mining/docs/examples/automations.yaml)
+- [`docs/examples/scripts.yaml`](bitcoin_pv_mining/docs/examples/scripts.yaml)
+- [`docs/examples/battery_negative_price_package.yaml`](bitcoin_pv_mining/docs/examples/battery_negative_price_package.yaml)
+- [`docs/examples/battery_negative_price_setup.md`](bitcoin_pv_mining/docs/examples/battery_negative_price_setup.md)
 
 ---
 

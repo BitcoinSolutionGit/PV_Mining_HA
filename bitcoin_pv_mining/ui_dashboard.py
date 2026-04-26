@@ -1010,10 +1010,6 @@ def register_callbacks(app):
                 f"Auto-Miner aktivierbar: {auto_enabled} · aktuell laufend: {running_now}. {battery_line}",
                 style={"marginTop": "8px", "fontSize": "0.98rem", "color": "rgba(244, 247, 255, 0.92)"},
             ),
-            html.Div(
-                "Direktes Laden bzw. Entladen der Batterie wird weiterhin extern vom Inverter bzw. Fronius gesteuert.",
-                style={"marginTop": "8px", "fontSize": "0.95rem", "color": "rgba(244, 247, 255, 0.78)"},
-            ),
         ])
         return banner, _negative_price_banner_style()
 

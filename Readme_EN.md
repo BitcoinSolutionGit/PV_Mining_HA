@@ -72,7 +72,13 @@ Runs as a Home Assistant add-on and talks to your existing HA entities (Scripts,
 
 ## Example YAML
 
-See [`docs/examples/homeassistant.yaml`](docs/examples/homeassistant.yaml).
+See:
+
+- [`docs/examples/configuration.yaml`](bitcoin_pv_mining/docs/examples/configuration.yaml)
+- [`docs/examples/automations.yaml`](bitcoin_pv_mining/docs/examples/automations.yaml)
+- [`docs/examples/scripts.yaml`](bitcoin_pv_mining/docs/examples/scripts.yaml)
+- [`docs/examples/battery_negative_price_package.yaml`](bitcoin_pv_mining/docs/examples/battery_negative_price_package.yaml)
+- [`docs/examples/battery_negative_price_setup.md`](bitcoin_pv_mining/docs/examples/battery_negative_price_setup.md)
 
 ---
 
