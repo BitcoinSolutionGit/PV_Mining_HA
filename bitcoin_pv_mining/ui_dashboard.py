@@ -390,6 +390,20 @@ def _price_color_blended(v: float) -> str:
     return "#27ae60" if v <= g else ("#f39c12" if v <= y else "#e74c3c")
 
 
+def _negative_price_banner_style() -> dict:
+    return {
+        "display": "block",
+        "margin": "6px 0 22px",
+        "padding": "18px 22px",
+        "border": "1px solid rgba(255, 196, 0, 0.42)",
+        "borderRadius": "24px",
+        "background": "linear-gradient(135deg, rgba(255, 196, 0, 0.18), rgba(255, 107, 107, 0.22))",
+        "boxShadow": "0 24px 60px rgba(255, 140, 0, 0.18)",
+        "color": TEXT_PRIMARY,
+        "textAlign": "center",
+    }
+
+
 def _hex_to_rgba(hex_color: str, alpha: float) -> str:
     color = (hex_color or "").lstrip("#")
     if len(color) != 6:
@@ -944,6 +958,66 @@ def register_callbacks(app):
         return market_out, blended_out
 
     @app.callback(
+        Output("negative-price-banner", "children"),
+        Output("negative-price-banner", "style"),
+        Input("pv-update", "n_intervals"),
+    )
+    def update_negative_price_banner(_):
+        sym = currency_symbol()
+        base = current_price()
+        if base is None:
+            return "", {"display": "none"}
+
+        fee_down = float(elec_get("network_fee_down_value", 0.0) or 0.0)
+        market = float(base) + fee_down
+        if market > 0.0:
+            return "", {"display": "none"}
+
+        try:
+            miners = list_miners() or []
+        except Exception:
+            miners = []
+
+        auto_enabled = sum(
+            1
+            for m in miners
+            if bool(m.get("enabled")) and str(m.get("mode") or "manual").lower() == "auto"
+        )
+        running_now = sum(
+            1
+            for m in miners
+            if bool(m.get("enabled")) and bool(m.get("effective_on", m.get("on")))
+        )
+
+        bat_pwr = float(_battery_power_kw_live() or 0.0)
+        if bat_pwr > 0.05:
+            battery_line = f"Batterie laedt aktuell mit {_fmt_kw(bat_pwr)}."
+        elif bat_pwr < -0.05:
+            battery_line = f"Batterie entlaedt aktuell mit {_fmt_kw(abs(bat_pwr))}; Entladung sollte bei negativem Netzpreis vermieden werden."
+        else:
+            battery_line = "Batterie sollte jetzt bevorzugt laden oder zumindest nicht entladen."
+
+        banner = html.Div([
+            html.Div(
+                "Negativer Strompreis erkannt",
+                style={"fontSize": "1.35rem", "fontWeight": "800", "letterSpacing": "0.01em"},
+            ),
+            html.Div(
+                f"Effektiver Netzpreis: {_fmt_price(market)} {sym}/kWh. Netzbezug ist jetzt zulässig; Auto-Verbraucher duerfen aus dem Netz laufen.",
+                style={"marginTop": "8px", "fontSize": "1.02rem", "fontWeight": "700"},
+            ),
+            html.Div(
+                f"Auto-Miner aktivierbar: {auto_enabled} · aktuell laufend: {running_now}. {battery_line}",
+                style={"marginTop": "8px", "fontSize": "0.98rem", "color": "rgba(244, 247, 255, 0.92)"},
+            ),
+            html.Div(
+                "Direktes Laden bzw. Entladen der Batterie wird weiterhin extern vom Inverter bzw. Fronius gesteuert.",
+                style={"marginTop": "8px", "fontSize": "0.95rem", "color": "rgba(244, 247, 255, 0.78)"},
+            ),
+        ])
+        return banner, _negative_price_banner_style()
+
+    @app.callback(
         Output("dashboard-water-temp", "children"),
         Input("pv-update", "n_intervals")  # alle 10s
     )
@@ -977,6 +1051,7 @@ def layout():
         dcc.Store(id="frame", storage_type="memory"),
         dcc.Store(id="viewport", storage_type="memory"),
         html.H2("Current Power Allocation", className="dashboard-heading"),
+        html.Div(id="negative-price-banner", style={"display": "none"}),
         html.Div(
             dcc.Graph(
                 id="sankey-diagram",
