@@ -658,23 +658,33 @@ def register_callbacks(app):
         Input("cool-mode", "value"),  # NEU: Cooling-Mode (auto/manual)
         Input("cool-on", "value"),
         Input({"type": "m-kind", "mid": MATCH}, "value"),
+        State({"type": "m-on", "mid": MATCH}, "value"),
     )
-    def _apply_enable_mode_with_cooling(enabled_val, mode_val, reqcool_val, cool_en_val, cool_mode_val, cool_on_val, kind_val):
+    def _apply_enable_mode_with_cooling(enabled_val, mode_val, reqcool_val, cool_en_val, cool_mode_val, cool_on_val, kind_val, current_on_val):
         enabled = bool(enabled_val and "on" in enabled_val)
         mode_auto_now = bool(mode_val and "auto" in mode_val)
         require_cooling = bool(reqcool_val and "on" in reqcool_val)
+        current_on = bool(current_on_val and "on" in current_on_val)
         kind = (kind_val or "miner")
         is_consumer = (kind != "miner")
 
         cooling_feature = bool(set_get("cooling_feature_enabled", False))
         cooling_enabled = bool(cool_en_val and "on" in cool_en_val) if cooling_feature else False
-        cooling_on = bool(cool_on_val and "on" in cool_on_val) if cooling_feature else False
         cooling_mode_auto = bool(cool_mode_val and "auto" in cool_mode_val) if cooling_feature else False
+        cool_state = get_cooling() if cooling_feature else {}
+        cooling_on = (
+            bool(cool_on_val and "on" in cool_on_val)
+            or bool(cool_state.get("effective_on"))
+            or bool(cool_state.get("pending_on"))
+            or bool(cool_state.get("on"))
+        ) if cooling_feature else False
 
-        # Regel 1 Power-Schalter sperren?
-        lock_on = (not enabled) or mode_auto_now or (
-                cooling_feature and require_cooling and (not cooling_enabled or not cooling_on)
+        # Power darf im Manual-Modus immer wieder auf OFF gestellt werden.
+        # Nur ein neues ON wird blockiert, solange Cooling gebraucht aber nicht verfuegbar ist.
+        cooling_blocks_turn_on = (
+            cooling_feature and require_cooling and (not cooling_enabled or not cooling_on)
         )
+        lock_on = (not enabled) or mode_auto_now or (cooling_blocks_turn_on and not current_on)
         on_style = {"opacity": 0.6, "pointerEvents": "none"} if lock_on else {}
 
         # Regel 2 Mode (auto) nicht erlauben, wenn Cooling im Manual und Miner Cooling braucht
