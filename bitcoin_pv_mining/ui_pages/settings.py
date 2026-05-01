@@ -405,6 +405,7 @@ def layout():
 
     # Defaults lesen
     export_cap = _num(set_get("grid_export_cap_kw", 0.0), 0.0)
+    max_grid_import_kw = _num(set_get("max_grid_import_kw", 14.0), 14.0)
     boost_cooldown = int(_num(set_get("boost_cooldown_s", 30), 30))
     allow_pv_ramp_up = bool(set_get("allow_pv_ramp_up", True))
     pv_ramp_settle_s = int(_num(set_get("pv_ramp_settle_s", 60), 60))
@@ -631,6 +632,11 @@ def layout():
                 number_stepper("set-guard-pct", guard_pct, step=0.001, min=0, max=0.2, width_px=160),
                 html.Span("  e.g. 0.03 = 3 %  (values >1 are interpreted as percent and divided by 100 on save)",
                           style={"marginLeft": "8px", "opacity": 0.7}),
+            ], style={"marginTop": "8px"}),
+            html.Div([
+                html.Label("Maximum grid import (kW)"),
+                number_stepper("set-max-grid-import", max_grid_import_kw, step=0.1, min=0, width_px=160),
+                html.Span("  (hard cap for negative-price operation incl. battery charging)", style={"marginLeft": "8px", "opacity": 0.7}),
             ], style={"marginTop": "8px"}),
         ]),
 
@@ -960,6 +966,7 @@ def register_callbacks(app):
         State("ui-show-inactive-phone", "value"),
         State("ui-show-src-inactive", "value"),
         State("ui-show-sink-inactive", "value"),
+        State("set-max-grid-import", "value"),
         State("set-export-cap", "value"),
         State("set-boost-cooldown", "value"),
         State("set-allow-pv-ramp-up", "value"),
@@ -977,7 +984,7 @@ def register_callbacks(app):
     def _save(n, policy, mode, val, sens, cur, reward, tax, cool_enabled_val,
               guard_w, guard_pct,
               miner_on_margin, miner_off_margin, miner_min_run_s, miner_min_off_s,
-              show_desktop, show_tablet, show_phone, show_src, show_sink, export_cap, boost_cooldown,
+              show_desktop, show_tablet, show_phone, show_src, show_sink, max_grid_import_kw, export_cap, boost_cooldown,
               allow_pv_ramp_up_val, pv_ramp_settle_s, pv_ramp_hysteresis_w, pv_ramp_step_up_kw, pv_ramp_step_down_kw,
               cool_on_frac, miner_on_frac, cool_min_run_s, cool_min_off_s):
         if not n:
@@ -1012,6 +1019,7 @@ def register_callbacks(app):
             ui_show_inactive_phone=ui_show_inactive_phone,
             ui_show_inactive_sources=ui_show_inactive_sources,
             ui_show_inactive_sinks=ui_show_inactive_sinks,
+            max_grid_import_kw=max(0.0, _num(max_grid_import_kw, 14.0)),
             grid_export_cap_kw=_num(export_cap, 0.0),
             boost_cooldown_s=int(_num(boost_cooldown, 30)),
             allow_pv_ramp_up=bool(allow_pv_ramp_up_val and "on" in allow_pv_ramp_up_val),
@@ -1027,6 +1035,7 @@ def register_callbacks(app):
         )
         shown_pct = g_pct * 100.0
         return (f"Saved. Planner guard = {guard_w or 0:.0f} W and {shown_pct:.2f} %. "
+                f"Max grid import={max(0.0, _num(max_grid_import_kw, 14.0)):.1f} kW. "
                 f"ShowAll lanes: D={int(ui_show_inactive_desktop)} T={int(ui_show_inactive_tablet)} P={int(ui_show_inactive_phone)}; "
                 f"src={int(ui_show_inactive_sources)} sink={int(ui_show_inactive_sinks)}.  "
                 f"Miner tuning: on≥{_num(miner_on_margin, 0.05):.2f} €/h, "

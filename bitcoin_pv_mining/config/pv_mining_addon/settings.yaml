@@ -19,6 +19,7 @@ settings:
 
   surplus_guard_w: 150.0   # z. B. 100–300 W
   surplus_guard_pct: 0.00  # optionaler prozentualer Guard (0–0.05)
+  max_grid_import_kw: 14.0 # harter Deckel fuer Netzbezug im Planner
   allow_pv_ramp_up: true
   pv_ramp_settle_s: 60
   pv_ramp_hysteresis_w: 200

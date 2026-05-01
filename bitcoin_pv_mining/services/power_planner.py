@@ -102,7 +102,11 @@ def _config_selfcheck(log_fn: Callable[[str], None]) -> None:
     try:
         guard_w   = _f(set_get("surplus_guard_w", 100.0), 100.0)
         guard_pct = _f(set_get("surplus_guard_pct", 0.0), 0.0)
-        log_fn(f"[cfg] planner guard: surplus_guard_w={guard_w:.0f}W surplus_guard_pct={guard_pct:.3f}")
+        max_grid_import_kw = _f(set_get("max_grid_import_kw", 14.0), 14.0)
+        log_fn(
+            f"[cfg] planner guard: surplus_guard_w={guard_w:.0f}W "
+            f"surplus_guard_pct={guard_pct:.3f} max_grid_import_kw={max_grid_import_kw:.3f}"
+        )
     except Exception as e:
         log_fn(f"[cfg] planner guard read failed: {e}")
 
@@ -418,6 +422,11 @@ def plan_and_allocate(
 
     eff_grid_cost = _f(elec_price(), 0.0) + _f(elec_get("network_fee_down_value", 0.0), 0.0)
     grid_free = (eff_grid_cost <= 0.0)
+    max_grid_import_kw = max(0.0, _f(set_get("max_grid_import_kw", 14.0), 14.0))
+    pv_supply_for_cap_kw = max(0.0, pv_kw + _f(pv_ramp.get("stable_bonus_kw"), 0.0))
+    base_import_kw = max(0.0, base_load - pv_supply_for_cap_kw)
+    battery_grid_reserve_kw = 0.0
+    grid_cap_for_controls_kw = max(0.0, max_grid_import_kw - base_import_kw)
 
     # expose planner facts to consumers
     for k, v in (
@@ -458,6 +467,11 @@ def plan_and_allocate(
         pass
 
     log_fn(f"[plan] grid_cost={eff_grid_cost:.4f} €/kWh -> grid_free={grid_free}")
+    log_fn(
+        f"[plan:grid_cap] max_import={max_grid_import_kw:.3f} kW "
+        f"base_import={base_import_kw:.3f} kW battery_reserve={battery_grid_reserve_kw:.3f} kW "
+        f"controls_cap={grid_cap_for_controls_kw:.3f} kW"
+    )
 
     log_fn(f"[plan] order={order}")
     log_fn(f"[plan] start surplus={pv_left:.3f} kW")
@@ -519,6 +533,19 @@ def plan_and_allocate(
         log_fn(f"[plan:desire] {cid}: wants={wants} min={min_kw:.2f} max={max_kw:.2f} must={must} reason={reason}")
         collected.append((cid, cons, desire))
 
+    if grid_free:
+        for cid, _cons, de in collected:
+            if cid != "battery" or not bool(de.wants):
+                continue
+            desired_kw = de.exact_kw if getattr(de, "exact_kw", None) is not None else max(de.min_kw or 0.0, de.max_kw or 0.0)
+            battery_grid_reserve_kw = max(0.0, float(desired_kw or 0.0))
+            break
+    grid_cap_for_controls_kw = max(0.0, max_grid_import_kw - base_import_kw - battery_grid_reserve_kw)
+    log_fn(
+        f"[plan:grid_cap] adjusted controls_cap={grid_cap_for_controls_kw:.3f} kW "
+        f"(battery reserve applied={battery_grid_reserve_kw:.3f} kW)"
+    )
+
     now_ts = _f(getattr(ctx, "ts", 0.0), 0.0) or now()
     hard_must_runs = [(cid, cons, de) for (cid, cons, de) in collected if cid == "house" and bool(getattr(de, "must_run", False))]
     remaining = [(cid, cons, de) for (cid, cons, de) in collected if not (cid == "house" and bool(getattr(de, "must_run", False)))]
@@ -541,6 +568,20 @@ def plan_and_allocate(
         pv_alloc = min(pv_left, req)
         pv_left = max(0.0, pv_left - pv_alloc)
         grid_part = max(0.0, req - pv_alloc)
+        grid_cap_left = max(0.0, grid_cap_for_controls_kw - grid_draw)
+        if grid_part > grid_cap_left + 1e-9:
+            pv_left += pv_alloc
+            allocations.append((cid, cons, 0.0))
+            log_fn(
+                f"[plan:must] {cid}: blocked by grid import cap "
+                f"(need {grid_part:.3f} kW grid, left {grid_cap_left:.3f} kW)"
+            )
+            if apply and not dry_run:
+                try:
+                    cons.apply_allocation(ctx, 0.0)
+                except Exception as e:
+                    log_fn(f"[plan] must_run apply 0.0 error for {cid}: {e}")
+            continue
         if grid_part > 0.0:
             grid_draw += grid_part
 
@@ -600,6 +641,7 @@ def plan_and_allocate(
         discrete_meta = _discrete_runtime_meta(cid)
 
         if discrete_meta:
+            grid_cap_left = max(0.0, grid_cap_for_controls_kw - grid_draw)
             alloc_total, pv_alloc, grid_alloc, policy_reason = _allocate_discrete_load(
                 cid=cid,
                 desire=de,
@@ -608,21 +650,36 @@ def plan_and_allocate(
                 battery_block=battery_block and cid != "house",
                 now_ts=now_ts,
             )
+            if grid_alloc > grid_cap_left + 1e-9:
+                alloc_total = 0.0
+                pv_alloc = 0.0
+                grid_alloc = 0.0
+                policy_reason = f"{policy_reason} | grid import cap"
             pv_left = max(0.0, pv_left - pv_alloc)
             if grid_alloc > 0.0:
                 grid_draw += grid_alloc
             reason = f"{reason} | {policy_reason}" if reason else policy_reason
         else:
+            grid_cap_left = max(0.0, grid_cap_for_controls_kw - grid_draw)
             if battery_block and cid != "house":
                 alloc_total = 0.0
                 reason = f"{reason} | battery discharge block" if reason else "battery discharge block"
             else:
                 if grid_free:
-                    desired = max_kw
+                    desired = min(max_kw, pv_left + grid_cap_left)
                     pv_alloc = min(pv_left, desired)
                     grid_alloc = max(0.0, desired - pv_alloc)
+                    if grid_alloc > grid_cap_left + 1e-9:
+                        grid_alloc = grid_cap_left
+                        desired = pv_alloc + grid_alloc
                     pv_left -= pv_alloc
-                    alloc_total = pv_alloc + grid_alloc
+                    alloc_total = desired
+                    if alloc_total + 1e-9 < min_kw:
+                        pv_left += pv_alloc
+                        pv_alloc = 0.0
+                        grid_alloc = 0.0
+                        alloc_total = 0.0
+                        reason = f"{reason} | grid import cap" if reason else "grid import cap"
                     if grid_alloc > 0.0:
                         grid_draw += grid_alloc
                 else:
