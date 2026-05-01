@@ -40,5 +40,14 @@ charge_allowed_entity: ""
 # ...or separate ON/OFF action entities like scripts/buttons/switches.
 charge_allowed_on_entity: ""
 charge_allowed_off_entity: ""
+# Optional follow-up action after helper write, e.g. script.* that pushes helper to Modbus.
+charge_allowed_push_entity: ""
+# Optional feedback entity, e.g. binary_sensor.* from inverter state.
+charge_allowed_feedback_entity: ""
+
+# Optional follow-up action after helper write, e.g. script.* that pushes helper to Modbus.
+target_soc_push_entity: ""
+# Optional feedback entity, e.g. sensor.* from inverter state.
+target_soc_feedback_entity: ""
 
 

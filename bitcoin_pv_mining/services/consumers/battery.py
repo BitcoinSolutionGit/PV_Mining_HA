@@ -41,9 +41,9 @@ def _bool_state(raw) -> bool | None:
     if raw is None:
         return None
     s = str(raw).strip().lower()
-    if s in ("on", "true", "1", "charging", "enabled"):
+    if s in ("on", "true", "1", "charging", "enabled", "ein", "ja", "aktiv", "laedt"):
         return True
-    if s in ("off", "false", "0", "disabled"):
+    if s in ("off", "false", "0", "disabled", "aus", "nein", "inaktiv", "deaktiviert"):
         return False
     try:
         return float(s) > 0.0
@@ -61,6 +61,23 @@ def _snapshot_numeric(entity_id: str) -> float | None:
 
 def _retry_blocked(state: dict, now_ts: float) -> bool:
     return now_ts < _num(state.get("next_retry_ts"), 0.0)
+
+
+_FEEDBACK_INITIAL_DELAY_S = 5.0
+_FEEDBACK_RETRIES = 12
+_FEEDBACK_RETRY_DELAY_S = 1.0
+
+
+def _state_matches_bool(raw, expected: bool) -> bool:
+    parsed = _bool_state(raw)
+    return parsed is not None and parsed is expected
+
+
+def _state_matches_num(raw, expected: float, tolerance: float = 0.51) -> bool:
+    try:
+        return abs(float(raw) - float(expected)) <= tolerance
+    except Exception:
+        return False
 
 
 class BatteryConsumer(BaseConsumer):
@@ -93,6 +110,12 @@ class BatteryConsumer(BaseConsumer):
     def _target_soc(self) -> float:
         return _num(bat_get("target_soc", 90.0), 90.0)
 
+    def _effective_target_soc(self, grid_cost: float | None) -> float:
+        target = self._target_soc()
+        if self._neg_control_enabled() and grid_cost is not None and grid_cost <= 0.0:
+            return _num(bat_get("target_soc_negative_pct", target), target)
+        return target
+
     def _max_charge_kw(self) -> float:
         return max(0.0, _num(bat_get("max_charge_kw", 0.0), 0.0))
 
@@ -121,6 +144,8 @@ class BatteryConsumer(BaseConsumer):
             can_disable = bool(charge_allowed_off or charge_allowed_entity)
             if not can_enable or not can_disable:
                 return False, "charge-allowed control needs both ON and OFF path"
+            if _entity_str("charge_allowed_push_entity") and not charge_allowed_entity:
+                return False, "charge-allowed push action needs a charge-allowed helper entity"
             controls += 1
 
         charge_power_entity = _entity_str("charge_power_entity")
@@ -131,10 +156,43 @@ class BatteryConsumer(BaseConsumer):
 
         if _entity_str("target_soc_entity"):
             controls += 1
+        elif _entity_str("target_soc_push_entity"):
+            return False, "target SoC push action needs a target SoC helper entity"
 
         if controls <= 0:
             return False, "negative-price control enabled but no control entities configured"
         return True, ""
+
+    def _run_push_action(self, key: str, label: str) -> tuple[bool, str]:
+        entity_id = _entity_str(key)
+        if not entity_id:
+            return True, f"{label}: no push action configured"
+        ok = call_action(entity_id, True)
+        return ok, f"{label}: trigger {entity_id}"
+
+    def _verify_bool_feedback(self, key: str, expected: bool, label: str) -> tuple[bool, str]:
+        entity_id = _entity_str(key)
+        if not entity_id:
+            return True, f"{label}: no feedback configured"
+        time.sleep(_FEEDBACK_INITIAL_DELAY_S)
+        for attempt in range(_FEEDBACK_RETRIES):
+            if _state_matches_bool(get_entity_state(entity_id), expected):
+                return True, f"{label}: feedback {entity_id}={'on' if expected else 'off'}"
+            if attempt + 1 < _FEEDBACK_RETRIES:
+                time.sleep(_FEEDBACK_RETRY_DELAY_S)
+        return False, f"{label}: feedback {entity_id} did not become {'on' if expected else 'off'}"
+
+    def _verify_numeric_feedback(self, key: str, expected: float, label: str) -> tuple[bool, str]:
+        entity_id = _entity_str(key)
+        if not entity_id:
+            return True, f"{label}: no feedback configured"
+        time.sleep(_FEEDBACK_INITIAL_DELAY_S)
+        for attempt in range(_FEEDBACK_RETRIES):
+            if _state_matches_num(get_entity_state(entity_id), expected):
+                return True, f"{label}: feedback {entity_id}={float(expected):.1f}"
+            if attempt + 1 < _FEEDBACK_RETRIES:
+                time.sleep(_FEEDBACK_RETRY_DELAY_S)
+        return False, f"{label}: feedback {entity_id} did not reach {float(expected):.1f}"
 
     def _snapshot_controls(self) -> tuple[dict, list[str]]:
         remembered: dict[str, object] = {}
@@ -217,6 +275,14 @@ class BatteryConsumer(BaseConsumer):
             steps.append((msg, ok))
             if not ok:
                 return False, msg
+            ok, msg = self._run_push_action("charge_allowed_push_entity", "charge allowed")
+            steps.append((msg, ok))
+            if not ok:
+                return False, msg
+            ok, msg = self._verify_bool_feedback("charge_allowed_feedback_entity", True, "charge allowed")
+            steps.append((msg, ok))
+            if not ok:
+                return False, msg
 
         charge_power_entity = _entity_str("charge_power_entity")
         charge_power_negative_w = self._charge_power_negative_w()
@@ -233,6 +299,14 @@ class BatteryConsumer(BaseConsumer):
             steps.append((f"{target_soc_entity}=negative target soc", ok))
             if not ok:
                 return False, steps[-1][0]
+            ok, msg = self._run_push_action("target_soc_push_entity", "target soc")
+            steps.append((msg, ok))
+            if not ok:
+                return False, msg
+            ok, msg = self._verify_numeric_feedback("target_soc_feedback_entity", target_soc_negative, "target soc")
+            steps.append((msg, ok))
+            if not ok:
+                return False, msg
 
         if remembered:
             return True, "override applied"
@@ -262,6 +336,14 @@ class BatteryConsumer(BaseConsumer):
             ok, msg = self._set_charge_allowed(target_bool, charge_info)
             if not ok:
                 errors.append(f"restore {msg}")
+            else:
+                ok, msg = self._run_push_action("charge_allowed_push_entity", "charge allowed")
+                if not ok:
+                    errors.append(f"restore {msg}")
+                else:
+                    ok, msg = self._verify_bool_feedback("charge_allowed_feedback_entity", target_bool, "charge allowed")
+                    if not ok:
+                        errors.append(f"restore {msg}")
 
         charge_power_info = remembered.get("charge_power") if isinstance(remembered.get("charge_power"), dict) else {}
         charge_power_entity = str((charge_power_info or {}).get("entity_id") or _entity_str("charge_power_entity") or "").strip()
@@ -286,6 +368,14 @@ class BatteryConsumer(BaseConsumer):
                 errors.append("target SoC restore target missing")
             elif not set_numeric_entity(target_soc_entity, float(target)):
                 errors.append(f"restore {target_soc_entity}")
+            else:
+                ok, msg = self._run_push_action("target_soc_push_entity", "target soc")
+                if not ok:
+                    errors.append(f"restore {msg}")
+                else:
+                    ok, msg = self._verify_numeric_feedback("target_soc_feedback_entity", float(target), "target soc")
+                    if not ok:
+                        errors.append(f"restore {msg}")
 
         if errors:
             set_override_state(
@@ -360,10 +450,10 @@ class BatteryConsumer(BaseConsumer):
 
     def compute_desire(self, ctx: Ctx) -> Desire:
         soc = self._read_soc()
-        target = self._target_soc()
+        grid_c = _ctx_num(ctx, "grid_cost_eur_kwh", None)
+        target = self._effective_target_soc(grid_c)
         max_kw = self._max_charge_kw()
         surplus = max(0.0, _ctx_num(ctx, "surplus_kw", 0.0) or 0.0)
-        grid_c = _ctx_num(ctx, "grid_cost_eur_kwh", None)
         allow_grid_charge = bool(bat_get("allow_grid_charge", False)) or self._neg_control_enabled()
 
         if max_kw <= 0:

@@ -3,7 +3,7 @@ enabled: true
 
 # Beispiel: du hast einen SoC-Sensor, die restlichen Felder
 # kannst du später im UI auswählen/speichern.
-soc_entity: "sensor.fronius_battery_soc"
+soc_entity: "sensor.fronius_batterie_soc"
 
 # Wenn du schon welche weißt, kannst du sie gleich eintragen:
 # voltage_entity: "sensor.mein_battery_voltage"
@@ -17,3 +17,13 @@ max_discharge_kw: 3.0
 target_soc: 90.0
 reserve_soc: 20.0
 allow_grid_charge: false
+
+neg_price_control_enabled: true
+charge_allowed_entity: "input_boolean.battery_charge_allowed"
+charge_allowed_push_entity: "script.scr_fronius_battery_push_charge_allowed_from_helper"
+charge_allowed_feedback_entity: "binary_sensor.fronius_laden_aus_netz_aktiv"
+target_soc_entity: "input_number.battery_target_soc_pct"
+target_soc_push_entity: "script.scr_fronius_battery_push_target_soc_from_helper"
+target_soc_feedback_entity: "sensor.fronius_mindestladung"
+target_soc_negative_pct: 100.0
+target_soc_normal_pct: 5.0

@@ -45,8 +45,12 @@ Recommended mapping:
 
 - `Discharge limit entity` -> `input_number.battery_discharge_limit_watt`
 - `Charge allowed entity` -> `input_boolean.battery_charge_allowed`
+- `Charge allowed push action` -> `script.scr_fronius_battery_push_charge_allowed_from_helper`
+- `Charge allowed feedback entity` -> your inverter feedback, e.g. `binary_sensor.fronius_laden_aus_netz_aktiv`
 - `Charge power entity` -> `input_number.battery_charge_power_watt`
 - `Target SoC entity` -> `input_number.battery_target_soc_pct`
+- `Target SoC push action` -> `script.scr_fronius_battery_push_target_soc_from_helper`
+- `Target SoC feedback entity` -> your inverter feedback, e.g. `sensor.fronius_mindestladung`
 
 Recommended negative-price values:
 
@@ -62,6 +66,8 @@ Recommended normal values:
 - `Target SoC normal` -> your standard target, e.g. `90`
 
 For `Charge allowed`, the add-on will restore the previous helper state automatically.
+If you use the optional `push action` fields, the add-on first updates the helper entity and then triggers the script/button that forwards the helper value to Modbus.
+If you use the optional `feedback entity` fields, the add-on waits for inverter confirmation before it marks the override as active.
 
 ## 4. Behavior
 
