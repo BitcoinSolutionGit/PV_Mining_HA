@@ -20,6 +20,7 @@ allow_grid_charge: false
 
 neg_price_control_enabled: true
 charge_allowed_entity: "input_boolean.battery_charge_allowed"
+charge_allowed_normal_enabled: false
 charge_allowed_push_entity: "script.scr_fronius_battery_push_charge_allowed_from_helper"
 charge_allowed_feedback_entity: "binary_sensor.fronius_laden_aus_netz_aktiv"
 target_soc_entity: "input_number.battery_target_soc_pct"

@@ -40,6 +40,9 @@ charge_allowed_entity: ""
 # ...or separate ON/OFF action entities like scripts/buttons/switches.
 charge_allowed_on_entity: ""
 charge_allowed_off_entity: ""
+# Optional explicit normal state for positive prices. If unset, the remembered pre-override
+# helper state is restored.
+charge_allowed_normal_enabled:
 # Optional follow-up action after helper write, e.g. script.* that pushes helper to Modbus.
 charge_allowed_push_entity: ""
 # Optional feedback entity, e.g. binary_sensor.* from inverter state.

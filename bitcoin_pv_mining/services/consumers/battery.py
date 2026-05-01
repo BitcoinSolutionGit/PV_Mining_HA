@@ -80,6 +80,10 @@ def _state_matches_num(raw, expected: float, tolerance: float = 0.51) -> bool:
         return False
 
 
+def _config_bool(key: str) -> bool | None:
+    return _bool_state(bat_get(key, None))
+
+
 class BatteryConsumer(BaseConsumer):
     id = "battery"
     label = "Battery"
@@ -332,7 +336,8 @@ class BatteryConsumer(BaseConsumer):
         charge_allowed_off = str((charge_info or {}).get("off_entity") or _entity_str("charge_allowed_off_entity") or "").strip()
         if charge_allowed_entity or charge_allowed_on or charge_allowed_off:
             remembered_bool = _bool_state((charge_info or {}).get("value", remembered.get("charge_allowed")))
-            target_bool = False if remembered_bool is None else remembered_bool
+            normal_bool = _config_bool("charge_allowed_normal_enabled")
+            target_bool = normal_bool if normal_bool is not None else (False if remembered_bool is None else remembered_bool)
             ok, msg = self._set_charge_allowed(target_bool, charge_info)
             if not ok:
                 errors.append(f"restore {msg}")

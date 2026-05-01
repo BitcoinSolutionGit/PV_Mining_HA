@@ -34,6 +34,7 @@ DEFAULTS = {
     "charge_allowed_entity": "",
     "charge_allowed_on_entity": "",
     "charge_allowed_off_entity": "",
+    "charge_allowed_normal_enabled": None,
     "charge_allowed_push_entity": "",
     "charge_allowed_feedback_entity": "",
     "charge_power_entity": "",
