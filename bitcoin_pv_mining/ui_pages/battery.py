@@ -84,19 +84,14 @@ def layout():
     enabled = bool(bat_get("enabled", False))
     cap = bat_get("capacity_entity", "")
     soc = bat_get("soc_entity", "")
-    pwr = bat_get("power_entity", "")
     vdc = bat_get("voltage_entity", "")
     idc = bat_get("current_entity", "")
     temp = bat_get("temperature_entity", "")
 
     neg_ctrl = bool(bat_get("neg_price_control_enabled", False))
-    discharge_limit_entity = bat_get("discharge_limit_entity", "")
     charge_allowed_entity = bat_get("charge_allowed_entity", "")
-    charge_allowed_on_entity = bat_get("charge_allowed_on_entity", "")
-    charge_allowed_off_entity = bat_get("charge_allowed_off_entity", "")
     charge_allowed_push_entity = bat_get("charge_allowed_push_entity", "")
     charge_allowed_feedback_entity = bat_get("charge_allowed_feedback_entity", "")
-    charge_power_entity = bat_get("charge_power_entity", "")
     target_soc_entity = bat_get("target_soc_entity", "")
     target_soc_push_entity = bat_get("target_soc_push_entity", "")
     target_soc_feedback_entity = bat_get("target_soc_feedback_entity", "")
@@ -144,17 +139,6 @@ def layout():
                     style={"minWidth": "420px"},
                 ),
                 html.Span(id="bat-soc-val", style={"marginLeft": "12px", "opacity": 0.8}),
-            ], style=_row()),
-            html.Div([
-                html.Label("Power sensor (kW/W, +charge / -discharge)"),
-                dcc.Dropdown(
-                    id="bat-power-entity",
-                    options=sensor_opts,
-                    value=(pwr or None),
-                    placeholder="Select sensor...",
-                    style={"minWidth": "420px"},
-                ),
-                html.Span(id="bat-power-sensor-val", style={"marginLeft": "12px", "opacity": 0.8}),
             ], style=_row()),
             html.Div([
                 html.Label("DC voltage (V)"),
@@ -209,23 +193,6 @@ def layout():
                 ),
             ], style={"marginBottom": "6px"}),
             html.Div([
-                html.Label("Discharge limit entity (W)"),
-                dcc.Dropdown(
-                    id="bat-discharge-limit-entity",
-                    options=number_opts,
-                    value=(discharge_limit_entity or None),
-                    placeholder="number.* or input_number.*",
-                    style={"minWidth": "420px"},
-                ),
-                html.Span(id="bat-discharge-limit-val", style={"marginLeft": "12px", "opacity": 0.8}),
-            ], style=_row()),
-            html.Div([
-                html.Label("Negative-price discharge limit (W)"),
-                dcc.Input(id="bat-discharge-limit-negative", type="number", value=bat_get("discharge_limit_negative_w", 0.0), style={"width": "140px"}),
-                html.Label("Normal discharge limit (W, optional)", style={"marginLeft": "12px"}),
-                dcc.Input(id="bat-discharge-limit-normal", type="number", value=bat_get("discharge_limit_normal_w", None), style={"width": "140px"}),
-            ], style=_row()),
-            html.Div([
                 html.Label("Charge allowed entity (single switch/input_boolean)"),
                 dcc.Dropdown(
                     id="bat-charge-allowed-entity",
@@ -235,28 +202,6 @@ def layout():
                     style={"minWidth": "420px"},
                 ),
                 html.Span(id="bat-charge-allowed-val", style={"marginLeft": "12px", "opacity": 0.8}),
-            ], style=_row()),
-            html.Div([
-                html.Label("Charge allowed ON action"),
-                dcc.Dropdown(
-                    id="bat-charge-allowed-on-entity",
-                    options=bool_action_opts,
-                    value=(charge_allowed_on_entity or None),
-                    placeholder="Optional: script/switch/input_boolean/button",
-                    style={"minWidth": "420px"},
-                ),
-                html.Span(id="bat-charge-allowed-on-val", style={"marginLeft": "12px", "opacity": 0.8}),
-            ], style=_row()),
-            html.Div([
-                html.Label("Charge allowed OFF action"),
-                dcc.Dropdown(
-                    id="bat-charge-allowed-off-entity",
-                    options=bool_action_opts,
-                    value=(charge_allowed_off_entity or None),
-                    placeholder="Optional: script/switch/input_boolean/button",
-                    style={"minWidth": "420px"},
-                ),
-                html.Span(id="bat-charge-allowed-off-val", style={"marginLeft": "12px", "opacity": 0.8}),
             ], style=_row()),
             html.Div([
                 html.Label("Charge allowed push action"),
@@ -279,23 +224,6 @@ def layout():
                     style={"minWidth": "420px"},
                 ),
                 html.Span(id="bat-charge-allowed-feedback-val", style={"marginLeft": "12px", "opacity": 0.8}),
-            ], style=_row()),
-            html.Div([
-                html.Label("Charge power entity (W, optional)"),
-                dcc.Dropdown(
-                    id="bat-charge-power-entity",
-                    options=number_opts,
-                    value=(charge_power_entity or None),
-                    placeholder="Optional: number.* or input_number.*",
-                    style={"minWidth": "420px"},
-                ),
-                html.Span(id="bat-charge-power-val", style={"marginLeft": "12px", "opacity": 0.8}),
-            ], style=_row()),
-            html.Div([
-                html.Label("Negative-price charge power (W, optional)"),
-                dcc.Input(id="bat-charge-power-negative", type="number", value=bat_get("charge_power_negative_w", None), style={"width": "140px"}),
-                html.Label("Normal charge power (W, optional)", style={"marginLeft": "12px"}),
-                dcc.Input(id="bat-charge-power-normal", type="number", value=bat_get("charge_power_normal_w", None), style={"width": "140px"}),
             ], style=_row()),
             html.Div([
                 html.Label("Target SoC entity (%, optional)"),
@@ -354,23 +282,14 @@ def register_callbacks(app):
         Input("bat-save", "n_clicks"),
         State("bat-cap-entity", "value"),
         State("bat-soc-entity", "value"),
-        State("bat-power-entity", "value"),
         State("bat-vdc-entity", "value"),
         State("bat-idc-entity", "value"),
         State("bat-temp-entity", "value"),
         State("bat-enabled-entity", "value"),
         State("bat-neg-ctrl-enabled", "value"),
-        State("bat-discharge-limit-entity", "value"),
-        State("bat-discharge-limit-negative", "value"),
-        State("bat-discharge-limit-normal", "value"),
         State("bat-charge-allowed-entity", "value"),
-        State("bat-charge-allowed-on-entity", "value"),
-        State("bat-charge-allowed-off-entity", "value"),
         State("bat-charge-allowed-push-entity", "value"),
         State("bat-charge-allowed-feedback-entity", "value"),
-        State("bat-charge-power-entity", "value"),
-        State("bat-charge-power-negative", "value"),
-        State("bat-charge-power-normal", "value"),
         State("bat-target-soc-entity", "value"),
         State("bat-target-soc-push-entity", "value"),
         State("bat-target-soc-feedback-entity", "value"),
@@ -382,23 +301,14 @@ def register_callbacks(app):
         n,
         cap,
         soc,
-        pwr,
         vdc,
         idc,
         temp,
         enabled_val,
         neg_ctrl_val,
-        discharge_ent,
-        discharge_neg,
-        discharge_normal,
         charge_allowed_ent,
-        charge_allowed_on_ent,
-        charge_allowed_off_ent,
         charge_allowed_push_ent,
         charge_allowed_feedback_ent,
-        charge_power_ent,
-        charge_power_neg,
-        charge_power_normal,
         target_soc_ent,
         target_soc_push_ent,
         target_soc_feedback_ent,
@@ -410,23 +320,23 @@ def register_callbacks(app):
         bat_set(
             capacity_entity=cap or "",
             soc_entity=soc or "",
-            power_entity=pwr or "",
+            power_entity="",
             voltage_entity=vdc or "",
             current_entity=idc or "",
             temperature_entity=temp or "",
             enabled=bool(enabled_val and "on" in enabled_val),
             neg_price_control_enabled=bool(neg_ctrl_val and "on" in neg_ctrl_val),
-            discharge_limit_entity=discharge_ent or "",
-            discharge_limit_negative_w=float(discharge_neg or 0.0),
-            discharge_limit_normal_w=_opt_num(discharge_normal),
+            discharge_limit_entity="",
+            discharge_limit_negative_w=0.0,
+            discharge_limit_normal_w=None,
             charge_allowed_entity=charge_allowed_ent or "",
-            charge_allowed_on_entity=charge_allowed_on_ent or "",
-            charge_allowed_off_entity=charge_allowed_off_ent or "",
+            charge_allowed_on_entity="",
+            charge_allowed_off_entity="",
             charge_allowed_push_entity=charge_allowed_push_ent or "",
             charge_allowed_feedback_entity=charge_allowed_feedback_ent or "",
-            charge_power_entity=charge_power_ent or "",
-            charge_power_negative_w=_opt_num(charge_power_neg),
-            charge_power_normal_w=_opt_num(charge_power_normal),
+            charge_power_entity="",
+            charge_power_negative_w=None,
+            charge_power_normal_w=None,
             target_soc_entity=target_soc_ent or "",
             target_soc_push_entity=target_soc_push_ent or "",
             target_soc_feedback_entity=target_soc_feedback_ent or "",
@@ -438,16 +348,11 @@ def register_callbacks(app):
     @app.callback(
         Output("bat-cap-entity", "options"),
         Output("bat-soc-entity", "options"),
-        Output("bat-power-entity", "options"),
         Output("bat-vdc-entity", "options"),
         Output("bat-idc-entity", "options"),
         Output("bat-temp-entity", "options"),
-        Output("bat-discharge-limit-entity", "options"),
-        Output("bat-charge-power-entity", "options"),
         Output("bat-target-soc-entity", "options"),
         Output("bat-charge-allowed-entity", "options"),
-        Output("bat-charge-allowed-on-entity", "options"),
-        Output("bat-charge-allowed-off-entity", "options"),
         Output("bat-charge-allowed-push-entity", "options"),
         Output("bat-charge-allowed-feedback-entity", "options"),
         Output("bat-target-soc-push-entity", "options"),
@@ -463,9 +368,9 @@ def register_callbacks(app):
         bool_action_opts = _bool_action_options()
         bool_feedback_opts = _bool_feedback_options()
         return (
-            sensor_opts, sensor_opts, sensor_opts, sensor_opts, sensor_opts, sensor_opts,
-            number_opts, number_opts, number_opts,
-            bool_state_opts, bool_action_opts, bool_action_opts,
+            sensor_opts, sensor_opts, sensor_opts, sensor_opts, sensor_opts,
+            number_opts,
+            bool_state_opts,
             bool_action_opts, bool_feedback_opts,
             bool_action_opts, numeric_state_opts,
         )
@@ -473,18 +378,13 @@ def register_callbacks(app):
     @app.callback(
         Output("bat-cap-val", "children"),
         Output("bat-soc-val", "children"),
-        Output("bat-power-sensor-val", "children"),
         Output("bat-vdc-val", "children"),
         Output("bat-idc-val", "children"),
         Output("bat-temp-val", "children"),
         Output("bat-power-val", "children"),
-        Output("bat-discharge-limit-val", "children"),
         Output("bat-charge-allowed-val", "children"),
-        Output("bat-charge-allowed-on-val", "children"),
-        Output("bat-charge-allowed-off-val", "children"),
         Output("bat-charge-allowed-push-val", "children"),
         Output("bat-charge-allowed-feedback-val", "children"),
-        Output("bat-charge-power-val", "children"),
         Output("bat-target-soc-val", "children"),
         Output("bat-target-soc-push-val", "children"),
         Output("bat-target-soc-feedback-val", "children"),
@@ -492,17 +392,12 @@ def register_callbacks(app):
         Input("bat-live", "n_intervals"),
         State("bat-cap-entity", "value"),
         State("bat-soc-entity", "value"),
-        State("bat-power-entity", "value"),
         State("bat-vdc-entity", "value"),
         State("bat-idc-entity", "value"),
         State("bat-temp-entity", "value"),
-        State("bat-discharge-limit-entity", "value"),
         State("bat-charge-allowed-entity", "value"),
-        State("bat-charge-allowed-on-entity", "value"),
-        State("bat-charge-allowed-off-entity", "value"),
         State("bat-charge-allowed-push-entity", "value"),
         State("bat-charge-allowed-feedback-entity", "value"),
-        State("bat-charge-power-entity", "value"),
         State("bat-target-soc-entity", "value"),
         State("bat-target-soc-push-entity", "value"),
         State("bat-target-soc-feedback-entity", "value"),
@@ -512,17 +407,12 @@ def register_callbacks(app):
         _tick,
         cap_ent,
         soc_ent,
-        pwr_ent,
         vdc_ent,
         idc_ent,
         temp_ent,
-        discharge_ent,
         charge_allowed_ent,
-        charge_allowed_on_ent,
-        charge_allowed_off_ent,
         charge_allowed_push_ent,
         charge_allowed_feedback_ent,
-        charge_power_ent,
         target_soc_ent,
         target_soc_push_ent,
         target_soc_feedback_ent,
@@ -559,18 +449,13 @@ def register_callbacks(app):
 
         cap = cap_text(cap_ent)
         soc = val(soc_ent, "{:.1f}", " %")
-        pwr_sensor_raw = None if not pwr_ent else get_sensor_value(pwr_ent)
-        pwr_sensor_num, pwr_sensor = power_text(pwr_sensor_raw)
         vdc_v = None if not vdc_ent else get_sensor_value(vdc_ent)
         idc_a = None if not idc_ent else get_sensor_value(idc_ent)
         vdc = ("{:.2f} V".format(float(vdc_v))) if vdc_v is not None else "-"
         idc = ("{:.2f} A".format(float(idc_a))) if idc_a is not None else "-"
         t = val(temp_ent, "{:.1f}", " C")
 
-        if pwr_sensor_num is not None:
-            mode = "charging" if pwr_sensor_num >= 0 else "discharging"
-            pwr = "{:+.3f} kW ({})".format(pwr_sensor_num, mode)
-        elif (vdc_v is not None) and (idc_a is not None):
+        if (vdc_v is not None) and (idc_a is not None):
             p_kw = (float(vdc_v) * float(idc_a)) / 1000.0
             mode = "charging" if p_kw >= 0 else "discharging"
             pwr = "{:+.3f} kW ({})".format(p_kw, mode)
@@ -585,18 +470,13 @@ def register_callbacks(app):
         return (
             cap,
             soc,
-            pwr_sensor,
             vdc,
             idc,
             t,
             pwr,
-            _fmt_live_state(discharge_ent, numeric=True, unit=" W"),
             _fmt_live_state(charge_allowed_ent),
-            _fmt_live_state(charge_allowed_on_ent),
-            _fmt_live_state(charge_allowed_off_ent),
             _fmt_live_state(charge_allowed_push_ent),
             _fmt_live_state(charge_allowed_feedback_ent),
-            _fmt_live_state(charge_power_ent, numeric=True, unit=" W"),
             _fmt_live_state(target_soc_ent, numeric=True, unit=" %"),
             _fmt_live_state(target_soc_push_ent),
             _fmt_live_state(target_soc_feedback_ent, numeric=True, unit=" %"),

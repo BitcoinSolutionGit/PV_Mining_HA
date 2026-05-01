@@ -4,13 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V0.7.37">
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V0.7.38">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/config/pv_mining_addon/battery.local.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config/pv_mining_addon/battery.local.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/config/pv_mining_addon/battery.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config/pv_mining_addon/battery.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/docs/examples/battery_negative_price_setup.md" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/docs/examples/battery_negative_price_setup.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/services/battery_store.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/services/battery_store.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/services/consumers/battery.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/services/consumers/battery.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages/battery.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages/battery.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -306,15 +301,8 @@
       <workItem from="1777460074544" duration="690000" />
       <workItem from="1777461798709" duration="356000" />
       <workItem from="1777628730745" duration="920000" />
-      <workItem from="1777639725131" duration="1080000" />
-    </task>
-    <task id="LOCAL-00368" summary="V0.6.67">
-      <option name="closed" value="true" />
-      <created>1758911591510</created>
-      <option name="number" value="00368" />
-      <option name="presentableId" value="LOCAL-00368" />
-      <option name="project" value="LOCAL" />
-      <updated>1758911591510</updated>
+      <workItem from="1777639725131" duration="1419000" />
+      <workItem from="1777641384114" duration="687000" />
     </task>
     <task id="LOCAL-00369" summary="V0.6.68">
       <option name="closed" value="true" />
@@ -700,7 +688,15 @@
       <option name="project" value="LOCAL" />
       <updated>1777462139897</updated>
     </task>
-    <option name="localTasksCounter" value="417" />
+    <task id="LOCAL-00417" summary="V0.7.38">
+      <option name="closed" value="true" />
+      <created>1777640998672</created>
+      <option name="number" value="00417" />
+      <option name="presentableId" value="LOCAL-00417" />
+      <option name="project" value="LOCAL" />
+      <updated>1777640998672</updated>
+    </task>
+    <option name="localTasksCounter" value="418" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -718,7 +714,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="V0.7.12" />
     <MESSAGE value="V0.7.13" />
     <MESSAGE value="V0.7.14" />
     <MESSAGE value="V0.7.15" />
@@ -743,7 +738,8 @@
     <MESSAGE value="V0.7.35" />
     <MESSAGE value="V0.7.36" />
     <MESSAGE value="V0.7.37" />
-    <option name="LAST_COMMIT_MESSAGE" value="V0.7.37" />
+    <MESSAGE value="V0.7.38" />
+    <option name="LAST_COMMIT_MESSAGE" value="V0.7.38" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$main.coverage" NAME="main Coverage Results" MODIFIED="1775168695381" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />
