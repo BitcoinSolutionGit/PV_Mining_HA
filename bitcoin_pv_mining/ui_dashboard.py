@@ -618,7 +618,8 @@ def register_callbacks(app):
 
             if m["active"]:
                 lock_s = max(int(m.get("min_run_remaining_s", 0) or 0), 0)
-                label = f"{name} ({lock_s}s)" if lock_s > 0 else name
+                lock_min = max(1, int((lock_s / 60.0) + 0.5)) if lock_s > 0 else 0
+                label = f"{name} ({lock_min} min)" if lock_min > 0 else name
                 miner_entries.append({"name": label, "kw": max(m["kw"], 0.0),
                                       "color": COLORS["miners"], "ghost": False})
                 sum_active_miners_kw += max(m["kw"], 0.0)
