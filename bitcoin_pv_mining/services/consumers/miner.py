@@ -419,6 +419,10 @@ class MinerConsumer(BaseConsumer):
         pkw = _num(record.get("power_kw"), 0.0)
         prev_on = bool(record.get("effective_on", record.get("on")))
         need_cool = _cooling_required(record)
+        force_off_due_to_grid = _truthy(
+            ctx.get("grid_import_emergency_off", False) if isinstance(ctx, dict) else getattr(ctx, "grid_import_emergency_off", False),
+            False,
+        )
 
         # Safety-critical emergency brake:
         # a running cooling-dependent miner must shut down immediately if cooling is lost.
@@ -446,6 +450,8 @@ class MinerConsumer(BaseConsumer):
 
         frac = _on_fraction_for_miner(self.miner_id, default=0.95)
         should_on = pkw > 0.0 and alloc_kw >= frac * pkw
+        if force_off_due_to_grid:
+            should_on = False
         print(f"[miner {self.miner_id}] on_fraction={frac:.2f} alloc={alloc_kw:.3f} pkw={pkw:.3f}", flush=True)
 
         if should_on and need_cool:
@@ -465,8 +471,15 @@ class MinerConsumer(BaseConsumer):
                 print(f"[miner {self.miner_id}] apply ~{alloc_kw:.2f} kW (ON) ok={ok} reason={reason}", flush=True)
             elif (not should_on) and prev_on:
                 now_ts = time.time()
-                ok, reason = request_miner_state(self.miner_id, False, now_ts=now_ts, enforce_runtime=True)
-                print(f"[miner {self.miner_id}] apply 0 kW (OFF) ok={ok} reason={reason}", flush=True)
+                enforce_runtime = not force_off_due_to_grid
+                ok, reason = request_miner_state(self.miner_id, False, now_ts=now_ts, enforce_runtime=enforce_runtime)
+                if force_off_due_to_grid:
+                    print(
+                        f"[miner {self.miner_id}] EMERGENCY OFF: grid import cap -> ok={ok} reason={reason}",
+                        flush=True,
+                    )
+                else:
+                    print(f"[miner {self.miner_id}] apply 0 kW (OFF) ok={ok} reason={reason}", flush=True)
                 if ok and need_cool:
                     cool_ok, cool_reason = _request_cooling_off_if_idle(now_ts)
                     print(

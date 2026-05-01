@@ -424,9 +424,10 @@ def plan_and_allocate(
     grid_free = (eff_grid_cost <= 0.0)
     max_grid_import_kw = max(0.0, _f(set_get("max_grid_import_kw", 14.0), 14.0))
     pv_supply_for_cap_kw = max(0.0, pv_kw + _f(pv_ramp.get("stable_bonus_kw"), 0.0))
-    base_import_kw = max(0.0, base_load - pv_supply_for_cap_kw)
+    measured_import_kw = max(0.0, import_kw)
     battery_grid_reserve_kw = 0.0
-    grid_cap_for_controls_kw = max(0.0, max_grid_import_kw - base_import_kw)
+    grid_cap_for_controls_kw = max(0.0, max_grid_import_kw - measured_import_kw)
+    grid_import_emergency = (not grid_free) and (measured_import_kw >= max(0.0, max_grid_import_kw - 0.05))
 
     # expose planner facts to consumers
     for k, v in (
@@ -441,6 +442,9 @@ def plan_and_allocate(
             ("pv_ramp_candidate_kw", _f(pv_ramp.get("candidate_bonus_kw"), 0.0)),
             ("battery_discharge_kw", battery_block_kw),
             ("battery_block", battery_block),
+            ("grid_import_measured_kw", measured_import_kw),
+            ("grid_import_cap_kw", max_grid_import_kw),
+            ("grid_import_emergency_off", grid_import_emergency),
     ):
         # robust für Ctx als Objekt ODER Mapping
         try:
@@ -463,14 +467,17 @@ def plan_and_allocate(
         ctx["pv_ramp_candidate_kw"] = _f(pv_ramp.get("candidate_bonus_kw"), 0.0)
         ctx["battery_discharge_kw"] = battery_block_kw
         ctx["battery_block"] = battery_block
+        ctx["grid_import_measured_kw"] = measured_import_kw
+        ctx["grid_import_cap_kw"] = max_grid_import_kw
+        ctx["grid_import_emergency_off"] = grid_import_emergency
     except Exception:
         pass
 
     log_fn(f"[plan] grid_cost={eff_grid_cost:.4f} €/kWh -> grid_free={grid_free}")
     log_fn(
         f"[plan:grid_cap] max_import={max_grid_import_kw:.3f} kW "
-        f"base_import={base_import_kw:.3f} kW battery_reserve={battery_grid_reserve_kw:.3f} kW "
-        f"controls_cap={grid_cap_for_controls_kw:.3f} kW"
+        f"current_import={measured_import_kw:.3f} kW battery_reserve={battery_grid_reserve_kw:.3f} kW "
+        f"controls_cap={grid_cap_for_controls_kw:.3f} kW emergency_off={int(grid_import_emergency)}"
     )
 
     log_fn(f"[plan] order={order}")
@@ -540,7 +547,7 @@ def plan_and_allocate(
             desired_kw = de.exact_kw if getattr(de, "exact_kw", None) is not None else max(de.min_kw or 0.0, de.max_kw or 0.0)
             battery_grid_reserve_kw = max(0.0, float(desired_kw or 0.0))
             break
-    grid_cap_for_controls_kw = max(0.0, max_grid_import_kw - base_import_kw - battery_grid_reserve_kw)
+    grid_cap_for_controls_kw = max(0.0, max_grid_import_kw - measured_import_kw - battery_grid_reserve_kw)
     log_fn(
         f"[plan:grid_cap] adjusted controls_cap={grid_cap_for_controls_kw:.3f} kW "
         f"(battery reserve applied={battery_grid_reserve_kw:.3f} kW)"
@@ -642,14 +649,20 @@ def plan_and_allocate(
 
         if discrete_meta:
             grid_cap_left = max(0.0, grid_cap_for_controls_kw - grid_draw)
-            alloc_total, pv_alloc, grid_alloc, policy_reason = _allocate_discrete_load(
-                cid=cid,
-                desire=de,
-                pv_left=pv_left,
-                grid_free=grid_free,
-                battery_block=battery_block and cid != "house",
-                now_ts=now_ts,
-            )
+            if grid_import_emergency and cid.startswith("miner:"):
+                alloc_total = 0.0
+                pv_alloc = 0.0
+                grid_alloc = 0.0
+                policy_reason = "grid import emergency"
+            else:
+                alloc_total, pv_alloc, grid_alloc, policy_reason = _allocate_discrete_load(
+                    cid=cid,
+                    desire=de,
+                    pv_left=pv_left,
+                    grid_free=grid_free,
+                    battery_block=battery_block and cid != "house",
+                    now_ts=now_ts,
+                )
             if grid_alloc > grid_cap_left + 1e-9:
                 alloc_total = 0.0
                 pv_alloc = 0.0

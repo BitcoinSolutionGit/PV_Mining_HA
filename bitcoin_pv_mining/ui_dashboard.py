@@ -1,4 +1,5 @@
 import os
+import time
 import yaml
 import traceback
 import plotly.graph_objects as go
@@ -13,6 +14,8 @@ from services.electricity_store import current_price, currency_symbol, get_var a
 from services.heater_store import resolve_entity_id as heater_resolve_entity, get_var as heat_get_var
 from services.miners_store import list_miners
 from services.cooling_store import get_cooling
+from services.energy_mix import surplus_strict_kw as _surplus_strict_kw
+from services.consumers.miner import MinerConsumer
 from services.pv_ramp_up import get_pv_ramp_snapshot
 from services.settings_store import get_var as set_get
 from services.wallbox_store import get_var as wb_get
@@ -224,6 +227,37 @@ def _planner_boost_kw() -> float:
         return max(candidate_kw, 0.0)
     except Exception:
         return 0.0
+
+
+def _miner_min_run_remaining_s(miner: dict, surplus_kw: float, grid_cost: float) -> int:
+    try:
+        if not bool(miner.get("enabled")) or not bool(miner.get("effective_on", miner.get("on"))):
+            return 0
+        mid = str(miner.get("id") or "").strip()
+        if not mid:
+            return 0
+        last_flip_ts = _num(miner.get("last_flip_ts"), 0.0)
+        if last_flip_ts <= 0.0:
+            return 0
+        per_miner_run = set_get(f"miner.{mid}.min_run_min", None)
+        if per_miner_run is not None:
+            try:
+                min_run_s = max(0, int(float(per_miner_run) * 60.0))
+            except Exception:
+                min_run_s = int(_num(set_get("miner_min_run_s", 30), 30))
+        else:
+            min_run_s = int(_num(set_get("miner_min_run_s", 30), 30))
+        remaining = max(0, int(min_run_s - max(0.0, time.time() - last_flip_ts)))
+        if remaining <= 0:
+            return 0
+        desire = MinerConsumer(mid).compute_desire({
+            "ts": time.time(),
+            "surplus_kw": surplus_kw,
+            "grid_cost_eur_kwh": grid_cost,
+        })
+        return remaining if not bool(desire.wants) else 0
+    except Exception:
+        return 0
 
 def _battery_enabled():
     try:
@@ -455,6 +489,15 @@ def register_callbacks(app):
         boost_kw = float(_planner_boost_kw() or 0.0)
         heater_kw = float(_heater_power_kw() or 0.0)
         wallbox_kw = float(_wallbox_power_kw() or 0.0)
+        try:
+            surplus_raw, _total_load, _ctrl_now, _base_load, _pv_kw = _surplus_strict_kw()
+        except Exception:
+            surplus_raw = max(feed_val, 0.0)
+        guard_w = _num(set_get("surplus_guard_w", 100.0), 100.0)
+        guard_pct = _num(set_get("surplus_guard_pct", 0.0), 0.0)
+        guard_kw = max(guard_w / 1000.0, max(0.0, guard_pct) * max(surplus_raw, 0.0))
+        planner_surplus_kw = max(0.0, max(surplus_raw, 0.0) - guard_kw + boost_kw)
+        grid_cost = _num(current_price(), 0.0) + _num(elec_get("network_fee_down_value", 0.0), 0.0)
 
         # Cooling (einmal!) – Feature-Flag respektieren
         cooling_enabled = bool(set_get("cooling_feature_enabled", False))
@@ -496,9 +539,11 @@ def register_callbacks(app):
         except Exception:
             miners_raw = []
         miners = [{
+            "id": (m.get("id") or "").strip(),
             "name": (m.get("name") or "Miner").strip(),
             "kw": float(m.get("power_kw") or 0.0),
             "active": bool(m.get("enabled")) and bool(m.get("effective_on", m.get("on"))),
+            "min_run_remaining_s": _miner_min_run_remaining_s(m, planner_surplus_kw, grid_cost),
         } for m in miners_raw]
 
         return {
@@ -572,7 +617,9 @@ def register_callbacks(app):
             name = (disp if (disp is not None and str(disp).strip()) else m["name"]).strip()
 
             if m["active"]:
-                miner_entries.append({"name": name, "kw": max(m["kw"], 0.0),
+                lock_s = max(int(m.get("min_run_remaining_s", 0) or 0), 0)
+                label = f"{name} ({lock_s}s)" if lock_s > 0 else name
+                miner_entries.append({"name": label, "kw": max(m["kw"], 0.0),
                                       "color": COLORS["miners"], "ghost": False})
                 sum_active_miners_kw += max(m["kw"], 0.0)
             elif SHOW_GHOST_SINK:
