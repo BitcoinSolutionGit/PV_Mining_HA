@@ -151,7 +151,7 @@ class HeaterConsumer(BaseConsumer):
         base_kw = max(0.0, float(kw or 0.0))
         probe_kw = max(0.0, _ctx_num(ctx, "pv_ramp_probe_offset_kw", 0.0))
         battery_block = bool(_ctx_num(ctx, "battery_block", 0.0))
-        battery_discharge_kw = max(0.0, _ctx_num(ctx, "battery_discharge_kw", 0.0))
+        battery_discharge_kw = max(0.0, _ctx_num(ctx, "battery_support_kw", _ctx_num(ctx, "battery_discharge_kw", 0.0)))
         final_kw = max(0.0, min(float(max_kw), base_kw + probe_kw))
         pct = max(0.0, min(100.0, (final_kw / float(max_kw)) * 100.0))
         ok = _set_percent_entity(pct_tgt, round(pct))

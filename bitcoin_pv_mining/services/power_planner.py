@@ -314,6 +314,25 @@ def _allocate_discrete_load(
     return alloc_total, pv_alloc, grid_alloc, decision_reason
 
 
+def _discrete_lock_state(cid: str, now_ts: float) -> Optional[dict]:
+    meta = _discrete_runtime_meta(cid)
+    if not meta:
+        return None
+
+    actual_on = bool(meta.get("actual_on"))
+    last_flip_ts = _f(meta.get("last_flip_ts"), 0.0)
+    min_run_s = int(_f(meta.get("min_run_s"), 0.0))
+    min_off_s = int(_f(meta.get("min_off_s"), 0.0))
+    elapsed = max(0.0, now_ts - last_flip_ts) if last_flip_ts > 0.0 else 0.0
+    return {
+        "meta": meta,
+        "actual_on": actual_on,
+        "elapsed": elapsed,
+        "locked_on": actual_on and (last_flip_ts > 0.0) and (elapsed < max(0, min_run_s)),
+        "locked_off": (not actual_on) and (last_flip_ts > 0.0) and (elapsed < max(0, min_off_s)),
+    }
+
+
 def _consumer_reserves_pv_budget(cid: str, cons: BaseConsumer) -> bool:
     flag = getattr(cons, "reserves_pv_budget", None)
     if flag is not None:
@@ -390,11 +409,17 @@ def plan_and_allocate(
     except Exception:
         pass
 
-    battery_block_kw = _battery_discharge_kw_now()
-    battery_block = battery_block_kw > 0.05
-    log_fn(f"[plan] battery_discharge={battery_block_kw:.3f} kW -> battery_block={battery_block}")
+    battery_discharge_kw = _battery_discharge_kw_now()
+    battery_support_kw = max(0.0, battery_discharge_kw - feed_kw)
+    battery_block = battery_support_kw > 0.05
+    log_fn(
+        f"[plan] battery_discharge={battery_discharge_kw:.3f} kW "
+        f"feed={feed_kw:.3f} kW support={battery_support_kw:.3f} kW -> battery_block={battery_block}"
+    )
     if battery_block:
         log_fn("[plan] battery discharge active -> flexible consumers are cut back; locked miners may continue until min-run expires")
+    elif battery_discharge_kw > 0.05 and feed_kw > 0.05:
+        log_fn("[plan] battery discharge overlaps with export -> no flexible-load block")
 
     try:
         pv_ramp = evaluate_pv_ramp_up(
@@ -440,7 +465,8 @@ def plan_and_allocate(
             ("pv_ramp_bonus_kw", _f(pv_ramp.get("stable_bonus_kw"), 0.0)),
             ("pv_ramp_probe_offset_kw", _f(pv_ramp.get("probe_offset_kw"), 0.0)),
             ("pv_ramp_candidate_kw", _f(pv_ramp.get("candidate_bonus_kw"), 0.0)),
-            ("battery_discharge_kw", battery_block_kw),
+            ("battery_discharge_kw", battery_discharge_kw),
+            ("battery_support_kw", battery_support_kw),
             ("battery_block", battery_block),
             ("grid_import_measured_kw", measured_import_kw),
             ("grid_import_cap_kw", max_grid_import_kw),
@@ -465,7 +491,8 @@ def plan_and_allocate(
         ctx["pv_ramp_bonus_kw"] = _f(pv_ramp.get("stable_bonus_kw"), 0.0)
         ctx["pv_ramp_probe_offset_kw"] = _f(pv_ramp.get("probe_offset_kw"), 0.0)
         ctx["pv_ramp_candidate_kw"] = _f(pv_ramp.get("candidate_bonus_kw"), 0.0)
-        ctx["battery_discharge_kw"] = battery_block_kw
+        ctx["battery_discharge_kw"] = battery_discharge_kw
+        ctx["battery_support_kw"] = battery_support_kw
         ctx["battery_block"] = battery_block
         ctx["grid_import_measured_kw"] = measured_import_kw
         ctx["grid_import_cap_kw"] = max_grid_import_kw
@@ -556,6 +583,15 @@ def plan_and_allocate(
     now_ts = _f(getattr(ctx, "ts", 0.0), 0.0) or now()
     hard_must_runs = [(cid, cons, de) for (cid, cons, de) in collected if cid == "house" and bool(getattr(de, "must_run", False))]
     remaining = [(cid, cons, de) for (cid, cons, de) in collected if not (cid == "house" and bool(getattr(de, "must_run", False)))]
+    locked_running = []
+    priority_remaining = []
+    for cid, cons, de in remaining:
+        lock_state = _discrete_lock_state(cid, now_ts)
+        if lock_state and bool(lock_state.get("locked_on")):
+            locked_running.append((cid, cons, de))
+        else:
+            priority_remaining.append((cid, cons, de))
+    remaining = locked_running + priority_remaining
 
     # ---------- 1) HARTE MUST-RUNS (nur Hauslast) ----------
     for cid, cons, de in hard_must_runs:

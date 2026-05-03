@@ -116,8 +116,12 @@ class BatteryConsumer(BaseConsumer):
 
     def _effective_target_soc(self, grid_cost: float | None) -> float:
         target = self._target_soc()
-        if self._neg_control_enabled() and grid_cost is not None and grid_cost <= 0.0:
-            return _num(bat_get("target_soc_negative_pct", target), target)
+        if self._neg_control_enabled():
+            if grid_cost is not None and grid_cost <= 0.0:
+                return _num(bat_get("target_soc_negative_pct", target), target)
+            normal_target = bat_get("target_soc_normal_pct", None)
+            if normal_target is not None:
+                return _num(normal_target, target)
         return target
 
     def _max_charge_kw(self) -> float:
