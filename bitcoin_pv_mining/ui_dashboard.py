@@ -493,6 +493,7 @@ def register_callbacks(app):
             surplus_raw, _total_load, _ctrl_now, _base_load, _pv_kw = _surplus_strict_kw()
         except Exception:
             surplus_raw = max(feed_val, 0.0)
+            _base_load = 0.0
         guard_w = _num(set_get("surplus_guard_w", 100.0), 100.0)
         guard_pct = _num(set_get("surplus_guard_pct", 0.0), 0.0)
         guard_kw = max(guard_w / 1000.0, max(0.0, guard_pct) * max(surplus_raw, 0.0))
@@ -552,6 +553,7 @@ def register_callbacks(app):
             "feed": feed_val,
             "bat_pwr": bat_pwr,
             "boost_kw": boost_kw,
+            "base_load_kw": max(float(_base_load or 0.0), 0.0),
             "heater_kw": heater_kw,
             "wallbox_kw": wallbox_kw,
             "cooling": {"enabled": cooling_enabled, "running": cooling_running, "pkw": cooling_pkw, "status": cooling_status},
@@ -600,6 +602,7 @@ def register_callbacks(app):
         feed_val = data["feed"]
         bat_pwr = data["bat_pwr"]
         boost_kw = max(float(data.get("boost_kw", 0.0) or 0.0), 0.0)
+        base_load_kw = max(float(data.get("base_load_kw", 0.0) or 0.0), 0.0)
         heater_kw = data["heater_kw"]
         wallbox_kw = data["wallbox_kw"]
 
@@ -631,14 +634,19 @@ def register_callbacks(app):
         bat_charge_kw = max(bat_pwr, 0.0)  # Senke
         bat_discharge_kw = max(-bat_pwr, 0.0)  # Quelle
 
-        # Reale Energiezufuhr = PV + Grid (+ Batterie-Entladung).
-        # Der Ramp-Boost ist nur Planungs-Headroom und keine physische Quelle.
-        inflow_base = max(pv_val + grid_val, 0.0)
-        inflow_eff = inflow_base + bat_discharge_kw
+        # Gemessene reale Energiezufuhr.
+        inflow_actual_base = max(pv_val + grid_val, 0.0)
+        inflow_actual_eff = inflow_actual_base + bat_discharge_kw
+
+        # Display-/Planungsbudget fuer den Sankey.
+        # Der Planner-Boost darf die Verbraucherwerte tragen, aber nicht
+        # erneut als House-Last auftauchen.
+        inflow_display_eff = inflow_actual_eff + max(boost_kw, 0.0)
 
         # ---- Prozentanteile für den Inflow-Knoten ----
-        den = inflow_eff if inflow_eff > 0 else 0.0
+        den = inflow_display_eff if inflow_display_eff > 0 else 0.0
         pv_pct = round((pv_val / den) * 100.0, 1) if den else 0.0
+        boost_pct = round((boost_kw / den) * 100.0, 1) if den else 0.0
         grid_pct = round((grid_val / den) * 100.0, 1) if den else 0.0
         batt_pct = round((bat_discharge_kw / den) * 100.0, 1) if den else 0.0
 
@@ -646,26 +654,20 @@ def register_callbacks(app):
         heater_kw = _heater_power_kw()
         wallbox_kw = _wallbox_power_kw()
 
-        # ---- House usage = Rest (ohne Ghosts) ----
-        # WICHTIG: feed_val und bat_charge_kw sind echte Outflows und werden hier abgezogen
-        known_real = (
-                sum_active_miners_kw
-                + max(feed_val, 0.0)
-                + heater_kw + wallbox_kw + cooling_kw
-                + bat_charge_kw
-        )
-        house_kw = max(inflow_eff - known_real, 0.0)
+        # ---- House usage = gemessene Basislast ----
+        house_kw = max(base_load_kw, 0.0)
 
-        # === NEW: Outflows auf Inflow kappen (proportional skalieren) ===
+        # === Outflows auf Display-Budget kappen (House bleibt gemessen) ===
         EPS = 0.02  # ~20 W Rauschtoleranz
         requested = (
                 sum_active_miners_kw
                 + heater_kw + wallbox_kw + cooling_kw
                 + bat_charge_kw + max(feed_val, 0.0)
         )
+        controls_budget = max(inflow_display_eff - house_kw, 0.0)
 
-        if requested > inflow_eff + EPS:
-            scale = (inflow_eff / requested) if requested > 0 else 0.0
+        if requested > controls_budget + EPS:
+            scale = (controls_budget / requested) if requested > 0 else 0.0
 
             for me in miner_entries:
                 if not me.get("ghost"):
@@ -676,9 +678,7 @@ def register_callbacks(app):
             cooling_kw *= scale
             bat_charge_kw *= scale
             feed_val *= scale  # wichtig: skaliert den gezeichneten Feed-in
-
-            house_kw = 0.0
-        # === END NEW ===
+        # === END ===
 
         # ---- Node/Link-Builder ----
         node_labels, node_colors = [], []
@@ -697,9 +697,9 @@ def register_callbacks(app):
             link_color.append(_hex_to_rgba(color, 0.92) if color != COLORS["inactive"] else _hex_to_rgba(color, 0.45))
 
         # Node-Label leer lassen; Text zeigen wir als Annotation oben mittig.
-        inflow_line1 = f"Energy Inflow — {_fmt_kw(inflow_eff)}"
+        inflow_line1 = f"Energy Inflow — {_fmt_kw(inflow_actual_eff)}"
         reserve_txt = f" · Planner reserve: +{_fmt_kw(boost_kw)}" if boost_kw > 0.0 else ""
-        inflow_line2 = f"PV: {pv_pct}% · Grid: {grid_pct}% · Battery: {batt_pct}%{reserve_txt}"
+        inflow_line2 = f"PV: {pv_pct}% · Boost: {boost_pct}% · Grid: {grid_pct}% · Battery: {batt_pct}%{reserve_txt}"
         inflow_idx = add_node(" ", COLORS["inflow"])
 
         # ---------- Linke Quellknoten (optional) ----------
@@ -720,6 +720,10 @@ def register_callbacks(app):
             if grid_active or SHOW_GHOST_SRC:
                 grid_src_idx = add_node(f"Grid (import)<br>{_fmt_kw(grid_val)}", grid_color)
                 add_link(grid_src_idx, inflow_idx, grid_eff, grid_color)
+
+        if boost_kw > 0.0:
+            boost_idx = add_node(f"PV ramp-up reserve<br>{_fmt_kw(boost_kw)}", COLORS["boost"])
+            add_link(boost_idx, inflow_idx, boost_kw, COLORS["boost"])
 
         battery_src_idx = None
         if battery_feat and ((bat_discharge_kw > 0.0) or SHOW_GHOST_SRC):
