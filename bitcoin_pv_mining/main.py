@@ -18,7 +18,7 @@ from services.btc_api import update_btc_data_periodically
 from services.license import set_token, verify_license, start_heartbeat_loop, is_premium_enabled, issue_token_and_enable, has_valid_token_cached
 from services.utils import get_addon_version, load_state, save_state, update_state, iso_now, load_yaml
 from services.power_planner import plan_and_allocate_auto
-from services.settings_store import get_var as settings_get
+from services.settings_store import get_var as settings_get, is_orchestrator_enabled
 from services.disclaimer_consent import get_consent_status, save_user_consent
 from urllib.parse import urlparse, parse_qs
 
@@ -1670,6 +1670,10 @@ def _global_engine_tick(n, _consent_state, premium_data):
     # Engine-Gating nur gegen den Backend-Status, nicht gegen Browser-Store.
     if not backend_enabled:
         print("[engine] skip: premium disabled in backend state", flush=True)
+        return ""
+
+    if not is_orchestrator_enabled():
+        print("[engine] skip: orchestrator disabled in settings", flush=True)
         return ""
 
     if not PLANNER_TICK_LOCK.acquire(blocking=False):

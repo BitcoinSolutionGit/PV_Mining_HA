@@ -528,3 +528,22 @@ class BatteryConsumer(BaseConsumer):
         if state.get("status") == "apply_failed" and not _retry_blocked(state, now_ts):
             clear_override_state()
         print(f"[battery] alloc request ~{alloc_kw:.2f} kW (no override needed)", flush=True)
+
+
+def force_restore_battery_normal_mode(reason: str = "manual restore") -> tuple[bool, str]:
+    state = get_override_state()
+    remembered = state.get("remembered") or {}
+    status = str(state.get("status") or "").strip().lower()
+    active = bool(state.get("active"))
+
+    if not active and status not in ("restore_failed", "active"):
+        if status == "apply_failed":
+            clear_override_state()
+        return True, "battery already normal"
+
+    if not isinstance(remembered, dict) or not remembered:
+        clear_override_state()
+        return True, "battery override cleared"
+
+    consumer = BatteryConsumer()
+    return consumer._restore_targets(remembered, reason, time.time())

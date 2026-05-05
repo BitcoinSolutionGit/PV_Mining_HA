@@ -167,6 +167,11 @@ def _reset_block(block: dict) -> dict:
     return clean
 
 
+def reset_pv_ramp_up_state() -> None:
+    state, block = _load_block()
+    _save_block(state, _reset_block(block))
+
+
 def evaluate_pv_ramp_up(
     *,
     feed_kw: float,

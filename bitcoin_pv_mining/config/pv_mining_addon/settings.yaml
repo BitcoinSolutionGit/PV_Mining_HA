@@ -1,4 +1,6 @@
 settings:
+  orchestrator_enabled: true
+
   # PV-Kosten-Modell:
   #  - zero   => PV = 0 €/kWh (bisher)
   #  - feedin => PV = Einspeisetarif - network_fee_up (nicht negativ)

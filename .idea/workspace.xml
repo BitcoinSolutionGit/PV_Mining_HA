@@ -4,7 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V0.7.47" />
+    <list default="true" id="0dbf4790-ac20-46bb-baed-03345e8d4d76" name="Changes" comment="V0.7.48">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/config/pv_mining_addon/settings.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/config/pv_mining_addon/settings.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/services/consumers/battery.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/services/consumers/battery.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/services/pv_ramp_up.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/services/pv_ramp_up.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/services/settings_store.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/services/settings_store.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/ui_dashboard.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/ui_dashboard.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages/dev.py" beforeDir="false" afterPath="$PROJECT_DIR$/bitcoin_pv_mining/ui_pages/dev.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -304,15 +314,8 @@
       <workItem from="1777658857079" duration="6155000" />
       <workItem from="1777812705753" duration="950000" />
       <workItem from="1777924332794" duration="865000" />
-      <workItem from="1777982108161" duration="3025000" />
-    </task>
-    <task id="LOCAL-00378" summary="V0.7.01">
-      <option name="closed" value="true" />
-      <created>1775129387885</created>
-      <option name="number" value="00378" />
-      <option name="presentableId" value="LOCAL-00378" />
-      <option name="project" value="LOCAL" />
-      <updated>1775129387885</updated>
+      <workItem from="1777982108161" duration="3548000" />
+      <workItem from="1777992927519" duration="1585000" />
     </task>
     <task id="LOCAL-00379" summary="V0.7.02">
       <option name="closed" value="true" />
@@ -698,7 +701,15 @@
       <option name="project" value="LOCAL" />
       <updated>1777984744252</updated>
     </task>
-    <option name="localTasksCounter" value="427" />
+    <task id="LOCAL-00427" summary="V0.7.48">
+      <option name="closed" value="true" />
+      <created>1777985298645</created>
+      <option name="number" value="00427" />
+      <option name="presentableId" value="LOCAL-00427" />
+      <option name="project" value="LOCAL" />
+      <updated>1777985298645</updated>
+    </task>
+    <option name="localTasksCounter" value="428" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -716,7 +727,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="V0.7.22" />
     <MESSAGE value="V0.7.24" />
     <MESSAGE value="V0.7.25" />
     <MESSAGE value="V0.7.26" />
@@ -741,7 +751,8 @@
     <MESSAGE value="V0.7.45" />
     <MESSAGE value="V0.7.46" />
     <MESSAGE value="V0.7.47" />
-    <option name="LAST_COMMIT_MESSAGE" value="V0.7.47" />
+    <MESSAGE value="V0.7.48" />
+    <option name="LAST_COMMIT_MESSAGE" value="V0.7.48" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/BitcoinSolution_PV_Mining_HomeAssistant$main.coverage" NAME="main Coverage Results" MODIFIED="1775168695381" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/bitcoin_pv_mining" />

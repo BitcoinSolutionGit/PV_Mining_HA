@@ -35,6 +35,29 @@ def get_var(key: str, default=None):
         v = _get(load_yaml(SET_DEF, {}) or {}, f"settings.{key}", None)
     return default if v is None else v
 
+
+def get_bool(key: str, default: bool = False) -> bool:
+    value = get_var(key, None)
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+
+    text = str(value).strip().lower()
+    if text in ("1", "true", "on", "yes", "y", "enabled"):
+        return True
+    if text in ("0", "false", "off", "no", "n", "disabled"):
+        return False
+
+    try:
+        return float(text) > 0.0
+    except Exception:
+        return default
+
+
+def is_orchestrator_enabled() -> bool:
+    return get_bool("orchestrator_enabled", True)
+
 def set_vars(**pairs):
     os.makedirs(os.path.dirname(SET_OVR), exist_ok=True)
     ovr = load_yaml(SET_OVR, {}) or {}

@@ -17,7 +17,7 @@ from services.cooling_store import get_cooling
 from services.energy_mix import surplus_strict_kw as _surplus_strict_kw
 from services.consumers.miner import MinerConsumer
 from services.pv_ramp_up import get_pv_ramp_snapshot
-from services.settings_store import get_var as set_get
+from services.settings_store import get_var as set_get, is_orchestrator_enabled
 from services.wallbox_store import get_var as wb_get
 from services.sensor_mapping import resolve_sensor_id as resolve_runtime_sensor_id
 try:
@@ -219,6 +219,8 @@ def _planner_boost_kw() -> float:
     Temporary extra headroom used by the planner beyond measured surplus.
     Includes both settled ramp bonus and the currently active probe offset.
     """
+    if not is_orchestrator_enabled():
+        return 0.0
     try:
         snap = get_pv_ramp_snapshot() or {}
         stable_kw = max(_num(snap.get("stable_bonus_kw"), 0.0), 0.0)

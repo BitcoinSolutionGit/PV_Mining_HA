@@ -7,6 +7,8 @@ from dash.exceptions import PreventUpdate
 
 from services.utils import load_state
 from services.license import set_token, verify_license, is_premium_enabled
+from services.settings_store import set_vars as set_settings_vars, is_orchestrator_enabled
+from services.master_switch import shutdown_all_consumers, arm_all_consumers_auto
 try:
     from services.dev_mock import collect_specs, get_values, is_enabled as mock_is_enabled, set_config as set_mock_config
     MOCK_AVAILABLE = True
@@ -26,6 +28,10 @@ except Exception:
         return None
 
 LICENSE_BASE_URL = os.getenv("LICENSE_BASE_URL", "https://license.bitcoinsolution.at")
+
+
+def _master_switch_text(enabled: bool) -> str:
+    return f"Hauptschalter {'AKTIV' if enabled else 'OFF'} - automatisch gespeichert."
 
 
 def _install_id() -> str:
@@ -137,9 +143,48 @@ def _mock_table():
 
 def layout():
     ins = _install_id()
+    orchestrator_enabled = is_orchestrator_enabled()
     return html.Div(
         [
             html.H2("Developer tools", className="page-title"),
+
+            html.Div(
+                [
+                    html.H3("Hauptschalter", className="settings-section-title"),
+                    html.Div(
+                        [
+                            html.Div(
+                                "Schaltet die komplette automatische Orchestrierung des Add-ons global ein oder aus. "
+                                "Im OFF-Modus bleiben Dashboard, Gauges und Sankey sichtbar, aber der Hintergrund-Orchestrator schaltet nichts mehr.",
+                                className="settings-subtle-text",
+                                style={"marginBottom": "12px"},
+                            ),
+                            html.Div(
+                                [
+                                    html.Label("HAUPTSCHALTER", style={"marginBottom": "8px"}),
+                                    dcc.Slider(
+                                        id="dev-orchestrator-enabled",
+                                        min=0,
+                                        max=1,
+                                        step=1,
+                                        value=1 if orchestrator_enabled else 0,
+                                        marks={0: "OFF", 1: "ON"},
+                                        tooltip={"always_visible": False},
+                                    ),
+                                ],
+                                style={"marginBottom": "10px"},
+                            ),
+                            html.Span(
+                                _master_switch_text(orchestrator_enabled),
+                                id="dev-orchestrator-status",
+                                className="settings-status",
+                            ),
+                        ],
+                        className="settings-card",
+                    ),
+                ],
+                className="settings-section",
+            ),
 
             html.Div(
                 [
@@ -247,6 +292,20 @@ def layout():
 
 
 def register_callbacks(app):
+    @app.callback(
+        Output("dev-orchestrator-status", "children"),
+        Input("dev-orchestrator-enabled", "value"),
+        prevent_initial_call=True,
+    )
+    def _save_orchestrator(enabled):
+        is_enabled = bool(enabled)
+        set_settings_vars(orchestrator_enabled=is_enabled)
+        if not is_enabled:
+            _ok, message = shutdown_all_consumers()
+            return message
+        _ok, message = arm_all_consumers_auto()
+        return message
+
     @app.callback(
         Output("dev-mock-status", "children"),
         Input("dev-mock-save", "n_clicks"),
@@ -357,10 +416,19 @@ def register_callbacks(app):
         Output("dev-current-status", "children"),
         Input("dev-status-tick", "n_intervals"),
         State("dev-mock-enabled", "value"),
+        State("dev-orchestrator-enabled", "value"),
         prevent_initial_call=False,
     )
-    def _show_status(_n, mock_enabled):
+    def _show_status(_n, mock_enabled, orchestrator_enabled):
         try:
-            return f"Current premium_enabled={is_premium_enabled()} | mock_data={'ON' if mock_enabled else 'OFF'}"
+            return (
+                f"Current premium_enabled={is_premium_enabled()} | "
+                f"hauptschalter={'ON' if orchestrator_enabled else 'OFF'} | "
+                f"mock_data={'ON' if mock_enabled else 'OFF'}"
+            )
         except Exception:
-            return f"Current premium_enabled=? | mock_data={'ON' if mock_enabled else 'OFF'}"
+            return (
+                f"Current premium_enabled=? | "
+                f"hauptschalter={'ON' if orchestrator_enabled else 'OFF'} | "
+                f"mock_data={'ON' if mock_enabled else 'OFF'}"
+            )
