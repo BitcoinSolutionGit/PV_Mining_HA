@@ -631,14 +631,14 @@ def register_callbacks(app):
         bat_charge_kw = max(bat_pwr, 0.0)  # Senke
         bat_discharge_kw = max(-bat_pwr, 0.0)  # Quelle
 
-        # Verfügbare Energie für Verbraucher = PV + Ramp-Boost + Grid (+ Entladung)
-        inflow_base = max(pv_val + boost_kw + grid_val, 0.0)
+        # Reale Energiezufuhr = PV + Grid (+ Batterie-Entladung).
+        # Der Ramp-Boost ist nur Planungs-Headroom und keine physische Quelle.
+        inflow_base = max(pv_val + grid_val, 0.0)
         inflow_eff = inflow_base + bat_discharge_kw
 
         # ---- Prozentanteile für den Inflow-Knoten ----
         den = inflow_eff if inflow_eff > 0 else 0.0
         pv_pct = round((pv_val / den) * 100.0, 1) if den else 0.0
-        boost_pct = round((boost_kw / den) * 100.0, 1) if den else 0.0
         grid_pct = round((grid_val / den) * 100.0, 1) if den else 0.0
         batt_pct = round((bat_discharge_kw / den) * 100.0, 1) if den else 0.0
 
@@ -698,7 +698,8 @@ def register_callbacks(app):
 
         # Node-Label leer lassen; Text zeigen wir als Annotation oben mittig.
         inflow_line1 = f"Energy Inflow — {_fmt_kw(inflow_eff)}"
-        inflow_line2 = f"PV: {pv_pct}% · Boost: {boost_pct}% · Grid: {grid_pct}% · Battery: {batt_pct}%"
+        reserve_txt = f" · Planner reserve: +{_fmt_kw(boost_kw)}" if boost_kw > 0.0 else ""
+        inflow_line2 = f"PV: {pv_pct}% · Grid: {grid_pct}% · Battery: {batt_pct}%{reserve_txt}"
         inflow_idx = add_node(" ", COLORS["inflow"])
 
         # ---------- Linke Quellknoten (optional) ----------
@@ -719,10 +720,6 @@ def register_callbacks(app):
             if grid_active or SHOW_GHOST_SRC:
                 grid_src_idx = add_node(f"Grid (import)<br>{_fmt_kw(grid_val)}", grid_color)
                 add_link(grid_src_idx, inflow_idx, grid_eff, grid_color)
-
-        if boost_kw > 0.0:
-            boost_idx = add_node(f"PV ramp-up reserve<br>{_fmt_kw(boost_kw)}", COLORS["boost"])
-            add_link(boost_idx, inflow_idx, boost_kw, COLORS["boost"])
 
         battery_src_idx = None
         if battery_feat and ((bat_discharge_kw > 0.0) or SHOW_GHOST_SRC):
