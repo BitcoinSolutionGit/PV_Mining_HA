@@ -187,7 +187,7 @@ class CoolingConsumer(BaseConsumer):
         pending_off = _truthy(c.get("pending_off"), False)
         phase = str(c.get("phase") or "").lower()
         should_on = power_kw > 0.0 and alloc_kw > 0.0
-        has_feedback = bool((c.get("state_entity") or "").strip())
+        has_feedback = bool((c.get("resolved_state_entity") or c.get("state_entity") or "").strip())
 
         now_ts = time.time()
         cooldown = 0.8

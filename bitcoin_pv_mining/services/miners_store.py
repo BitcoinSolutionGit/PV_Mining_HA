@@ -39,10 +39,22 @@ def _save_all(data: dict):
     save_yaml(MIN_OVR, data or {"miners": {"list": []}})
 
 def _state_entity_id(miner: dict) -> str:
-    return (
+    explicit = (
         (miner.get("state_entity") or "")
         or (miner.get("ready_entity") or "")
     ).strip()
+    if explicit:
+        return explicit
+
+    # Fallback: when ON/OFF actions target a stateful relay entity directly
+    # (for example a Shelly switch), reuse that entity as live state feedback.
+    for key in ("action_on_entity", "action_off_entity"):
+        ent = (miner.get(key) or "").strip()
+        if ent and "." in ent:
+            domain = ent.split(".", 1)[0].lower()
+            if domain in ("switch", "input_boolean", "light", "fan"):
+                return ent
+    return ""
 
 
 def _state_timeout_s(miner: dict, default: int = 10) -> int:
@@ -199,28 +211,49 @@ def request_miner_state(mid: str, target_on: bool, *, now_ts: float | None = Non
     if not miner:
         return False, "not found"
 
-    current_on = bool(miner.get("on"))
-    if current_on == bool(target_on):
-        return True, "unchanged"
+    target_on = bool(target_on)
+    ha_on = miner.get("ha_on")
+    pending_on = bool(miner.get("pending_on"))
+    pending_off = bool(miner.get("pending_off"))
+    desired_on = bool(miner.get("on"))
+
+    # With real feedback configured, "unchanged" must be decided from the
+    # actual relay state (plus in-flight transitions), not from desired_on.
+    # Otherwise a stuck desired_on=True suppresses the retry even while the
+    # relay clearly reports OFF.
+    if target_on:
+        if pending_on:
+            return True, "pending_on"
+        if ha_on is True:
+            return True, "unchanged"
+        if ha_on is None and desired_on:
+            return True, "unchanged"
+    else:
+        if pending_off:
+            return True, "pending_off"
+        if ha_on is False:
+            return True, "unchanged"
+        if ha_on is None and not desired_on:
+            return True, "unchanged"
 
     now_eff = float(now_ts if now_ts is not None else time.time())
     if enforce_runtime:
-        locked, reason = miner_runtime_lock(mid, bool(target_on), now_eff)
+        locked, reason = miner_runtime_lock(mid, target_on, now_eff)
         if locked:
             return False, reason
 
     action_key = "action_on_entity" if target_on else "action_off_entity"
     action_entity = (miner.get(action_key) or "").strip()
     if action_entity:
-        call_action(action_entity, bool(target_on))
+        call_action(action_entity, target_on)
 
     has_feedback = bool(_state_entity_id(miner))
     timeout_s = _state_timeout_s(miner, 10)
     update_miner(
         mid,
-        on=bool(target_on),
-        pending_on=(bool(target_on) and has_feedback),
-        pending_off=((not bool(target_on)) and has_feedback and bool(miner.get("effective_on", miner.get("on")))),
+        on=target_on,
+        pending_on=(target_on and has_feedback),
+        pending_off=((not target_on) and has_feedback and bool(miner.get("effective_on", miner.get("on")))),
         startup_grace_until=(now_eff + timeout_s) if has_feedback else 0.0,
         last_flip_ts=now_eff,
     )

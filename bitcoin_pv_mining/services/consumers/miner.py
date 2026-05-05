@@ -125,7 +125,7 @@ def _cooling_running_now() -> bool:
         c = get_cooling() or {}
         if "ha_on" in c and c["ha_on"] is not None:
             return bool(c["ha_on"])
-        rs_id = (c.get("state_entity") or "").strip()
+        rs_id = (c.get("resolved_state_entity") or c.get("state_entity") or "").strip()
         if rs_id:
             return _truthy(get_sensor_value(rs_id), False)
         return _truthy(c.get("effective_on"), False) or _truthy(c.get("on"), False)
@@ -142,7 +142,7 @@ def _cooling_auto_available() -> bool:
             return False
         if str(c.get("mode") or "manual").lower() != "auto":
             return False
-        if not (c.get("state_entity") or "").strip():
+        if not (c.get("resolved_state_entity") or c.get("state_entity") or "").strip():
             return False
         return _num(c.get("power_kw"), 0.0) > 0.0
     except Exception:
@@ -168,7 +168,7 @@ def _cooling_permits_miner_start() -> tuple[bool, str]:
     """
     try:
         c = get_cooling() or {}
-        state_entity = (c.get("state_entity") or "").strip()
+        state_entity = (c.get("resolved_state_entity") or c.get("state_entity") or "").strip()
         phase = str(c.get("phase") or "").strip().lower()
         ha_on = c.get("ha_on")
 
@@ -217,7 +217,7 @@ def _request_cooling_on(now_ts: float) -> tuple[bool, str]:
             return True, "cooling already on"
 
         on_ent = (c.get("action_on_entity") or "").strip()
-        has_feedback = bool((c.get("state_entity") or "").strip())
+        has_feedback = bool((c.get("resolved_state_entity") or c.get("state_entity") or "").strip())
         timeout_s = _cooling_startup_grace_s(c)
         if on_ent:
             call_action(on_ent, True)
@@ -259,7 +259,7 @@ def _request_cooling_off_if_idle(now_ts: float) -> tuple[bool, str]:
             return True, "cooling already off"
 
         off_ent = (c.get("action_off_entity") or "").strip()
-        has_feedback = bool((c.get("state_entity") or "").strip())
+        has_feedback = bool((c.get("resolved_state_entity") or c.get("state_entity") or "").strip())
         timeout_s = _cooling_startup_grace_s(c)
         if off_ent:
             call_action(off_ent, False)

@@ -28,6 +28,22 @@ _DEFAULT = {
 }
 
 
+def _state_entity_id(cooling: dict) -> str:
+    explicit = (cooling.get("state_entity") or "").strip()
+    if explicit:
+        return explicit
+
+    # Fallback: when actions point directly to a stateful relay entity
+    # (for example a Shelly switch), use that entity as runtime feedback.
+    for key in ("action_on_entity", "action_off_entity"):
+        ent = (cooling.get(key) or "").strip()
+        if ent and "." in ent:
+            domain = ent.split(".", 1)[0].lower()
+            if domain in ("switch", "input_boolean", "light", "fan"):
+                return ent
+    return ""
+
+
 def _merge(base: dict, ovr: dict) -> dict:
     d = (base or {}).copy()
     d.update(ovr or {})
@@ -71,7 +87,7 @@ def get_cooling() -> dict:
     out["state_timeout_s"] = _state_timeout_s(out, _DEFAULT["state_timeout_s"])
 
     desired_on = bool(out.get("on"))
-    state_entity = (out.get("state_entity") or "").strip()
+    state_entity = _state_entity_id(out)
 
     ha_on = None
     try:
@@ -138,6 +154,7 @@ def get_cooling() -> dict:
         phase = "running_no_state"
 
     out["on"] = desired_on
+    out["resolved_state_entity"] = state_entity
     out["ha_on"] = ha_on
     out["pending_on"] = pending_on
     out["pending_off"] = pending_off
@@ -161,6 +178,7 @@ def set_cooling(**changes):
     cur["state_timeout_s"] = _state_timeout_s(cur, _DEFAULT["state_timeout_s"])
     cur.pop("ready_entity", None)
     cur.pop("ready_timeout_s", None)
+    cur.pop("resolved_state_entity", None)
     cur.pop("ha_on", None)
     cur.pop("effective_on", None)
     cur.pop("phase", None)
